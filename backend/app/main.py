@@ -1,4 +1,10 @@
 from fastapi import FastAPI
+from app.database import Base, engine
+from app.models import models
+
+#Crear tablas automaticamente si no existen
+Base.metadata.create_all(bind=engine)
+
 app = FastAPI(
     tittle = "POS Cafeteria",
     description="API del sistema de punto de venta",
