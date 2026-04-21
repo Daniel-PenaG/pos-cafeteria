@@ -10,13 +10,12 @@ class Categoria(Base):
 
     id_categoria = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(100), nullable=False)
-
     productos = relationship("Producto", back_populates="categoria")
 
 #================================
 #Productos
 #================================
-class Pproducto(Base):
+class Producto(Base):
     __tablename__="productos"
 
     id_producto = Column(Integer, primary_key=True, index=True)
@@ -27,7 +26,7 @@ class Pproducto(Base):
 
     categoria = relationship("Categoria", back_populates="productos")
     recetas = relationship("Receta", back_populates="producto")
-    detalles = relationship("DetalleVenta", back_populates="prducto")
+    detalles = relationship("DetalleVenta", back_populates="producto")
 
 #================================
 #Insumo
@@ -53,7 +52,7 @@ class Receta(Base):
 
     id_receta = Column(Integer, primary_key=True, index=True)
     id_producto = Column(Integer, ForeignKey("productos.id_producto"), nullable=False)
-    id_insumo = Column(Integer, ForeignKey("insumos.id_insumo"), nullable=False)
+    id_insumo = Column(Integer, ForeignKey("insumo.id_insumo"), nullable=False)
     cantidad_por_producto = Column(Numeric(12, 3), nullable=False)
 
     producto = relationship("Producto", back_populates="recetas")
@@ -115,7 +114,7 @@ class MovimientoInventario(Base):
     __tablename__ = "movimientos_inventario"
 
     id_movimiento = Column(Integer, primary_key=True, index=True)
-    id_insumo = Column(Integer, ForeignKey("insumos.id_insumo"), nullable=False)
+    id_insumo = Column(Integer, ForeignKey("insumo.id_insumo"), nullable=False)
     tipo = Column(String(10), nullable=False)
     cantidad = Column(Numeric(12, 3), nullable=False)
     motivo = Column(String(30), nullable=False)
