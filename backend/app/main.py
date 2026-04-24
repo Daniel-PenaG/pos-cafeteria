@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from app.database import Base, engine
 from app.models import models
-from app.routers import auth, productos
+from app.routers import auth, productos, recetas, ventas
 
 app = FastAPI(
     title="POS Cafetería",
@@ -13,6 +13,8 @@ Base.metadata.create_all(bind=engine)
 
 app.include_router(auth.router)
 app.include_router(productos.router)
+app.include_router(recetas.router)
+app.include_router(ventas.router)
 
 @app.get("/")
 def root():
