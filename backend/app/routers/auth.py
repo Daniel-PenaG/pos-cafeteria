@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.models import Usuario
+from app.models.models import UsuarioModel
 from app.schemas.auth import UserCreate, UserLogin, Token
 from app.utils.security import hash_password, verify_password, create_access_token
 
@@ -11,13 +11,13 @@ router = APIRouter(prefix="/auth", tags=["Autenticacion"])
 @router.post("/register")
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
     # Verifica si el usuario ya existe
-    existing_user = db.query(Usuario).filter(Usuario.usuario_login == user.usuario_login).first()
+    existing_user = db.query(UsuarioModel).filter(UsuarioModel.usuario_login == user.usuario_login).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="El usuario ya existe")
     
     hashed = hash_password(user.password)
 
-    new_user = Usuario(
+    new_user = UsuarioModel(
         nombre=user.nombre,
         usuario_login=user.usuario_login,
         hash_password=hashed,
@@ -33,7 +33,7 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
 # Login
 @router.post("/login", response_model=Token)
 def login(user: UserLogin, db: Session = Depends(get_db)):
-    db_user = db.query(Usuario).filter(Usuario.usuario_login == user.usuario_login).first()
+    db_user = db.query(UsuarioModel).filter(UsuarioModel.usuario_login == user.usuario_login).first()
 
     if not db_user:
         raise HTTPException(status_code=400, detail="Usuario o contraseña incorrecto")

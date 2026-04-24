@@ -1,19 +1,19 @@
 from fastapi import FastAPI
 from app.database import Base, engine
 from app.models import models
-from app.routers import auth
-
-#Crear tablas automaticamente si no existen
-Base.metadata.create_all(bind=engine)
+from app.routers import auth, productos
 
 app = FastAPI(
-    tittle = "POS Cafeteria",
+    title="POS Cafetería",
     description="API del sistema de punto de venta",
     version="1.0.0"
 )
 
+Base.metadata.create_all(bind=engine)
+
 app.include_router(auth.router)
+app.include_router(productos.router)
 
 @app.get("/")
 def root():
-    return {"message": "POST Cafeteria API funcionando correctamente"}
+    return {"message": "POS Cafetería API funcionando"}
