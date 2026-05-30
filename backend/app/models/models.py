@@ -1,4 +1,13 @@
-from sqlalchemy import Column, Integer, String, Boolean, Numeric, ForeignKey, TIMESTAMP
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Numeric,
+    DateTime,
+    Boolean,
+    ForeignKey,
+)
+from datetime import datetime
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -12,6 +21,11 @@ class CategoriaModel(Base):
     nombre = Column(String(100), nullable=False)
 
     productos = relationship("ProductoModel", back_populates="categoria")
+    extras_enlazados = relationship(
+        "CategoriaExtraModel",
+        back_populates="categoria",
+        cascade="all, delete-orphan",
+    )
 
 
 # ============================
@@ -27,8 +41,9 @@ class ProductoModel(Base):
     activo = Column(Boolean, default=True)
 
     categoria = relationship("CategoriaModel", back_populates="productos")
-    recetas = relationship("RecetaModel", back_populates="producto")
+    recetas = relationship("RecetaModel", back_populates="producto", cascade="all, delete")
     detalles = relationship("DetalleVentaModel", back_populates="producto")
+   
 
 
 # ============================
@@ -44,7 +59,7 @@ class InsumoModel(Base):
     stock_minimo = Column(Numeric(12, 3), default=0)
     costo_unitario = Column(Numeric(10, 4), default=0)
 
-    recetas = relationship("RecetaModel", back_populates="insumo")
+    receta_insumos = relationship("RecetaInsumoModel", back_populates="insumo")
     movimientos = relationship("MovimientoInventarioModel", back_populates="insumo")
 
 
@@ -56,11 +71,25 @@ class RecetaModel(Base):
 
     id_receta = Column(Integer, primary_key=True, index=True)
     id_producto = Column(Integer, ForeignKey("productos.id_producto"), nullable=False)
-    id_insumo = Column(Integer, ForeignKey("insumos.id_insumo"), nullable=False)
-    cantidad_por_producto = Column(Numeric(12, 3), nullable=False)
+    nombre = Column(String(150), nullable=False)
+    descripcion = Column(String(300), nullable=True)
+    activo = Column(Boolean, default=True)
+    costo_total = Column(Numeric(12, 4), default=0)
 
     producto = relationship("ProductoModel", back_populates="recetas")
-    insumo = relationship("InsumoModel", back_populates="recetas")
+    insumos = relationship("RecetaInsumoModel", back_populates="receta", cascade="all, delete")
+
+
+class RecetaInsumoModel(Base):
+    __tablename__ = "receta_insumos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    id_receta = Column(Integer, ForeignKey("recetas.id_receta"))
+    id_insumo = Column(Integer, ForeignKey("insumos.id_insumo"))
+    cantidad = Column(Numeric(12, 3), nullable=False)
+
+    receta = relationship("RecetaModel", back_populates="insumos")
+    insumo = relationship("InsumoModel", back_populates="receta_insumos")
 
 
 # ============================
@@ -85,8 +114,9 @@ class VentaModel(Base):
     __tablename__ = "ventas"
 
     id_venta = Column(Integer, primary_key=True, index=True)
-    fecha_hora = Column(TIMESTAMP, nullable=False)
+    fecha_hora = Column(DateTime, nullable=False)
     id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+    numero_mesa = Column(Integer, nullable=False, default=1)
     total = Column(Numeric(10, 2), nullable=False)
     forma_pago = Column(String(30), nullable=False)
 
@@ -95,8 +125,40 @@ class VentaModel(Base):
 
 
 # ============================
-# DETALLE VENTA
+# EXTRAS DE VENTA (catálogo propio, independiente de insumos)
 # ============================
+class ExtraVentaModel(Base):
+    """Catálogo editable de extras; puede crearse a mano o copiando datos de un insumo."""
+
+    __tablename__ = "extras_venta"
+
+    id_extra = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(150), nullable=False)
+    unidad = Column(String(20), nullable=True)
+    cantidad = Column(Numeric(12, 3), nullable=False, default=1)
+    costo_unitario = Column(Numeric(10, 4), nullable=False, default=0)
+    usar_precio_manual = Column(Boolean, default=False)
+    precio_personalizado = Column(Numeric(10, 2), nullable=True)
+    precio = Column(Numeric(10, 2), nullable=False)
+    tipo = Column(String(30), nullable=False, default="OTRO")
+    activo = Column(Boolean, default=True)
+    id_insumo_origen = Column(Integer, nullable=True)
+
+    categorias = relationship("CategoriaExtraModel", back_populates="extra")
+
+
+class CategoriaExtraModel(Base):
+    """Qué extras del catálogo aplican a cada categoría de producto."""
+    __tablename__ = "categoria_extras"
+
+    id = Column(Integer, primary_key=True, index=True)
+    id_categoria = Column(Integer, ForeignKey("categorias.id_categoria"), nullable=False)
+    id_extra = Column(Integer, ForeignKey("extras_venta.id_extra"), nullable=False)
+
+    categoria = relationship("CategoriaModel", back_populates="extras_enlazados")
+    extra = relationship("ExtraVentaModel", back_populates="categorias")
+
+
 class DetalleVentaModel(Base):
     __tablename__ = "detalle_venta"
 
@@ -106,6 +168,7 @@ class DetalleVentaModel(Base):
     cantidad = Column(Numeric(10, 2), nullable=False)
     precio_unitario = Column(Numeric(10, 2), nullable=False)
     subtotal = Column(Numeric(10, 2), nullable=False)
+    extras_json = Column(String(500), nullable=True)
 
     venta = relationship("VentaModel", back_populates="detalles")
     producto = relationship("ProductoModel", back_populates="detalles")
@@ -123,6 +186,40 @@ class MovimientoInventarioModel(Base):
     cantidad = Column(Numeric(12, 3), nullable=False)
     motivo = Column(String(30), nullable=False)
     referencia = Column(String(50))
-    fecha_hora = Column(TIMESTAMP, nullable=False)
+    fecha_hora = Column(DateTime, nullable=False)
 
     insumo = relationship("InsumoModel", back_populates="movimientos")
+
+class CompraModel(Base):
+    __tablename__ = "compras"
+
+    id_compra = Column(Integer, primary_key=True, index=True)
+    fecha_hora = Column(DateTime, default=datetime.utcnow)
+    proveedor = Column(String(100))
+    total = Column(Numeric(10, 2))
+
+
+class DetalleCompraModel(Base):
+    __tablename__ = "detalle_compra"
+
+    id_detalle = Column(Integer, primary_key=True, index=True)
+    id_compra = Column(Integer, ForeignKey("compras.id_compra"))
+    id_insumo = Column(Integer, ForeignKey("insumos.id_insumo"))
+    cantidad = Column(Numeric(10, 2))
+    costo_unitario = Column(Numeric(10, 2))
+    subtotal = Column(Numeric(10, 2))
+
+
+# ============================
+# CONFIGURACIÓN
+# ============================
+class ConfiguracionModel(Base):
+    __tablename__ = "configuracion"
+
+    id_configuracion = Column(Integer, primary_key=True, index=True)
+    margen_ganancia = Column(Numeric(5, 2), default=15.0)  # Porcentaje de margen
+    gastos_fijos = Column(Numeric(12, 2), default=1000.0)  # Gastos fijos mensuales
+    fecha_actualizacion = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Configuracion margen={self.margen_ganancia}% gastos={self.gastos_fijos}>"

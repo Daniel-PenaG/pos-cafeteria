@@ -31,15 +31,31 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     return {"message": "Usuario registrado correctamente"}
 
 # Login
-@router.post("/login", response_model=Token)
+@router.post("/login")
 def login(user: UserLogin, db: Session = Depends(get_db)):
-    db_user = db.query(UsuarioModel).filter(UsuarioModel.usuario_login == user.usuario_login).first()
+    try:
+        db_user = db.query(UsuarioModel).filter(UsuarioModel.usuario_login == user.usuario_login).first()
 
-    if not db_user:
-        raise HTTPException(status_code=400, detail="Usuario o contraseña incorrecto")
+        if not db_user:
+            raise HTTPException(status_code=400, detail="Usuario o contraseña incorrecto")
 
-    if not verify_password(user.password, db_user.hash_password):
-        raise HTTPException(status_code=400, detail="Usuario o contraseña incorrecto")
-    
-    token = create_access_token({"sub": db_user.usuario_login})
-    return {"access_token": token, "token_type": "bearer"}
+        if not verify_password(user.password, db_user.hash_password):
+            raise HTTPException(status_code=400, detail="Usuario o contraseña incorrecto")
+        
+        token = create_access_token({"sub": db_user.usuario_login})
+
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user": {
+                "id_usuario": db_user.id_usuario,
+                "nombre": db_user.nombre,
+                "usuario_login": db_user.usuario_login,
+                "rol": db_user.rol
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Login error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error en login: {str(e)}")
