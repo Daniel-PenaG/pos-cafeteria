@@ -35,3 +35,7 @@ app.include_router(extras_venta.router)
 @app.get("/")
 def root():
     return {"message": "POS Cafetería API funcionando"}
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}

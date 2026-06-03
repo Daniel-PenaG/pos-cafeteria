@@ -12,7 +12,11 @@ dist
 dist-ssr
 *.local
 
-# Editor directories and files
+# Env (no subir secretos; .env.production puede ir si solo tiene URL pública)
+.env.local
+.env.*.local
+
+# Editor
 .vscode/*
 !.vscode/extensions.json
 .idea

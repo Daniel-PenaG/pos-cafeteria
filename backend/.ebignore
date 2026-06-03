@@ -1,0 +1,9 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+pos_cafeteria.db
+*.db
+.pytest_cache/
+.git/

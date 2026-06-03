@@ -138,6 +138,13 @@ celerybeat.pid
 .env
 .envrc
 .venv
+
+# Node / deploy artifacts (monorepo)
+node_modules/
+deploy-eb.zip
+backend.zip
+backend/pos_cafeteria.db
+backend/venv/
 env/
 venv/
 ENV/
