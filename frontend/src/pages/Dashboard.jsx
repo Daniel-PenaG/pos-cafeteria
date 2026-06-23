@@ -2,8 +2,12 @@ import { useEffect, useState } from "react";
 import { getResumenDashboard } from "../services/dashboardService";
 import { getConfiguracion, updateConfiguracion } from "../services/configuracionService";
 import PageHeader from "../components/PageHeader";
+import { useAuthStore } from "../store/authStore";
+import { isAdmin } from "../config/permissions";
 
 export default function Dashboard() {
+  const rol = useAuthStore((state) => state.user?.rol);
+  const admin = isAdmin(rol);
   const [data, setData] = useState(null);
   const [config, setConfig] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -16,17 +20,19 @@ export default function Dashboard() {
         const resumenData = await getResumenDashboard();
         setData(resumenData);
 
-        const configData = await getConfiguracion();
-        setConfig(configData);
-        setMargenEditado(configData.margen_ganancia);
-        setGastosEditados(configData.gastos_fijos);
+        if (admin) {
+          const configData = await getConfiguracion();
+          setConfig(configData);
+          setMargenEditado(configData.margen_ganancia);
+          setGastosEditados(configData.gastos_fijos);
+        }
       } catch (err) {
         console.error(err);
         alert("Error al cargar el dashboard");
       }
     };
     load();
-  }, []);
+  }, [admin]);
 
   const handleGuardarConfiguracion = async () => {
     if (margenEditado < 0 || margenEditado > 100) {
@@ -57,7 +63,7 @@ export default function Dashboard() {
     }
   };
 
-  if (!data || !config) {
+  if (!data || (admin && !config)) {
     return <div className="loading-state">Cargando dashboard…</div>;
   }
 
@@ -83,6 +89,7 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {admin && (
       <section className="card" style={{ marginBottom: "1.5rem" }}>
         <div className="table-toolbar">
           <h2 style={{ margin: 0 }}>Configuración de precios</h2>
@@ -151,6 +158,7 @@ export default function Dashboard() {
           </>
         )}
       </section>
+      )}
 
       <section className="card">
         <h2>Top productos</h2>

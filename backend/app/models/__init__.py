@@ -13,6 +13,14 @@ from .models import (
     ConfiguracionModel,
     ExtraVentaModel,
     CategoriaExtraModel,
+    PromocionModel,
+    PromocionProductoModel,
+    PromocionCategoriaModel,
+    ClienteModel,
+    FidelidadMovimientoModel,
+    FidelidadConfigModel,
+    PedidoModel,
+    DetallePedidoModel,
 )
 
 __all__ = [
@@ -30,4 +38,12 @@ __all__ = [
     "ConfiguracionModel",
     "ExtraVentaModel",
     "CategoriaExtraModel",
+    "PromocionModel",
+    "PromocionProductoModel",
+    "PromocionCategoriaModel",
+    "ClienteModel",
+    "FidelidadMovimientoModel",
+    "FidelidadConfigModel",
+    "PedidoModel",
+    "DetallePedidoModel",
 ]

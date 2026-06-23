@@ -2,6 +2,7 @@ import { useState } from "react";
 import api from "../api/axios";
 import { useAuthStore } from "../store/authStore";
 import { useNavigate } from "react-router-dom";
+import { getDefaultRoute } from "../config/permissions";
 
 export default function Login() {
   const [usuario_login, setUsuario] = useState("");
@@ -18,7 +19,7 @@ export default function Login() {
         password,
       });
       useAuthStore.getState().login(res.data.access_token, res.data.user);
-      navigate("/dashboard");
+      navigate(getDefaultRoute(res.data.user?.rol));
     } catch {
       alert("Credenciales incorrectas");
     } finally {

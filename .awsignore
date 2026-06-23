@@ -1,0 +1,13 @@
+# Carpetas que no deben ir al ZIP de despliegue (referencia manual)
+venv/
+.venv/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+__pycache__/
+*.pyc
+.env
+.env.local
+*.db
+*.zip
+.git/

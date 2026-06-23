@@ -136,13 +136,25 @@ celerybeat.pid
 
 # Environments
 .env
+.env.local
+.env.production
+.env.*.local
 .envrc
 .venv
+backend/.env
+
+# Plantillas sí se suben
+!.env.example
+!**/.env.example
+!**/.env.production.example
 
 # Node / deploy artifacts (monorepo)
 node_modules/
 deploy-eb.zip
 backend.zip
+*.zip
+frontend/dist/
+frontend/node_modules/
 backend/pos_cafeteria.db
 backend/venv/
 env/

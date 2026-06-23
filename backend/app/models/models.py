@@ -119,8 +119,11 @@ class VentaModel(Base):
     numero_mesa = Column(Integer, nullable=False, default=1)
     total = Column(Numeric(10, 2), nullable=False)
     forma_pago = Column(String(30), nullable=False)
+    id_cliente = Column(Integer, ForeignKey("clientes.id_cliente"), nullable=True)
+    puntos_generados = Column(Integer, nullable=False, default=0)
 
     usuario = relationship("UsuarioModel", back_populates="ventas")
+    cliente = relationship("ClienteModel", back_populates="ventas")
     detalles = relationship("DetalleVentaModel", back_populates="venta")
 
 
@@ -169,9 +172,65 @@ class DetalleVentaModel(Base):
     precio_unitario = Column(Numeric(10, 2), nullable=False)
     subtotal = Column(Numeric(10, 2), nullable=False)
     extras_json = Column(String(500), nullable=True)
+    id_promocion = Column(Integer, ForeignKey("promociones.id_promocion"), nullable=True)
+    precio_original = Column(Numeric(10, 2), nullable=True)
+    descuento_unitario = Column(Numeric(10, 2), nullable=True)
+    costo_unitario_snapshot = Column(Numeric(10, 4), nullable=True)
 
     venta = relationship("VentaModel", back_populates="detalles")
     producto = relationship("ProductoModel", back_populates="detalles")
+    promocion = relationship("PromocionModel", back_populates="detalles")
+
+
+# ============================
+# PROMOCIONES
+# ============================
+class PromocionModel(Base):
+    __tablename__ = "promociones"
+
+    id_promocion = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(150), nullable=False)
+    descripcion = Column(String(300), nullable=True)
+    tipo = Column(String(30), nullable=False)  # PORCENTAJE, PRECIO_FIJO, DOS_X_UNO
+    valor = Column(Numeric(10, 2), nullable=False)
+    activa = Column(Boolean, default=True)
+    aplica_toda_tienda = Column(Boolean, default=False)
+    fecha_inicio = Column(DateTime, nullable=True)
+    fecha_fin = Column(DateTime, nullable=True)
+    hora_inicio = Column(String(5), nullable=True)  # HH:MM
+    hora_fin = Column(String(5), nullable=True)
+    dias_semana = Column(String(20), nullable=True)  # ej. "0,1,2,3,4" lun-vie
+    margen_minimo = Column(Numeric(5, 2), nullable=True)
+
+    productos = relationship(
+        "PromocionProductoModel", back_populates="promocion", cascade="all, delete-orphan"
+    )
+    categorias = relationship(
+        "PromocionCategoriaModel", back_populates="promocion", cascade="all, delete-orphan"
+    )
+    detalles = relationship("DetalleVentaModel", back_populates="promocion")
+
+
+class PromocionProductoModel(Base):
+    __tablename__ = "promocion_productos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    id_promocion = Column(Integer, ForeignKey("promociones.id_promocion"), nullable=False)
+    id_producto = Column(Integer, ForeignKey("productos.id_producto"), nullable=False)
+
+    promocion = relationship("PromocionModel", back_populates="productos")
+    producto = relationship("ProductoModel")
+
+
+class PromocionCategoriaModel(Base):
+    __tablename__ = "promocion_categorias"
+
+    id = Column(Integer, primary_key=True, index=True)
+    id_promocion = Column(Integer, ForeignKey("promociones.id_promocion"), nullable=False)
+    id_categoria = Column(Integer, ForeignKey("categorias.id_categoria"), nullable=False)
+
+    promocion = relationship("PromocionModel", back_populates="categorias")
+    categoria = relationship("CategoriaModel")
 
 
 # ============================
@@ -223,3 +282,93 @@ class ConfiguracionModel(Base):
 
     def __repr__(self):
         return f"<Configuracion margen={self.margen_ganancia}% gastos={self.gastos_fijos}>"
+
+
+# ============================
+# PEDIDOS / COMANDERA (mesa abierta)
+# ============================
+class PedidoModel(Base):
+    __tablename__ = "pedidos"
+
+    id_pedido = Column(Integer, primary_key=True, index=True)
+    numero_mesa = Column(Integer, nullable=False, index=True)
+    estado = Column(String(20), nullable=False, default="ABIERTO")  # ABIERTO, COBRADO, CANCELADO
+    id_cliente = Column(Integer, ForeignKey("clientes.id_cliente"), nullable=True)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+    id_venta = Column(Integer, ForeignKey("ventas.id_venta"), nullable=True)
+    fecha_apertura = Column(DateTime, nullable=False, default=datetime.utcnow)
+    fecha_cierre = Column(DateTime, nullable=True)
+
+    cliente = relationship("ClienteModel")
+    detalles = relationship(
+        "DetallePedidoModel", back_populates="pedido", cascade="all, delete-orphan"
+    )
+
+
+class DetallePedidoModel(Base):
+    __tablename__ = "detalle_pedido"
+
+    id_detalle_pedido = Column(Integer, primary_key=True, index=True)
+    id_pedido = Column(Integer, ForeignKey("pedidos.id_pedido"), nullable=False)
+    id_producto = Column(Integer, ForeignKey("productos.id_producto"), nullable=False)
+    nombre_producto = Column(String(150), nullable=False)
+    cantidad = Column(Numeric(10, 2), nullable=False)
+    cantidad_lista = Column(Numeric(10, 2), nullable=False, default=0)
+    precio_unitario = Column(Numeric(10, 2), nullable=False)
+    precio_original = Column(Numeric(10, 2), nullable=True)
+    descuento_unitario = Column(Numeric(10, 2), nullable=True)
+    id_promocion = Column(Integer, ForeignKey("promociones.id_promocion"), nullable=True)
+    nombre_promocion = Column(String(150), nullable=True)
+    extras_json = Column(String(500), nullable=True)
+    en_comanda = Column(Boolean, default=True)
+    fecha_envio_comanda = Column(DateTime, nullable=True)
+    fecha_listo_comanda = Column(DateTime, nullable=True)
+    line_key = Column(String(120), nullable=False)
+
+    pedido = relationship("PedidoModel", back_populates="detalles")
+    producto = relationship("ProductoModel")
+
+
+# ============================
+# FIDELIDAD — CLIENTES
+# ============================
+class ClienteModel(Base):
+    __tablename__ = "clientes"
+
+    id_cliente = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(150), nullable=False)
+    telefono = Column(String(20), nullable=False, unique=True, index=True)
+    codigo_fidelidad = Column(String(20), nullable=False, unique=True, index=True)
+    puntos_saldo = Column(Integer, nullable=False, default=0)
+    activo = Column(Boolean, default=True)
+    fecha_alta = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    ventas = relationship("VentaModel", back_populates="cliente")
+    movimientos = relationship(
+        "FidelidadMovimientoModel", back_populates="cliente", cascade="all, delete-orphan"
+    )
+
+
+class FidelidadMovimientoModel(Base):
+    __tablename__ = "fidelidad_movimientos"
+
+    id_movimiento = Column(Integer, primary_key=True, index=True)
+    id_cliente = Column(Integer, ForeignKey("clientes.id_cliente"), nullable=False)
+    tipo = Column(String(30), nullable=False)  # ACUMULACION, AJUSTE, REVERSO
+    puntos = Column(Integer, nullable=False)
+    saldo_despues = Column(Integer, nullable=False)
+    id_venta = Column(Integer, ForeignKey("ventas.id_venta"), nullable=True)
+    notas = Column(String(300), nullable=True)
+    fecha_hora = Column(DateTime, nullable=False, default=datetime.utcnow)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=True)
+
+    cliente = relationship("ClienteModel", back_populates="movimientos")
+
+
+class FidelidadConfigModel(Base):
+    __tablename__ = "fidelidad_config"
+
+    id = Column(Integer, primary_key=True, index=True)
+    pesos_por_punto = Column(Numeric(10, 2), nullable=False, default=10.0)
+    minimo_compra_acumular = Column(Numeric(10, 2), nullable=False, default=0)
+    fecha_actualizacion = Column(DateTime, default=datetime.utcnow)

@@ -1,0 +1,43 @@
+# Despliega el backend a Elastic Beanstalk cuando cambia backend/ en main
+name: Deploy backend (Elastic Beanstalk)
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Crear paquete ZIP
+        run: |
+          zip -r ../deploy-eb.zip . \
+            -x "venv/*" \
+            -x ".venv/*" \
+            -x "*.db" \
+            -x ".env" \
+            -x "__pycache__/*" \
+            -x "*.pyc"
+
+      - name: Desplegar a Elastic Beanstalk
+        uses: einaregilsson/beanstalk-deploy@v22
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          application_name: ${{ secrets.EB_APPLICATION_NAME }}
+          environment_name: ${{ secrets.EB_ENVIRONMENT_NAME }}
+          region: ${{ secrets.AWS_REGION }}
+          version_label: ${{ github.sha }}
+          deployment_package: deploy-eb.zip
+          wait_for_environment_recovery: 120

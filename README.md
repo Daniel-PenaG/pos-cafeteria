@@ -2,6 +2,8 @@
 
 Sistema integral de gestión para cafeterías con control de inventario, recetas, ventas y reportes.
 
+**Despliegue:** primero [GITHUB_SETUP.md](GITHUB_SETUP.md) (subir a GitHub), luego [DEPLOY_AWS.md](DEPLOY_AWS.md) (AWS automático).
+
 ## 📋 Tabla de Contenidos
 
 - [Características](#características)
