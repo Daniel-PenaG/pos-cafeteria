@@ -28,7 +28,8 @@ jobs:
             -x "*.db" \
             -x ".env" \
             -x "__pycache__/*" \
-            -x "*.pyc"
+            -x "*.pyc" \
+            -x "application.py"
 
       - name: Verificar contenido del ZIP
         working-directory: ${{ github.workspace }}
@@ -47,5 +48,4 @@ jobs:
           region: ${{ secrets.AWS_REGION }}
           version_label: ${{ github.sha }}
           deployment_package: deploy-eb.zip
-          wait_for_environment_recovery: 120
-          use_existing_version_if_available: true
+          wait_for_environment_recovery: 300

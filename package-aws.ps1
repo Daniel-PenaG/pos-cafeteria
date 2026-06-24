@@ -11,8 +11,8 @@ try {
         "app",
         "Procfile",
         "requirements.txt",
-        "application.py",
-        ".ebextensions"
+        ".ebextensions",
+        ".platform"
     ) -DestinationPath $zip -Force
 } finally {
     Pop-Location
