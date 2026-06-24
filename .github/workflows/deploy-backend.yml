@@ -30,6 +30,13 @@ jobs:
             -x "__pycache__/*" \
             -x "*.pyc"
 
+      - name: Verificar contenido del ZIP
+        working-directory: ${{ github.workspace }}
+        run: |
+          unzip -l deploy-eb.zip | grep -E 'Procfile|requirements.txt|app/main.py'
+          echo "--- Procfile ---"
+          unzip -p deploy-eb.zip Procfile
+
       - name: Desplegar a Elastic Beanstalk
         uses: einaregilsson/beanstalk-deploy@v22
         with:

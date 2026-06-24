@@ -225,7 +225,8 @@ cd frontend; npm install; npm run dev
 |----------|---------|
 | Actions falla “Access Denied” | IAM policy y secrets de GitHub |
 | Amplify build OK pero API no conecta | `VITE_API_URL` y redeploy Amplify tras cambiarla |
-| EB 502 | Logs EB → `/var/log/web.stdout.log`; revisar `DATABASE_URL` |
+| EB 502 / gunicorn gthread en logs | Quitar `WSGIPath` de `.ebextensions`; Procfile debe usar `uvicorn.workers.UvicornWorker` en puerto **8000** |
+| EB 502 general | Logs EB → `/var/log/web.stdout.log`; revisar `DATABASE_URL` |
 | CORS en navegador | Origen del front debe estar permitido (hoy `*`) |
 | Tablas faltantes | Ejecutar migraciones / `schema.sql` en RDS |
 
