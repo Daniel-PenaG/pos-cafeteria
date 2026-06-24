@@ -9,7 +9,6 @@ from app.utils.security import hash_password, verify_password, create_access_tok
 
 router = APIRouter(prefix="/auth", tags=["Autenticacion"])
 
-
 @router.get("/me")
 def get_me(current: UsuarioModel = Depends(get_current_user)):
     return {
