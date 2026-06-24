@@ -8,6 +8,7 @@ from app.schemas.usuario import UsuarioCreate, UsuarioOut, UsuarioUpdate
 from app.utils.deps import get_current_user, require_admin
 from app.utils.security import hash_password
 
+
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"], dependencies=[Depends(require_admin)])
 
 
