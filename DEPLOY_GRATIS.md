@@ -228,6 +228,28 @@ El archivo `frontend/vercel.json` redirige rutas de React Router a `index.html`.
 
 URL final: `https://tu-proyecto.vercel.app`
 
+### URL para compartir (importante)
+
+Comparte solo la URL de **Production**, por ejemplo:
+
+```text
+https://pos-cafeteria.vercel.app
+```
+
+**No compartas** URLs con hash largo como:
+
+```text
+https://pos-cafeteria-o4u1q46yp-coffesong.vercel.app   ← preview (privada)
+https://pos-cafeteria-git-main-coffesong.vercel.app    ← preview (privada)
+```
+
+Esas ligas de *preview* suelen pedir **login con cuenta Vercel** a quien no es del equipo.
+
+Si alguien abre tu app y ve “Log in to Vercel”:
+1. Vercel → proyecto → **Settings** → **Deployment Protection**
+2. En **Vercel Authentication**, deja protegidos solo los *Preview* (opcional) o desactívalo si quieres previews públicos
+3. La URL de **Production** debe estar **sin protección** para que cualquiera entre con el login de tu POS (admin/cajero), no con Vercel
+
 ---
 
 ## Paso 4 — Primer usuario administrador
