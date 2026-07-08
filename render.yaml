@@ -1,0 +1,22 @@
+# Blueprint de Render: despliega solo el backend (FastAPI).
+# Frontend: Vercel (ver DEPLOY_GRATIS.md).
+# Base de datos: Neon PostgreSQL (crear manualmente y pegar DATABASE_URL).
+
+services:
+  - type: web
+    name: pos-cafeteria-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "60"

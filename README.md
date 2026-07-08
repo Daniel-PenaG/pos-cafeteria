@@ -2,7 +2,9 @@
 
 Sistema integral de gestión para cafeterías con control de inventario, recetas, ventas y reportes.
 
-**Despliegue:** primero [GITHUB_SETUP.md](GITHUB_SETUP.md) (subir a GitHub), luego [DEPLOY_AWS.md](DEPLOY_AWS.md) (AWS automático).
+**Despliegue:** primero [GITHUB_SETUP.md](GITHUB_SETUP.md) (subir a GitHub), luego:
+- **[DEPLOY_GRATIS.md](DEPLOY_GRATIS.md)** — FastAPI + React + PostgreSQL en $0 (Vercel + Render + Neon), con opción de escalar a planes de pago.
+- [DEPLOY_AWS.md](DEPLOY_AWS.md) — AWS (Amplify + Elastic Beanstalk + RDS) si necesitas infraestructura empresarial.
 
 ## 📋 Tabla de Contenidos
 
