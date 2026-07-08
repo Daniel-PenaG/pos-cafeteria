@@ -61,8 +61,83 @@ Usuario (navegador)
 
 ## Requisitos previos
 
-1. Código en **GitHub** ([GITHUB_SETUP.md](GITHUB_SETUP.md)).
-2. Cuenta gratis en [Neon](https://neon.tech), [Render](https://render.com) y [Vercel](https://vercel.com).
+1. Código en **GitHub** en la rama `main` ([GITHUB_SETUP.md](GITHUB_SETUP.md)).
+   Repo: `https://github.com/Daniel-PenaG/pos-cafeteria`
+2. Cuenta gratis en [Neon](https://neon.tech), [Render](https://render.com) y [Vercel](https://vercel.com) (puedes usar “Sign in with GitHub”).
+
+**Tiempo estimado:** 30–45 minutos la primera vez.
+
+---
+
+## Guía paso a paso (clic a clic)
+
+### A. Neon — base de datos (≈10 min)
+
+1. Entra a [console.neon.tech](https://console.neon.tech) → **Sign up** (GitHub).
+2. **New Project** → nombre ej. `pos-cafeteria` → región cercana a ti → **Create**.
+3. En el dashboard, copia la **Connection string** (pestaña *Connection details*).
+4. Cámbiala a formato SQLAlchemy:
+
+   ```text
+   postgresql+psycopg2://USUARIO:PASSWORD@ep-xxxx.region.aws.neon.tech/neondb?sslmode=require
+   ```
+
+   Solo cambia el inicio de `postgresql://` a `postgresql+psycopg2://`.
+
+5. Menú izquierdo → **SQL Editor** → **New query**.
+6. Abre en tu repo el archivo `database/schema.sql`, copia todo, pégalo en Neon → **Run**.
+7. Guarda la `DATABASE_URL` en un bloc de notas (la usarás en Render).
+
+### B. Render — backend FastAPI (≈15 min)
+
+1. Entra a [dashboard.render.com](https://dashboard.render.com) → **Sign up** (GitHub).
+2. **New +** → **Blueprint**.
+3. Conecta el repo `Daniel-PenaG/pos-cafeteria` → rama **`main`**.
+4. Render lee `render.yaml` y muestra el servicio `pos-cafeteria-api`.
+5. Cuando pida variables:
+   - **`DATABASE_URL`** → pega la URL de Neon (paso A.4).
+   - **`SECRET_KEY`** → deja que Render la genere o pega una clave aleatoria de 40+ caracteres.
+6. **Apply** → espera el deploy (5–10 min).
+7. Abre la URL que te da Render, ej. `https://pos-cafeteria-api.onrender.com/health`.
+   - Debe responder: `{"status":"ok"}`
+8. Si falla: **Logs** en Render → revisa que `DATABASE_URL` sea correcta.
+
+**Si no usas Blueprint (manual):** New → Web Service → mismo repo → Root Directory `backend` → ver tabla en sección siguiente.
+
+### C. Vercel — frontend React (≈10 min)
+
+1. Entra a [vercel.com](https://vercel.com) → **Sign up** (GitHub).
+2. **Add New…** → **Project** → importa `pos-cafeteria`.
+3. **Configure Project:**
+
+   | Campo | Valor |
+   |-------|--------|
+   | Framework Preset | Vite |
+   | Root Directory | `frontend` (clic en Edit) |
+   | Build Command | `npm run build` |
+   | Output Directory | `dist` |
+
+4. **Environment Variables** → agrega:
+
+   | Name | Value |
+   |------|--------|
+   | `VITE_API_URL` | `https://pos-cafeteria-api.onrender.com` (tu URL de Render, **sin** `/` final) |
+
+5. **Deploy** → espera 2–5 min.
+6. Abre la URL, ej. `https://pos-cafeteria.vercel.app`.
+
+### D. Primer login (≈5 min)
+
+Sigue el [Paso 4 — Primer usuario administrador](#paso-4--primer-usuario-administrador) más abajo.
+
+### E. Verificación final
+
+| Prueba | Resultado esperado |
+|--------|-------------------|
+| `https://TU-API.onrender.com/health` | `{"status":"ok"}` |
+| Abrir URL de Vercel | Pantalla de login |
+| Login con admin | Entras al dashboard |
+| Primera carga lenta (~1 min) | Normal en Render Free (API despertando) |
 
 ---
 
@@ -157,15 +232,50 @@ URL final: `https://tu-proyecto.vercel.app`
 
 ## Paso 4 — Primer usuario administrador
 
-Con backend y BD listos:
+`/auth/register` **solo lo puede usar un administrador ya logueado**. El primer admin se crea en la base de datos:
 
-```bash
-curl -X POST https://TU-SERVICIO.onrender.com/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"nombre":"Admin","usuario_login":"admin","password":"TuClaveSegura","rol":"ADMIN"}'
-```
+1. En tu PC, desde la carpeta `backend`:
 
-O inserta un usuario en Neon con hash Argon2 vía SQL.
+   ```bash
+   pip install passlib argon2-cffi
+   python scripts/crear_admin.py --login admin --password "TuClaveSegura123"
+   ```
+
+2. Copia el `INSERT` que imprime el script.
+3. Pégalo en el **SQL Editor de Neon** y ejecútalo.
+4. Entra en tu app Vercel con ese usuario y contraseña.
+
+Después, desde el panel **Usuarios** (como admin) puedes crear más cuentas.
+
+---
+
+## ¿Es seguro?
+
+**Sí, para empezar y para una cafetería pequeña/mediana** — si sigues estas prácticas:
+
+| Qué protege tu app | Estado |
+|--------------------|--------|
+| HTTPS en frontend, API y BD | Automático (Vercel, Render, Neon) |
+| Contraseñas con **Argon2** (no texto plano) | Ya implementado |
+| Tokens **JWT** con expiración | Ya implementado |
+| Secretos en variables de entorno (no en Git) | `.env` está en `.gitignore` |
+| Registro de usuarios solo para admin | Ya implementado |
+| Conexión a PostgreSQL cifrada (`sslmode=require`) | Configúralo en `DATABASE_URL` |
+
+**Buenas prácticas al desplegar:**
+
+1. **`SECRET_KEY`**: usa una cadena larga y aleatoria (Render puede generarla). No uses `cambia-esta-clave`.
+2. **Contraseña del admin**: mínimo 12 caracteres, mezcla letras y números.
+3. **No subas** `backend/.env` ni contraseñas a GitHub.
+4. **Neon**: no compartas la connection string públicamente.
+
+**Limitaciones del plan gratis (no son fallos de seguridad, pero conviene saberlo):**
+
+- La API en Render Free se “duerme”; no es un riesgo, solo latencia.
+- CORS permite cualquier origen (`*`); para una cafetería real puedes limitarlo al dominio Vercel más adelante.
+- Los proveedores gratuitos compuyen recursos; para datos muy sensibles o alto volumen, sube a planes de pago.
+
+**Resumen:** es tan seguro como la mayoría de startups que arrancan en la nube. Lo crítico es **SECRET_KEY fuerte**, **contraseñas buenas** y **no exponer credenciales**.
 
 ---
 
