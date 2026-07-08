@@ -2,18 +2,15 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-if (-not (Test-Path "venv\Scripts\Activate.ps1")) {
-    Write-Host "Creando entorno virtual..."
-    python -m venv venv
-}
+# Instala/repara deps (incluye manejo de WinError 5 en cffi/argon2)
+& "$PSScriptRoot\install-deps.ps1"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 .\venv\Scripts\Activate.ps1
 
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     Write-Error "Python no encontrado."
 }
-
-python -m pip install -r requirements.txt -q
 
 # Evita que una variable PORT del sistema rompa uvicorn
 $env:PORT = "8000"

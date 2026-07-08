@@ -2,17 +2,36 @@
 """
 Genera el SQL para crear el primer administrador en PostgreSQL (Neon).
 
-Uso:
+Uso (Windows):
   cd backend
-  pip install passlib argon2-cffi
+  .\\install-deps.ps1
+  .\\venv\\Scripts\\Activate.ps1
   python scripts/crear_admin.py --login admin --password "TuClaveSegura123"
+
+Uso (Linux/macOS):
+  cd backend
+  python3 -m venv venv && source venv/bin/activate
+  pip install -r requirements.txt
+  python3 scripts/crear_admin.py --login admin --password "TuClaveSegura123"
+
+Si en Windows ves WinError 5 / Acceso denegado en _cffi_backend*.pyd:
+  cierra uvicorn/python, borra venv si hace falta y usa Python 3.12 + install-deps.ps1.
 """
 from __future__ import annotations
 
 import argparse
 import sys
 
-from passlib.context import CryptContext
+try:
+    from passlib.context import CryptContext
+except ImportError:
+    print(
+        "Falta passlib/argon2. En Windows: .\\install-deps.ps1\n"
+        "En Linux/macOS: pip install -r requirements.txt\n"
+        "Si WinError 5 en _cffi_backend: cierra Python/uvicorn, usa Python 3.12 y recrea el venv.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 

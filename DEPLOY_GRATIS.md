@@ -234,10 +234,24 @@ URL final: `https://tu-proyecto.vercel.app`
 
 `/auth/register` **solo lo puede usar un administrador ya logueado**. El primer admin se crea en la base de datos:
 
-1. En tu PC, desde la carpeta `backend`:
+1. En tu PC, desde la carpeta `backend` (usa **Python 3.12**; ver `backend/runtime.txt`):
+
+   **Windows (recomendado):**
+
+   ```powershell
+   cd backend
+   .\install-deps.ps1
+   .\venv\Scripts\Activate.ps1
+   python scripts\crear_admin.py --login admin --password "TuClaveSegura123"
+   ```
+
+   **Linux / macOS:**
 
    ```bash
-   pip install passlib argon2-cffi
+   cd backend
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
    python3 scripts/crear_admin.py --login admin --password "TuClaveSegura123"
    ```
 
@@ -246,6 +260,24 @@ URL final: `https://tu-proyecto.vercel.app`
 4. Entra en tu app Vercel con ese usuario y contraseña.
 
 Después, desde el panel **Usuarios** (como admin) puedes crear más cuentas.
+
+### Si `pip install` falla con WinError 5 (Acceso denegado)
+
+Error típico:
+
+```text
+ERROR: Could not install packages due to an OSError: [WinError 5] Acceso denegado:
+'...\venv\Lib\site-packages\_cffi_backend.cp314-win_amd64.pyd'
+```
+
+Causa: Windows bloquea el `.pyd` de `cffi` (proceso Python/uvicorn abierto, antivirus, o Python 3.14).
+
+Solución:
+
+1. Cierra **uvicorn**, terminales con el `venv` activo y cualquier proceso `python.exe`.
+2. Preferible: usa **Python 3.12** (`py -3.12 -m venv venv`) — no 3.14.
+3. Desde `backend`, ejecuta `.\install-deps.ps1` (cierra procesos, limpia `_cffi_backend*.pyd` e instala `requirements.txt`).
+4. Si sigue fallando: borra la carpeta `backend\venv`, excluye esa carpeta del antivirus y vuelve a crear el entorno.
 
 ---
 
