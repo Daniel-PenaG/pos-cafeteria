@@ -323,6 +323,7 @@ No hace falta migrar de stack: subes de plan en el mismo proveedor.
 |----------|-------------|
 | La app tarda mucho al abrir | Render Free dormido; espera ~1 min o pasa a Starter |
 | Error de conexión a BD | `DATABASE_URL` con `postgresql+psycopg2://` y `sslmode=require` |
+| `Expected string or URL object, got None` | Falta `DATABASE_URL` en Render → Environment → agrega la variable y **Manual Deploy** |
 | Frontend no llega al API | `VITE_API_URL` correcta y **redeploy** de Vercel tras cambiarla |
 | 404 al recargar una ruta | `frontend/vercel.json` debe estar en el repo |
 | CORS | La API ya permite `*`; en producción puedes limitar al dominio Vercel |
