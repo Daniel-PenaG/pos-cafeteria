@@ -30,7 +30,8 @@ function TablaRanking({ productos, orden }) {
   }
 
   return (
-    <table className="table">
+    <div className="table-wrap">
+      <table className="table">
       <thead>
         <tr>
           <th>#</th>
@@ -58,6 +59,7 @@ function TablaRanking({ productos, orden }) {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -67,7 +69,8 @@ function TablaProductos({ productos }) {
   }
 
   return (
-    <table className="table">
+    <div className="table-wrap">
+      <table className="table">
       <thead>
         <tr>
           <th>Producto</th>
@@ -87,6 +90,7 @@ function TablaProductos({ productos }) {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -335,6 +339,7 @@ export default function Reportes() {
           {tab === "mes" && reporte.desglose_dias?.length > 0 && (
             <div className="card" style={{ marginBottom: "1.5rem" }}>
               <h3>Desglose por día</h3>
+              <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
@@ -353,12 +358,14 @@ export default function Reportes() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
 
           {tab === "anio" && reporte.desglose_meses?.length > 0 && (
             <div className="card" style={{ marginBottom: "1.5rem" }}>
               <h3>Desglose por mes</h3>
+              <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
@@ -377,6 +384,7 @@ export default function Reportes() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
 
@@ -390,6 +398,7 @@ export default function Reportes() {
       {consumo && (
         <div className="card" style={{ marginTop: "1.5rem" }}>
           <h3>Consumo de insumos (día seleccionado)</h3>
+          <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
@@ -412,6 +421,7 @@ export default function Reportes() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -453,6 +463,7 @@ export default function Reportes() {
                         {new Date(ped.fin).toLocaleTimeString()})
                       </span>
                     </p>
+                    <div className="table-wrap">
                     <table className="table" style={{ marginTop: "0.5rem" }}>
                       <thead>
                         <tr>
@@ -471,6 +482,7 @@ export default function Reportes() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   </div>
                 ))}
               </div>

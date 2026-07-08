@@ -36,12 +36,12 @@ const NAV = [
   },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ open = false, onClose }) {
   const location = useLocation();
   const rol = normalizeRole(useAuthStore((state) => state.user?.rol));
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${open ? " sidebar--open" : ""}`} aria-hidden={!open ? undefined : false}>
       <div className="sidebar__brand">
         <h1 className="sidebar__logo">Café POS</h1>
         <p className="sidebar__tagline">Gestión de cafetería</p>
@@ -64,6 +64,7 @@ export default function Sidebar() {
                       ? "sidebar__link sidebar__link--active"
                       : "sidebar__link"
                   }
+                  onClick={onClose}
                 >
                   <span className="sidebar__icon" aria-hidden>
                     {item.icon}

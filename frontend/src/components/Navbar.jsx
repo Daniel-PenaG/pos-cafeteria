@@ -2,7 +2,7 @@ import { useAuthStore } from "../store/authStore";
 import { useNavigate } from "react-router-dom";
 import { ROLE_LABELS, normalizeRole } from "../config/permissions";
 
-export default function Navbar() {
+export default function Navbar({ onMenuClick }) {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const navigate = useNavigate();
@@ -14,13 +14,23 @@ export default function Navbar() {
 
   return (
     <header className="navbar">
-      <h2 className="navbar__title">Panel de administración</h2>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+      <div className="navbar__start">
+        <button
+          type="button"
+          className="navbar__menu-btn"
+          aria-label="Abrir menú"
+          onClick={onMenuClick}
+        >
+          ☰
+        </button>
+        <h2 className="navbar__title">Panel de administración</h2>
+      </div>
+      <div className="navbar__actions">
         {user?.nombre && (
           <span className="navbar__user">
-            {user.nombre}
+            <span className="navbar__user-name">{user.nombre}</span>
             {user.rol && (
-              <span className="badge" style={{ marginLeft: "0.5rem" }}>
+              <span className="badge navbar__role">
                 {ROLE_LABELS[normalizeRole(user.rol)] || user.rol}
               </span>
             )}
