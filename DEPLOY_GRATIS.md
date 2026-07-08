@@ -238,7 +238,7 @@ URL final: `https://tu-proyecto.vercel.app`
 
    ```bash
    pip install passlib argon2-cffi
-   python scripts/crear_admin.py --login admin --password "TuClaveSegura123"
+   python3 scripts/crear_admin.py --login admin --password "TuClaveSegura123"
    ```
 
 2. Copia el `INSERT` que imprime el script.
