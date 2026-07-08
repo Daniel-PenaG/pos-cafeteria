@@ -7,7 +7,19 @@ import {
 } from "../services/insumosService";
 import PageHeader from "../components/PageHeader";
 
-const UNIDADES = ["g", "kg", "ml", "L", "pz", "unidad", "taza", "cda", "cdta"];
+const UNIDADES = [
+  { value: "g", label: "Gramos (g)" },
+  { value: "kg", label: "Kilogramos (kg)" },
+  { value: "ml", label: "Mililitros (ml)" },
+  { value: "L", label: "Litros (L)" },
+  { value: "pz", label: "Pieza (pz)" },
+  { value: "unidad", label: "Unidad" },
+  { value: "taza", label: "Taza" },
+  { value: "cda", label: "Cucharada (cda)" },
+  { value: "cdta", label: "Cucharadita (cdta)" },
+];
+const UNIDAD_VALUES = UNIDADES.map((u) => u.value);
+const UNIDAD_OTRA = "__otra__";
 const MARGEN_INSUMO = 0.1;
 
 /** costo_unitario = (precio_total * 1.10) / cantidad */
@@ -27,6 +39,7 @@ export default function Insumos() {
 
   const [nombre, setNombre] = useState("");
   const [unidad, setUnidad] = useState("g");
+  const [unidadOtra, setUnidadOtra] = useState("");
   const [stockActual, setStockActual] = useState("0");
   const [stockMinimo, setStockMinimo] = useState("0");
   const [costoUnitario, setCostoUnitario] = useState("0");
@@ -41,6 +54,7 @@ export default function Insumos() {
   const resetForm = () => {
     setNombre("");
     setUnidad("g");
+    setUnidadOtra("");
     setStockActual("0");
     setStockMinimo("0");
     setCostoUnitario("0");
@@ -57,7 +71,14 @@ export default function Insumos() {
   const openEditModal = (insumo) => {
     setEditing(insumo);
     setNombre(insumo.nombre);
-    setUnidad(insumo.unidad);
+    const u = insumo.unidad || "g";
+    if (UNIDAD_VALUES.includes(u)) {
+      setUnidad(u);
+      setUnidadOtra("");
+    } else {
+      setUnidad(UNIDAD_OTRA);
+      setUnidadOtra(u);
+    }
     setStockActual(String(insumo.stock_actual ?? 0));
     setStockMinimo(String(insumo.stock_minimo ?? 0));
     setCostoUnitario(String(insumo.costo_unitario ?? 0));
@@ -120,9 +141,17 @@ export default function Insumos() {
       return;
     }
 
+    const unidadFinal =
+      unidad === UNIDAD_OTRA ? unidadOtra.trim() : unidad.trim();
+
+    if (!unidadFinal) {
+      alert("Selecciona o escribe una unidad");
+      return;
+    }
+
     const payload = {
       nombre: nombre.trim(),
-      unidad: unidad.trim(),
+      unidad: unidadFinal,
       stock_actual: stock,
       stock_minimo: minimo,
       costo_unitario: costo,
@@ -286,19 +315,34 @@ export default function Insumos() {
                 <label style={{ display: "block", marginBottom: 6 }}>
                   Unidad *
                 </label>
-                <input
-                  type="text"
-                  list="unidades-sugeridas"
-                  value={unidad}
-                  onChange={(e) => setUnidad(e.target.value)}
+                <select
+                  className="select"
+                  value={UNIDAD_VALUES.includes(unidad) ? unidad : UNIDAD_OTRA}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setUnidad(v);
+                    if (v !== UNIDAD_OTRA) setUnidadOtra("");
+                  }}
                   required
-                  placeholder="g, kg, ml, L, pz..."
-                />
-                <datalist id="unidades-sugeridas">
+                >
                   {UNIDADES.map((u) => (
-                    <option key={u} value={u} />
+                    <option key={u.value} value={u.value}>
+                      {u.label}
+                    </option>
                   ))}
-                </datalist>
+                  <option value={UNIDAD_OTRA}>Otra (escribir)</option>
+                </select>
+                {(unidad === UNIDAD_OTRA || !UNIDAD_VALUES.includes(unidad)) && (
+                  <input
+                    type="text"
+                    className="input"
+                    style={{ marginTop: 8 }}
+                    value={unidadOtra}
+                    onChange={(e) => setUnidadOtra(e.target.value)}
+                    placeholder="Ej. bolsa, caja, sobre..."
+                    required
+                  />
+                )}
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
