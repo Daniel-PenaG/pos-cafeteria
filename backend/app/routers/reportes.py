@@ -365,9 +365,11 @@ def consumo_insumos(fecha: date, db: Session = Depends(get_db)):
                 "nombre": insumo.nombre,
                 "unidad": insumo.unidad,
                 "cantidad_consumida": cantidad_total,
-                "stock_actual": float(insumo.stock_actual),
+                "stock_bodega": float(insumo.stock_bodega or 0),
+                "stock_cafeteria": float(insumo.stock_cafeteria or 0),
+                "stock_actual": float(insumo.stock_actual or 0),
                 "stock_minimo": float(insumo.stock_minimo),
-                "alerta": cantidad_total >= float(insumo.stock_actual)
+                "alerta": float(insumo.stock_cafeteria or 0) <= float(insumo.stock_minimo),
             })
 
     return {

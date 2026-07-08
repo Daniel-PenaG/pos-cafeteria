@@ -42,7 +42,8 @@ class Producto(ProductoBase):
 class InsumoBase(BaseModel):
     nombre: str
     unidad: str
-    stock_actual: float = 0
+    stock_bodega: float = 0
+    stock_cafeteria: float = 0
     stock_minimo: float = 0
     costo_unitario: Optional[float] = None
 
@@ -54,9 +55,14 @@ class InsumoUpdate(InsumoBase):
 
 class Insumo(InsumoBase):
     id_insumo: int
+    stock_actual: float = 0
 
     class Config:
         from_attributes = True
+
+
+class InsumoTraspaso(BaseModel):
+    cantidad: float
 
 
 class InsumoActualizado(Insumo):

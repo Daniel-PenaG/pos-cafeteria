@@ -349,6 +349,7 @@ No hace falta migrar de stack: subes de plan en el mismo proveedor.
 | Frontend no llega al API | `VITE_API_URL` correcta y **redeploy** de Vercel tras cambiarla |
 | 404 al recargar una ruta | `frontend/vercel.json` debe estar en el repo |
 | CORS | La API ya permite `*`; en producción puedes limitar al dominio Vercel |
+| Al compartir el link piden login de Vercel | Compartiste URL de *preview*; usa la de **Production** o revisa Deployment Protection |
 
 ---
 

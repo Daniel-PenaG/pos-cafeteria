@@ -26,6 +26,8 @@ CREATE TABLE insumos (
     nombre VARCHAR(150) NOT NULL,
     unidad VARCHAR(20) NOT NULL,
     stock_actual NUMERIC(12,3) DEFAULT 0,
+    stock_bodega NUMERIC(12,3) DEFAULT 0,
+    stock_cafeteria NUMERIC(12,3) DEFAULT 0,
     stock_minimo NUMERIC(12,3) DEFAULT 0,
     costo_unitario NUMERIC(10,4) DEFAULT 0
 );

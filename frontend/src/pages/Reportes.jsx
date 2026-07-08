@@ -403,9 +403,10 @@ export default function Reportes() {
             <thead>
               <tr>
                 <th>Insumo</th>
-                <th>Cantidad consumida</th>
-                <th>Stock actual</th>
-                <th>Stock mínimo</th>
+                <th>Consumido</th>
+                <th>Bodega</th>
+                <th>Cafetería</th>
+                <th>Mín. caf.</th>
                 <th>Alerta</th>
               </tr>
             </thead>
@@ -414,9 +415,10 @@ export default function Reportes() {
                 <tr key={i.id_insumo}>
                   <td>{i.nombre}</td>
                   <td>{i.cantidad_consumida}</td>
-                  <td>{i.stock_actual}</td>
+                  <td>{i.stock_bodega}</td>
+                  <td>{i.stock_cafeteria}</td>
                   <td>{i.stock_minimo}</td>
-                  <td>{i.alerta ? "⚠ Bajo stock" : ""}</td>
+                  <td>{i.alerta ? "⚠ Cafetería baja" : ""}</td>
                 </tr>
               ))}
             </tbody>

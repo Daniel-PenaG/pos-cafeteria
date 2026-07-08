@@ -10,6 +10,7 @@ from app.models.models import (
     MovimientoInventarioModel
 )
 from app.schemas.compra import CompraCreate, CompraResponse
+from app.services.inventario_service import sync_stock_total
 
 router = APIRouter(prefix="/compras", tags=["Compras"])
 
@@ -54,15 +55,16 @@ def registrar_compra(data: CompraCreate, db: Session = Depends(get_db)):
         )
         db.add(detalle)
 
-        # Aumentar stock
-        insumo.stock_actual = float(insumo.stock_actual) + float(item.cantidad)
+        # Aumentar stock en bodega
+        insumo.stock_bodega = float(insumo.stock_bodega or 0) + float(item.cantidad)
+        sync_stock_total(insumo)
 
         # Registrar movimiento
         mov = MovimientoInventarioModel(
             id_insumo=item.id_insumo,
             tipo="ENTRADA",
             cantidad=item.cantidad,
-            motivo="COMPRA",
+            motivo="COMPRA_BODEGA",
             referencia=f"COMPRA {compra.id_compra}",
             fecha_hora=datetime.now()
         )

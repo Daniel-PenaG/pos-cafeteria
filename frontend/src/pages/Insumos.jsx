@@ -4,6 +4,7 @@ import {
   createInsumo,
   updateInsumo,
   deleteInsumo,
+  traspasarInsumo,
 } from "../services/insumosService";
 import PageHeader from "../components/PageHeader";
 
@@ -22,7 +23,6 @@ const UNIDAD_VALUES = UNIDADES.map((u) => u.value);
 const UNIDAD_OTRA = "__otra__";
 const MARGEN_INSUMO = 0.1;
 
-/** costo_unitario = (precio_total * 1.10) / cantidad */
 function calcularCostoDesdeCompra(precioTotal, cantidad) {
   const total = Number(precioTotal);
   const cant = Number(cantidad);
@@ -31,16 +31,24 @@ function calcularCostoDesdeCompra(precioTotal, cantidad) {
   return totalConMargen / cant;
 }
 
+function stockTotal(insumo) {
+  return Number(insumo.stock_actual ?? 0);
+}
+
 export default function Insumos() {
   const [insumos, setInsumos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [showTraspaso, setShowTraspaso] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [traspasoInsumo, setTraspasoInsumo] = useState(null);
+  const [traspasoCantidad, setTraspasoCantidad] = useState("");
 
   const [nombre, setNombre] = useState("");
   const [unidad, setUnidad] = useState("g");
   const [unidadOtra, setUnidadOtra] = useState("");
-  const [stockActual, setStockActual] = useState("0");
+  const [stockBodega, setStockBodega] = useState("0");
+  const [stockCafeteria, setStockCafeteria] = useState("0");
   const [stockMinimo, setStockMinimo] = useState("0");
   const [costoUnitario, setCostoUnitario] = useState("0");
   const [precioTotal, setPrecioTotal] = useState("");
@@ -55,7 +63,8 @@ export default function Insumos() {
     setNombre("");
     setUnidad("g");
     setUnidadOtra("");
-    setStockActual("0");
+    setStockBodega("0");
+    setStockCafeteria("0");
     setStockMinimo("0");
     setCostoUnitario("0");
     setPrecioTotal("");
@@ -79,10 +88,17 @@ export default function Insumos() {
       setUnidad(UNIDAD_OTRA);
       setUnidadOtra(u);
     }
-    setStockActual(String(insumo.stock_actual ?? 0));
+    setStockBodega(String(insumo.stock_bodega ?? 0));
+    setStockCafeteria(String(insumo.stock_cafeteria ?? 0));
     setStockMinimo(String(insumo.stock_minimo ?? 0));
     setCostoUnitario(String(insumo.costo_unitario ?? 0));
     setShowModal(true);
+  };
+
+  const openTraspasoModal = (insumo) => {
+    setTraspasoInsumo(insumo);
+    setTraspasoCantidad("");
+    setShowTraspaso(true);
   };
 
   const loadInsumos = async () => {
@@ -110,7 +126,8 @@ export default function Insumos() {
       return;
     }
 
-    const stock = parseFloat(stockActual);
+    const bodega = parseFloat(stockBodega);
+    const cafeteria = parseFloat(stockCafeteria);
     const minimo = parseFloat(stockMinimo);
 
     let costo;
@@ -132,12 +149,16 @@ export default function Insumos() {
       }
     }
 
-    if (isNaN(stock) || stock < 0) {
-      alert("El stock actual debe ser un número mayor o igual a 0");
+    if (isNaN(bodega) || bodega < 0) {
+      alert("El stock en bodega debe ser mayor o igual a 0");
+      return;
+    }
+    if (isNaN(cafeteria) || cafeteria < 0) {
+      alert("El stock en cafetería debe ser mayor o igual a 0");
       return;
     }
     if (isNaN(minimo) || minimo < 0) {
-      alert("El stock mínimo debe ser un número mayor o igual a 0");
+      alert("El stock mínimo debe ser mayor o igual a 0");
       return;
     }
 
@@ -152,7 +173,8 @@ export default function Insumos() {
     const payload = {
       nombre: nombre.trim(),
       unidad: unidadFinal,
-      stock_actual: stock,
+      stock_bodega: bodega,
+      stock_cafeteria: cafeteria,
       stock_minimo: minimo,
       costo_unitario: costo,
     };
@@ -194,6 +216,26 @@ export default function Insumos() {
     }
   };
 
+  const handleTraspaso = async (e) => {
+    e.preventDefault();
+    const cantidad = parseFloat(traspasoCantidad);
+    if (!traspasoInsumo || isNaN(cantidad) || cantidad <= 0) {
+      alert("Ingresa una cantidad válida");
+      return;
+    }
+    try {
+      await traspasarInsumo(traspasoInsumo.id_insumo, cantidad);
+      alert(`Se surtieron ${cantidad} ${traspasoInsumo.unidad} a cafetería`);
+      setShowTraspaso(false);
+      setTraspasoInsumo(null);
+      setTraspasoCantidad("");
+      await loadInsumos();
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      alert(typeof detail === "string" ? detail : "No se pudo hacer el traspaso");
+    }
+  };
+
   const handleDelete = async (insumo) => {
     if (!window.confirm(`¿Eliminar insumo "${insumo.nombre}"?`)) return;
 
@@ -210,19 +252,24 @@ export default function Insumos() {
     }
   };
 
-  const stockBajo = (insumo) =>
-    Number(insumo.stock_actual) <= Number(insumo.stock_minimo);
+  const cafeteriaBaja = (insumo) =>
+    Number(insumo.stock_cafeteria ?? 0) <= Number(insumo.stock_minimo ?? 0);
 
   return (
     <div className="page">
       <PageHeader
         title="Insumos"
-        subtitle="Materia prima para recetas y reabastecimiento"
+        subtitle="Control de inventario en bodega y cafetería"
       >
         <button type="button" className="btn btn--primary" onClick={openNewModal}>
           Nuevo insumo
         </button>
       </PageHeader>
+
+      <p className="hint" style={{ marginTop: 0, marginBottom: "1rem" }}>
+        Las <strong>compras</strong> suman a bodega. Las <strong>ventas</strong> restan de
+        cafetería. Usa <strong>Surtir</strong> para mover de bodega a barra/cocina.
+      </p>
 
       {loading ? (
         <div className="loading-state">Cargando…</div>
@@ -231,63 +278,77 @@ export default function Insumos() {
           <table>
             <thead>
               <tr>
-                <th>ID</th>
                 <th>Nombre</th>
                 <th>Unidad</th>
-                <th>Stock actual</th>
-                <th>Stock mínimo</th>
-                <th>Costo unitario</th>
+                <th>Bodega</th>
+                <th>Cafetería</th>
+                <th>Total</th>
+                <th>Mín. cafetería</th>
+                <th>Costo u.</th>
                 <th>Estado</th>
                 <th>Acciones</th>
               </tr>
             </thead>
-          <tbody>
-            {insumos.length === 0 ? (
-              <tr>
-                <td colSpan="8" className="empty-state">
-                  No hay insumos registrados
-                </td>
-              </tr>
-            ) : (
-              insumos.map((i) => (
-                <tr key={i.id_insumo}>
-                  <td>{i.id_insumo}</td>
-                  <td>{i.nombre}</td>
-                  <td>{i.unidad}</td>
-                  <td>{Number(i.stock_actual)}</td>
-                  <td>{Number(i.stock_minimo)}</td>
-                  <td>${Number(i.costo_unitario ?? 0).toFixed(4)}</td>
-                  <td>
-                    {stockBajo(i) ? (
-                      <span className="badge" style={{ background: "#fde8e8", color: "var(--danger)" }}>
-                        Stock bajo
-                      </span>
-                    ) : (
-                      <span className="badge badge--ok">OK</span>
-                    )}
-                  </td>
-                  <td>
-                    <div className="btn-group">
-                      <button
-                        type="button"
-                        className="btn btn--secondary btn--sm"
-                        onClick={() => openEditModal(i)}
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--danger btn--sm"
-                        onClick={() => handleDelete(i)}
-                      >
-                        Eliminar
-                      </button>
-                    </div>
+            <tbody>
+              {insumos.length === 0 ? (
+                <tr>
+                  <td colSpan="9" className="empty-state">
+                    No hay insumos registrados
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
+              ) : (
+                insumos.map((i) => (
+                  <tr key={i.id_insumo}>
+                    <td>{i.nombre}</td>
+                    <td>{i.unidad}</td>
+                    <td>{Number(i.stock_bodega ?? 0)}</td>
+                    <td>{Number(i.stock_cafeteria ?? 0)}</td>
+                    <td><strong>{stockTotal(i)}</strong></td>
+                    <td>{Number(i.stock_minimo ?? 0)}</td>
+                    <td>${Number(i.costo_unitario ?? 0).toFixed(4)}</td>
+                    <td>
+                      {cafeteriaBaja(i) ? (
+                        <span
+                          className="badge"
+                          style={{ background: "#fde8e8", color: "var(--danger)" }}
+                        >
+                          Cafetería baja
+                        </span>
+                      ) : (
+                        <span className="badge badge--ok">OK</span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="btn-group">
+                        <button
+                          type="button"
+                          className="btn btn--accent btn--sm"
+                          onClick={() => openTraspasoModal(i)}
+                          disabled={Number(i.stock_bodega ?? 0) <= 0}
+                          title="Mover de bodega a cafetería"
+                        >
+                          Surtir
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--secondary btn--sm"
+                          onClick={() => openEditModal(i)}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--danger btn--sm"
+                          onClick={() => handleDelete(i)}
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
           </table>
         </div>
       )}
@@ -296,14 +357,16 @@ export default function Insumos() {
         <div className="modal-overlay">
           <div className="modal-box">
             <h2>{editing ? "Editar insumo" : "Nuevo insumo"}</h2>
+            <p className="hint" style={{ marginTop: 0 }}>
+              Registra cuánto tienes hoy en bodega y cuánto en cafetería (conteo inicial).
+            </p>
 
             <form onSubmit={handleSubmit}>
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "block", marginBottom: 6 }}>
-                  Nombre *
-                </label>
+              <div className="form-row">
+                <label>Nombre *</label>
                 <input
                   type="text"
+                  className="input"
                   value={nombre}
                   onChange={(e) => setNombre(e.target.value)}
                   required
@@ -311,10 +374,8 @@ export default function Insumos() {
                 />
               </div>
 
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "block", marginBottom: 6 }}>
-                  Unidad *
-                </label>
+              <div className="form-row">
+                <label>Unidad *</label>
                 <select
                   className="select"
                   value={UNIDAD_VALUES.includes(unidad) ? unidad : UNIDAD_OTRA}
@@ -345,63 +406,56 @@ export default function Insumos() {
                 )}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div>
-                  <label style={{ display: "block", marginBottom: 6 }}>
-                    Stock actual
-                  </label>
+              <div className="form-grid">
+                <div className="form-row">
+                  <label>Stock en bodega</label>
                   <input
                     type="number"
+                    className="input"
                     min="0"
                     step="0.001"
-                    value={stockActual}
-                    onChange={(e) => setStockActual(e.target.value)}
+                    value={stockBodega}
+                    onChange={(e) => setStockBodega(e.target.value)}
                   />
                 </div>
-                <div>
-                  <label style={{ display: "block", marginBottom: 6 }}>
-                    Stock mínimo
-                  </label>
+                <div className="form-row">
+                  <label>Stock en cafetería</label>
                   <input
                     type="number"
+                    className="input"
+                    min="0"
+                    step="0.001"
+                    value={stockCafeteria}
+                    onChange={(e) => setStockCafeteria(e.target.value)}
+                  />
+                </div>
+                <div className="form-row">
+                  <label>Mínimo en cafetería</label>
+                  <input
+                    type="number"
+                    className="input"
                     min="0"
                     step="0.001"
                     value={stockMinimo}
                     onChange={(e) => setStockMinimo(e.target.value)}
                   />
+                  <p className="hint" style={{ margin: "0.35rem 0 0" }}>
+                    Alerta cuando cafetería esté en o bajo este nivel.
+                  </p>
                 </div>
               </div>
 
-              <div
-                style={{
-                  marginTop: 16,
-                  marginBottom: 16,
-                  padding: 12,
-                  backgroundColor: "#f0f9ff",
-                  borderRadius: 8,
-                  border: "1px solid #bae6fd",
-                }}
-              >
-                <label style={{ display: "block", marginBottom: 8, fontWeight: 600 }}>
-                  Calcular costo unitario desde compra
-                </label>
-                <p style={{ margin: "0 0 12px", fontSize: 13, color: "#555" }}>
-                  Precio total + 10% ÷ cantidad. Ej: $500 → $550 ÷ 1000 = $0.55 c/u
+              <div className="section" style={{ marginTop: "1rem" }}>
+                <label style={{ fontWeight: 600 }}>Calcular costo unitario desde compra</label>
+                <p className="hint" style={{ margin: "0.35rem 0 0.75rem" }}>
+                  Precio total + 10% ÷ cantidad
                 </p>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 12,
-                    marginBottom: 12,
-                  }}
-                >
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, fontSize: 13 }}>
-                      Precio total pagado ($)
-                    </label>
+                <div className="form-grid">
+                  <div className="form-row">
+                    <label>Precio total pagado ($)</label>
                     <input
                       type="number"
+                      className="input"
                       min="0"
                       step="0.01"
                       value={precioTotal}
@@ -409,12 +463,11 @@ export default function Insumos() {
                       placeholder="Ej. 500"
                     />
                   </div>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, fontSize: 13 }}>
-                      Cantidad comprada
-                    </label>
+                  <div className="form-row">
+                    <label>Cantidad comprada</label>
                     <input
                       type="number"
+                      className="input"
                       min="0"
                       step="0.001"
                       value={cantidadCompra}
@@ -424,29 +477,17 @@ export default function Insumos() {
                   </div>
                 </div>
                 {totalConMargen != null && costoCalculado != null && (
-                  <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.6 }}>
-                    <div>
-                      Total + 10%: <strong>${totalConMargen.toFixed(2)}</strong>
-                      <span style={{ color: "#888" }}>
-                        {" "}
-                        (${Number(precioTotal).toFixed(2)} × 1.10)
-                      </span>
-                    </div>
-                    <div>
-                      Costo unitario: <strong>${costoCalculado.toFixed(4)}</strong>
-                      <span style={{ color: "#888" }}>
-                        {" "}
-                        (${totalConMargen.toFixed(2)} ÷ {cantidadCompra})
-                      </span>
-                    </div>
-                  </div>
+                  <p className="hint" style={{ marginBottom: 0 }}>
+                    Costo unitario calculado: <strong>${costoCalculado.toFixed(4)}</strong>
+                  </p>
                 )}
               </div>
 
               <div className="form-row">
-                <label>Costo unitario (manual, si no usas el cálculo de arriba)</label>
+                <label>Costo unitario (manual)</label>
                 <input
                   type="number"
+                  className="input"
                   min="0"
                   step="0.0001"
                   value={costoUnitario}
@@ -468,6 +509,49 @@ export default function Insumos() {
                 </button>
                 <button type="submit" className="btn btn--primary">
                   {editing ? "Actualizar" : "Guardar"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showTraspaso && traspasoInsumo && (
+        <div className="modal-overlay">
+          <div className="modal-box">
+            <h2>Surtir a cafetería</h2>
+            <p className="hint">
+              <strong>{traspasoInsumo.nombre}</strong> — en bodega:{" "}
+              {Number(traspasoInsumo.stock_bodega ?? 0)} {traspasoInsumo.unidad}
+            </p>
+            <form onSubmit={handleTraspaso}>
+              <div className="form-row">
+                <label>Cantidad a mover a cafetería</label>
+                <input
+                  type="number"
+                  className="input"
+                  min="0.001"
+                  step="0.001"
+                  max={Number(traspasoInsumo.stock_bodega ?? 0)}
+                  value={traspasoCantidad}
+                  onChange={(e) => setTraspasoCantidad(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  onClick={() => {
+                    setShowTraspaso(false);
+                    setTraspasoInsumo(null);
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn--accent">
+                  Confirmar traspaso
                 </button>
               </div>
             </form>

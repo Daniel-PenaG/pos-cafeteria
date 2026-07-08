@@ -36,3 +36,12 @@ export async function deleteInsumo(id) {
   });
   return res.data;
 }
+
+export async function traspasarInsumo(id, cantidad) {
+  const res = await api.post(
+    `/catalogo/insumos/${id}/traspaso`,
+    { cantidad },
+    { headers: getAuthHeader() }
+  );
+  return res.data;
+}

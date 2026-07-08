@@ -55,7 +55,9 @@ class InsumoModel(Base):
     id_insumo = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(150), nullable=False)
     unidad = Column(String(20), nullable=False)
-    stock_actual = Column(Numeric(12, 3), default=0)
+    stock_bodega = Column(Numeric(12, 3), default=0)
+    stock_cafeteria = Column(Numeric(12, 3), default=0)
+    stock_actual = Column(Numeric(12, 3), default=0)  # total = bodega + cafetería
     stock_minimo = Column(Numeric(12, 3), default=0)
     costo_unitario = Column(Numeric(10, 4), default=0)
 

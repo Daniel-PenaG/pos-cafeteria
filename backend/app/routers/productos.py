@@ -5,9 +5,10 @@ from app.models.models import CategoriaModel, ProductoModel , InsumoModel
 from app.schemas.productos import (
     CategoriaCreate, CategoriaUpdate, Categoria,
     ProductoCreate, ProductoUpdate, Producto,
-    InsumoCreate, InsumoUpdate, Insumo, InsumoActualizado,
+    InsumoCreate, InsumoUpdate, Insumo, InsumoActualizado, InsumoTraspaso,
 )
 from app.services import RecetaService
+from app.services.inventario_service import sync_stock_total, traspaso_bodega_a_cafeteria
 from app.exceptions import (
     RecursoNoEncontradoException,
     RecursoYaExisteException,
@@ -15,6 +16,20 @@ from app.exceptions import (
 )
 
 router = APIRouter(prefix="/catalogo", tags=["Catálogo"])
+
+
+def _insumo_response(insumo: InsumoModel) -> Insumo:
+    sync_stock_total(insumo)
+    return Insumo(
+        id_insumo=insumo.id_insumo,
+        nombre=insumo.nombre,
+        unidad=insumo.unidad,
+        stock_bodega=float(insumo.stock_bodega or 0),
+        stock_cafeteria=float(insumo.stock_cafeteria or 0),
+        stock_minimo=float(insumo.stock_minimo or 0),
+        costo_unitario=float(insumo.costo_unitario) if insumo.costo_unitario is not None else None,
+        stock_actual=float(insumo.stock_actual or 0),
+    )
 
 # ============================
 # CATEGORÍAS
@@ -149,31 +164,34 @@ def crear_insumo(data: InsumoCreate, db: Session = Depends(get_db)):
     if not data.unidad or data.unidad.strip() == "":
         raise DatosInvalidosException("La unidad del insumo es requerida")
     
-    if data.stock_minimo < 0 or data.stock_actual < 0:
+    if data.stock_minimo < 0 or data.stock_bodega < 0 or data.stock_cafeteria < 0:
         raise DatosInvalidosException("Stock no puede ser negativo")
     
     nuevo_insumo = InsumoModel(
         nombre=data.nombre.strip(),
         unidad=data.unidad.strip(),
-        stock_actual=data.stock_actual,
+        stock_bodega=data.stock_bodega,
+        stock_cafeteria=data.stock_cafeteria,
         stock_minimo=data.stock_minimo,
         costo_unitario=data.costo_unitario,
     )
+    sync_stock_total(nuevo_insumo)
     db.add(nuevo_insumo)
     db.commit()
     db.refresh(nuevo_insumo)
-    return nuevo_insumo
+    return _insumo_response(nuevo_insumo)
 
 @router.get("/insumos", response_model=list[Insumo])
 def listar_insumos(db: Session = Depends(get_db)):
-    return db.query(InsumoModel).all()
+    insumos = db.query(InsumoModel).all()
+    return [_insumo_response(i) for i in insumos]
 
 @router.get("/insumos/{id_insumo}", response_model=Insumo)
 def obtener_insumo(id_insumo: int, db: Session = Depends(get_db)):
     insumo = db.query(InsumoModel).filter(InsumoModel.id_insumo == id_insumo).first()
     if not insumo:
         raise RecursoNoEncontradoException("Insumo no encontrado")
-    return insumo
+    return _insumo_response(insumo)
 
 @router.put("/insumos/{id_insumo}", response_model=InsumoActualizado)
 def actualizar_insumo(id_insumo: int, data: InsumoUpdate, db: Session = Depends(get_db)):
@@ -183,7 +201,7 @@ def actualizar_insumo(id_insumo: int, data: InsumoUpdate, db: Session = Depends(
     if not data.unidad or data.unidad.strip() == "":
         raise DatosInvalidosException("La unidad del insumo es requerida")
     
-    if data.stock_minimo < 0 or data.stock_actual < 0:
+    if data.stock_minimo < 0 or data.stock_bodega < 0 or data.stock_cafeteria < 0:
         raise DatosInvalidosException("Stock no puede ser negativo")
     
     insumo = db.query(InsumoModel).filter(InsumoModel.id_insumo == id_insumo).first()
@@ -195,9 +213,11 @@ def actualizar_insumo(id_insumo: int, data: InsumoUpdate, db: Session = Depends(
     
     insumo.nombre = data.nombre.strip()
     insumo.unidad = data.unidad.strip()
-    insumo.stock_actual = data.stock_actual
+    insumo.stock_bodega = data.stock_bodega
+    insumo.stock_cafeteria = data.stock_cafeteria
     insumo.stock_minimo = data.stock_minimo
     insumo.costo_unitario = data.costo_unitario
+    sync_stock_total(insumo)
     db.commit()
     db.refresh(insumo)
 
@@ -211,11 +231,29 @@ def actualizar_insumo(id_insumo: int, data: InsumoUpdate, db: Session = Depends(
         id_insumo=insumo.id_insumo,
         nombre=insumo.nombre,
         unidad=insumo.unidad,
-        stock_actual=float(insumo.stock_actual),
+        stock_bodega=float(insumo.stock_bodega or 0),
+        stock_cafeteria=float(insumo.stock_cafeteria or 0),
+        stock_actual=float(insumo.stock_actual or 0),
         stock_minimo=float(insumo.stock_minimo),
         costo_unitario=float(insumo.costo_unitario) if insumo.costo_unitario is not None else None,
         productos_precio_actualizados=productos_actualizados,
     )
+
+
+@router.post("/insumos/{id_insumo}/traspaso", response_model=Insumo)
+def traspasar_a_cafeteria(
+    id_insumo: int,
+    data: InsumoTraspaso,
+    db: Session = Depends(get_db),
+):
+    insumo = db.query(InsumoModel).filter(InsumoModel.id_insumo == id_insumo).first()
+    if not insumo:
+        raise RecursoNoEncontradoException("Insumo no encontrado")
+
+    traspaso_bodega_a_cafeteria(db, insumo, float(data.cantidad))
+    db.commit()
+    db.refresh(insumo)
+    return _insumo_response(insumo)
 
 @router.delete("/insumos/{id_insumo}")
 def eliminar_insumo(id_insumo: int, db: Session = Depends(get_db)):

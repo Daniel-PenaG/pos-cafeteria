@@ -16,6 +16,7 @@ from app.models import (
 from app.schemas.ventas import VentaCreate, VentaResponse
 from app.services.promocion_service import calcular_linea
 from app.services.fidelidad_service import obtener_config, calcular_puntos_ganados, acumular_puntos_venta
+from app.services.inventario_service import sync_stock_total
 from app.exceptions import (
     RecursoNoEncontradoException,
     DatosInvalidosException,
@@ -102,11 +103,12 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
                 if not insumo:
                     continue
                 cantidad_requerida = float(ri.cantidad) * float(item.cantidad)
-                stock_disponible = float(insumo.stock_actual)
+                stock_disponible = float(insumo.stock_cafeteria or 0)
                 if stock_disponible < cantidad_requerida:
                     raise StockInsuficienteException(
-                        f"Stock insuficiente de '{insumo.nombre}'. "
-                        f"Disponible: {stock_disponible}, Requerido: {cantidad_requerida}"
+                        f"Stock insuficiente en cafetería de '{insumo.nombre}'. "
+                        f"Disponible: {stock_disponible}, Requerido: {cantidad_requerida}. "
+                        f"Surtir desde bodega si hay existencia."
                     )
 
     venta = VentaModel(
@@ -167,12 +169,13 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
                 if not insumo:
                     continue
                 cantidad_total = float(ri.cantidad) * float(item.cantidad)
-                insumo.stock_actual = float(insumo.stock_actual) - cantidad_total
+                insumo.stock_cafeteria = float(insumo.stock_cafeteria or 0) - cantidad_total
+                sync_stock_total(insumo)
                 mov = MovimientoInventarioModel(
                     id_insumo=insumo.id_insumo,
                     tipo="SALIDA",
                     cantidad=cantidad_total,
-                    motivo="VENTA",
+                    motivo="VENTA_CAFETERIA",
                     referencia=f"VENTA {venta.id_venta}",
                     fecha_hora=datetime.now(),
                 )

@@ -26,6 +26,8 @@ def aplicar_migraciones_sqlite():
             gastos_fijos NUMERIC(12, 2) DEFAULT 1000.0,
             fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
+        "ALTER TABLE insumos ADD COLUMN stock_bodega NUMERIC(12, 3) DEFAULT 0",
+        "ALTER TABLE insumos ADD COLUMN stock_cafeteria NUMERIC(12, 3) DEFAULT 0",
         "ALTER TABLE ventas ADD COLUMN numero_mesa INTEGER DEFAULT 1",
         "ALTER TABLE detalle_venta ADD COLUMN extras_json VARCHAR(500)",
     ]
@@ -36,6 +38,12 @@ def aplicar_migraciones_sqlite():
             gastos_fijos NUMERIC(12, 2) DEFAULT 1000.0,
             fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
+        "ALTER TABLE insumos ADD COLUMN IF NOT EXISTS stock_bodega NUMERIC(12, 3) DEFAULT 0",
+        "ALTER TABLE insumos ADD COLUMN IF NOT EXISTS stock_cafeteria NUMERIC(12, 3) DEFAULT 0",
+        "UPDATE insumos SET stock_bodega = COALESCE(stock_actual, 0), stock_cafeteria = 0 "
+        "WHERE COALESCE(stock_bodega, 0) = 0 AND COALESCE(stock_cafeteria, 0) = 0 "
+        "AND COALESCE(stock_actual, 0) > 0",
+        "UPDATE insumos SET stock_actual = COALESCE(stock_bodega, 0) + COALESCE(stock_cafeteria, 0)",
         "ALTER TABLE recetas ADD COLUMN IF NOT EXISTS nombre VARCHAR(150)",
         "ALTER TABLE recetas ADD COLUMN IF NOT EXISTS descripcion VARCHAR(300)",
         "ALTER TABLE recetas ADD COLUMN IF NOT EXISTS activo BOOLEAN DEFAULT TRUE",

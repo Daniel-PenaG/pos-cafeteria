@@ -54,6 +54,10 @@ export default function Compras() {
         subtitle="Reabastecimiento de insumos con proveedor"
       />
 
+      <p className="hint" style={{ marginTop: 0, marginBottom: "1rem" }}>
+        Las compras registradas suman al stock de <strong>bodega</strong>. Surtir a cafetería desde Insumos.
+      </p>
+
       <section className="section" style={{ marginBottom: "1.5rem" }}>
         <div className="form-row" style={{ maxWidth: 400 }}>
           <label>Proveedor</label>
@@ -73,7 +77,8 @@ export default function Compras() {
               <thead>
                 <tr>
                   <th>Insumo</th>
-                  <th>Stock</th>
+                  <th>Bodega</th>
+                  <th>Cafetería</th>
                   <th></th>
                 </tr>
               </thead>
@@ -81,7 +86,8 @@ export default function Compras() {
                 {insumos.map((i) => (
                   <tr key={i.id_insumo}>
                     <td>{i.nombre}</td>
-                    <td>{Number(i.stock_actual)}</td>
+                    <td>{Number(i.stock_bodega ?? 0)}</td>
+                    <td>{Number(i.stock_cafeteria ?? 0)}</td>
                     <td>
                       <button
                         type="button"
