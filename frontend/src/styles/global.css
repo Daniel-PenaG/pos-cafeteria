@@ -64,6 +64,7 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  width: 100%;
 }
 
 .app-content {
@@ -224,10 +225,10 @@ body {
   display: none;
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: 999;
   border: none;
   padding: 0;
-  background: rgba(44, 24, 16, 0.45);
+  background: rgba(44, 24, 16, 0.5);
   cursor: pointer;
 }
 
@@ -1114,6 +1115,49 @@ body {
 
 /* ─── Responsive: tablet y móvil ─── */
 @media (max-width: 1024px) {
+  .app-shell {
+    display: block;
+  }
+
+  .navbar__menu-btn {
+    display: inline-flex !important;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 1000;
+    width: min(var(--sidebar-w), 85vw);
+    max-width: 320px;
+    transform: translate3d(-105%, 0, 0);
+    transition: transform 0.25s ease;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sidebar--open {
+    transform: translate3d(0, 0, 0);
+    box-shadow: 8px 0 32px rgba(44, 24, 16, 0.35);
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    border: none;
+    padding: 0;
+    background: rgba(44, 24, 16, 0.5);
+    cursor: pointer;
+  }
+
+  .app-main {
+    width: 100%;
+    min-height: 100vh;
+  }
+
   .app-content {
     padding: 1.25rem 1.25rem 2rem;
   }
@@ -1132,34 +1176,6 @@ body {
 }
 
 @media (max-width: 768px) {
-  .navbar__menu-btn {
-    display: inline-flex;
-  }
-
-  .sidebar-backdrop {
-    display: block;
-  }
-
-  .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 100;
-    width: min(var(--sidebar-w), 88vw);
-    transform: translateX(-100%);
-    transition: transform 0.25s ease;
-    overflow-y: auto;
-  }
-
-  .sidebar--open {
-    transform: translateX(0);
-  }
-
-  .app-shell--sidebar-open .app-main {
-    pointer-events: none;
-  }
-
   .navbar {
     height: auto;
     min-height: 56px;
@@ -1169,7 +1185,7 @@ body {
 
   .navbar__title {
     font-size: 1rem;
-    max-width: 10rem;
+    max-width: 12rem;
   }
 
   .navbar__user-name {
