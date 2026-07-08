@@ -69,19 +69,24 @@ def actualizar_configuracion(data: ConfiguracionUpdate, db: Session = Depends(ge
     db.commit()
     db.refresh(config)
 
-    resultado = RecetaService.actualizar_precios_productos_por_configuracion(
-        db,
-        margen=float(data.margen_ganancia),
-        gastos_fijos=float(data.gastos_fijos),
-    )
-    db.commit()
+    productos_actualizados = 0
+    try:
+        resultado = RecetaService.actualizar_precios_productos_por_configuracion(
+            db,
+            margen=float(data.margen_ganancia),
+            gastos_fijos=float(data.gastos_fijos),
+        )
+        db.commit()
+        productos_actualizados = resultado.get("productos_precio_actualizados", 0)
+    except Exception:
+        db.rollback()
 
     return ConfiguracionActualizada(
         id_configuracion=config.id_configuracion,
         margen_ganancia=float(config.margen_ganancia),
         gastos_fijos=float(config.gastos_fijos),
         fecha_actualizacion=config.fecha_actualizacion,
-        productos_precio_actualizados=resultado["productos_precio_actualizados"],
+        productos_precio_actualizados=productos_actualizados,
     )
 
 

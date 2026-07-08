@@ -20,10 +20,34 @@ def aplicar_migraciones_sqlite():
     """Agrega columnas nuevas en bases ya existentes (SQLite y PostgreSQL)."""
     dialect = engine.dialect.name
     migraciones_sqlite = [
+        """CREATE TABLE IF NOT EXISTS configuracion (
+            id_configuracion INTEGER PRIMARY KEY AUTOINCREMENT,
+            margen_ganancia NUMERIC(5, 2) DEFAULT 15.0,
+            gastos_fijos NUMERIC(12, 2) DEFAULT 1000.0,
+            fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
         "ALTER TABLE ventas ADD COLUMN numero_mesa INTEGER DEFAULT 1",
         "ALTER TABLE detalle_venta ADD COLUMN extras_json VARCHAR(500)",
     ]
     migraciones_postgres = [
+        """CREATE TABLE IF NOT EXISTS configuracion (
+            id_configuracion SERIAL PRIMARY KEY,
+            margen_ganancia NUMERIC(5, 2) DEFAULT 15.0,
+            gastos_fijos NUMERIC(12, 2) DEFAULT 1000.0,
+            fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        "ALTER TABLE recetas ADD COLUMN IF NOT EXISTS nombre VARCHAR(150)",
+        "ALTER TABLE recetas ADD COLUMN IF NOT EXISTS descripcion VARCHAR(300)",
+        "ALTER TABLE recetas ADD COLUMN IF NOT EXISTS activo BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE recetas ADD COLUMN IF NOT EXISTS costo_total NUMERIC(12, 4) DEFAULT 0",
+        "UPDATE recetas SET nombre = 'Receta ' || id_receta::text WHERE nombre IS NULL",
+        "UPDATE recetas SET activo = TRUE WHERE activo IS NULL",
+        """CREATE TABLE IF NOT EXISTS receta_insumos (
+            id SERIAL PRIMARY KEY,
+            id_receta INTEGER REFERENCES recetas(id_receta),
+            id_insumo INTEGER REFERENCES insumos(id_insumo),
+            cantidad NUMERIC(12, 3) NOT NULL
+        )""",
         "ALTER TABLE ventas ADD COLUMN IF NOT EXISTS numero_mesa INTEGER DEFAULT 1",
         "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS extras_json VARCHAR(500)",
         """CREATE TABLE IF NOT EXISTS extras_venta (
