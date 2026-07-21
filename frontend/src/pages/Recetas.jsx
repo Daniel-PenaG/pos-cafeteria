@@ -26,6 +26,13 @@ export default function Recetas() {
   const [descripcion, setDescripcion] = useState("");
   const [activo, setActivo] = useState(true);
   const [listaInsumos, setListaInsumos] = useState([]);
+  const [busquedaInsumo, setBusquedaInsumo] = useState("");
+
+  const insumosFiltrados = useMemo(() => {
+    const q = busquedaInsumo.trim().toLowerCase();
+    if (!q) return insumos;
+    return insumos.filter((i) => i.nombre.toLowerCase().includes(q));
+  }, [insumos, busquedaInsumo]);
 
   // ============================
   // RESET FORM
@@ -36,6 +43,7 @@ export default function Recetas() {
     setDescripcion("");
     setActivo(true);
     setListaInsumos([]);
+    setBusquedaInsumo("");
     setEditing(null);
   };
 
@@ -349,6 +357,15 @@ export default function Recetas() {
 
               {/* INSUMOS */}
               <h3>Insumos</h3>
+              <div style={formGroup}>
+                <input
+                  type="text"
+                  placeholder="Buscar insumo por nombre..."
+                  value={busquedaInsumo}
+                  onChange={(e) => setBusquedaInsumo(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
               <button
                 type="button"
                 onClick={addInsumo}
@@ -365,13 +382,44 @@ export default function Recetas() {
                 const cant = Number(item.cantidad) || 0;
                 const subtotal = costoUnit * cant;
 
+                // Mantener el seleccionado visible aunque no coincida con el filtro
+                const opciones = (() => {
+                  const idSel = Number(item.id_insumo);
+                  if (!idSel) return insumosFiltrados;
+                  const seleccionado = insumos.find((i) => i.id_insumo === idSel);
+                  if (
+                    seleccionado &&
+                    !insumosFiltrados.some((i) => i.id_insumo === idSel)
+                  ) {
+                    return [seleccionado, ...insumosFiltrados];
+                  }
+                  return insumosFiltrados;
+                })();
+
                 return (
                   <div key={index} style={insumoRow}>
-                    <InsumoSelector
-                      insumos={insumos}
+                    <select
                       value={item.id_insumo}
-                      onChange={(id) => updateInsumo(index, "id_insumo", id)}
-                    />
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        updateInsumo(index, "id_insumo", v === "" ? "" : Number(v));
+                      }}
+                      style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+                    >
+                      <option value="">Seleccione insumo...</option>
+                      {opciones.length === 0 ? (
+                        <option value="" disabled>
+                          No hay insumos que coincidan
+                        </option>
+                      ) : (
+                        opciones.map((i) => (
+                          <option key={i.id_insumo} value={i.id_insumo}>
+                            {i.nombre} ({i.unidad}) - $
+                            {Number(i.costo_unitario ?? 0).toFixed(4)}
+                          </option>
+                        ))
+                      )}
+                    </select>
 
                     <input
                       type="number"
@@ -440,60 +488,6 @@ export default function Recetas() {
   );
 }
 
-
-function InsumoSelector({ insumos, value, onChange }) {
-  const [busqueda, setBusqueda] = useState("");
-
-  const insumosFiltrados = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
-    const lista = q
-      ? insumos.filter((i) => i.nombre.toLowerCase().includes(q))
-      : insumos;
-
-    const idSeleccionado = Number(value);
-    if (!idSeleccionado) return lista;
-
-    const seleccionado = insumos.find((i) => i.id_insumo === idSeleccionado);
-    if (seleccionado && !lista.some((i) => i.id_insumo === idSeleccionado)) {
-      return [seleccionado, ...lista];
-    }
-    return lista;
-  }, [insumos, busqueda, value]);
-
-  return (
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <input
-        type="text"
-        placeholder="Buscar insumo por nombre..."
-        value={busqueda}
-        onChange={(e) => setBusqueda(e.target.value)}
-        style={{ ...inputStyle, marginBottom: 6 }}
-      />
-      <select
-        value={value}
-        onChange={(e) => {
-          const v = e.target.value;
-          onChange(v === "" ? "" : Number(v));
-          if (v !== "") setBusqueda("");
-        }}
-        style={inputStyle}
-      >
-        <option value="">Seleccione insumo...</option>
-        {insumosFiltrados.length === 0 ? (
-          <option value="" disabled>
-            No hay insumos que coincidan
-          </option>
-        ) : (
-          insumosFiltrados.map((i) => (
-            <option key={i.id_insumo} value={i.id_insumo}>
-              {i.nombre} ({i.unidad}) - ${Number(i.costo_unitario ?? 0).toFixed(4)}
-            </option>
-          ))
-        )}
-      </select>
-    </div>
-  );
-}
 
 /* ESTILOS */
 const formGroup = { marginBottom: 10 };
