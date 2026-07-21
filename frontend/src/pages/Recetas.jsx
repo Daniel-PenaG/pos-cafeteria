@@ -447,8 +447,15 @@ export default function Recetas() {
                         <small>Subtotal: ${subtotal.toFixed(2)}</small>
                       </div>
 
-                      <button type="button" onClick={() => removeInsumo(index)}>
-                        X
+                      <button
+                        type="button"
+                        className="btn btn--danger btn--sm"
+                        onClick={() => removeInsumo(index)}
+                        title="Quitar insumo"
+                        aria-label="Quitar insumo"
+                        style={btnQuitar}
+                      >
+                        ✕
                       </button>
                     </div>
                   );
@@ -511,8 +518,30 @@ const insumoRow = {
   display: "flex",
   gap: 10,
   marginBottom: 10,
-  alignItems: "flex-start",
+  alignItems: "center",
   flexWrap: "wrap",
+  padding: "8px 10px",
+  background: "#f8fafc",
+  borderRadius: 8,
+  border: "1px solid #eef2f7",
+};
+
+const btnQuitar = {
+  width: 32,
+  height: 32,
+  minWidth: 32,
+  padding: 0,
+  borderRadius: "50%",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 14,
+  fontWeight: 700,
+  lineHeight: 1,
+  border: "1px solid #f1c0c0",
+  background: "#fff5f5",
+  color: "#b84a4a",
+  cursor: "pointer",
 };
 
 const sugerenciasBox = {
