@@ -5,7 +5,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_engine(DATABASE_URL)
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL no está configurada. "
+        "Local: copia backend/.env.example a backend/.env. "
+        "Producción (AWS EB): Configuration → Software → Environment properties."
+    )
+
+_engine_kwargs = {}
+if DATABASE_URL.startswith("sqlite"):
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -253,9 +264,105 @@ def aplicar_migraciones_sqlite():
     migraciones_comanda_tiempos_sqlite = [
         "ALTER TABLE detalle_pedido ADD COLUMN fecha_listo_comanda TIMESTAMP",
     ]
+    # Esquema nuevo: recetas (cabecera) + receta_insumos (detalle).
+    # Producción puede tener aún id_insumo/cantidad en recetas (NOT NULL) → falla el INSERT.
+    migraciones_recetas_pg = [
+        "ALTER TABLE recetas ADD COLUMN IF NOT EXISTS nombre VARCHAR(150)",
+        "ALTER TABLE recetas ADD COLUMN IF NOT EXISTS descripcion VARCHAR(300)",
+        "ALTER TABLE recetas ADD COLUMN IF NOT EXISTS activo BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE recetas ADD COLUMN IF NOT EXISTS costo_total NUMERIC(12, 4) DEFAULT 0",
+        """CREATE TABLE IF NOT EXISTS receta_insumos (
+            id SERIAL PRIMARY KEY,
+            id_receta INTEGER REFERENCES recetas(id_receta) ON DELETE CASCADE,
+            id_insumo INTEGER REFERENCES insumos(id_insumo),
+            cantidad NUMERIC(12, 3) NOT NULL
+        )""",
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'recetas' AND column_name = 'id_insumo'
+            ) THEN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'recetas' AND column_name = 'cantidad'
+                ) THEN
+                    INSERT INTO receta_insumos (id_receta, id_insumo, cantidad)
+                    SELECT r.id_receta, r.id_insumo, COALESCE(NULLIF(r.cantidad, 0), 1)
+                    FROM recetas r
+                    WHERE r.id_insumo IS NOT NULL
+                      AND NOT EXISTS (
+                          SELECT 1 FROM receta_insumos ri
+                          WHERE ri.id_receta = r.id_receta AND ri.id_insumo = r.id_insumo
+                      );
+                ELSIF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'recetas' AND column_name = 'cantidad_por_producto'
+                ) THEN
+                    INSERT INTO receta_insumos (id_receta, id_insumo, cantidad)
+                    SELECT r.id_receta, r.id_insumo, COALESCE(NULLIF(r.cantidad_por_producto, 0), 1)
+                    FROM recetas r
+                    WHERE r.id_insumo IS NOT NULL
+                      AND NOT EXISTS (
+                          SELECT 1 FROM receta_insumos ri
+                          WHERE ri.id_receta = r.id_receta AND ri.id_insumo = r.id_insumo
+                      );
+                ELSE
+                    INSERT INTO receta_insumos (id_receta, id_insumo, cantidad)
+                    SELECT r.id_receta, r.id_insumo, 1
+                    FROM recetas r
+                    WHERE r.id_insumo IS NOT NULL
+                      AND NOT EXISTS (
+                          SELECT 1 FROM receta_insumos ri
+                          WHERE ri.id_receta = r.id_receta AND ri.id_insumo = r.id_insumo
+                      );
+                END IF;
+            END IF;
+        END $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'recetas' AND column_name = 'nombre'
+            ) THEN
+                UPDATE recetas r
+                SET nombre = COALESCE(NULLIF(r.nombre, ''), p.nombre, 'Receta')
+                FROM productos p
+                WHERE r.id_producto = p.id_producto
+                  AND (r.nombre IS NULL OR r.nombre = '');
+            END IF;
+        END $$;
+        """,
+        "UPDATE recetas SET nombre = 'Receta' WHERE nombre IS NULL OR nombre = ''",
+        "ALTER TABLE recetas ALTER COLUMN nombre SET DEFAULT 'Receta'",
+        """
+        DO $$
+        DECLARE
+            fk_name text;
+        BEGIN
+            FOR fk_name IN
+                SELECT con.conname
+                FROM pg_constraint con
+                JOIN pg_class rel ON rel.oid = con.conrelid
+                WHERE rel.relname = 'recetas'
+                  AND con.contype = 'f'
+                  AND pg_get_constraintdef(con.oid) ILIKE '%id_insumo%'
+            LOOP
+                EXECUTE format('ALTER TABLE recetas DROP CONSTRAINT IF EXISTS %I', fk_name);
+            END LOOP;
+        END $$;
+        """,
+        "ALTER TABLE recetas DROP COLUMN IF EXISTS id_insumo",
+        "ALTER TABLE recetas DROP COLUMN IF EXISTS cantidad",
+        "ALTER TABLE recetas DROP COLUMN IF EXISTS cantidad_por_producto",
+    ]
     migraciones = (
         migraciones_postgres + migraciones_sqlite_extras + migraciones_promos
         + migraciones_fidelidad_pg + migraciones_pedidos_pg + migraciones_comanda_tiempos_pg
+        + migraciones_recetas_pg
         if dialect == "postgresql"
         else migraciones_sqlite + migraciones_sqlite_extras + migraciones_sqlite_promos
         + migraciones_fidelidad_sqlite + migraciones_pedidos_sqlite + migraciones_comanda_tiempos_sqlite
@@ -264,8 +371,11 @@ def aplicar_migraciones_sqlite():
         try:
             with engine.begin() as conn:
                 conn.execute(text(sql))
-        except Exception:
-            pass
+        except Exception as exc:
+            # Algunas ALTER fallan si la columna ya existe (SQLite); las de recetas sí hay que verlas.
+            snippet = " ".join(sql.split())[:80]
+            if "receta" in sql.lower():
+                print(f"[WARN] Migración recetas falló: {snippet}... → {exc}")
 
     normalizar_roles_usuarios()
 
@@ -287,6 +397,39 @@ def normalizar_roles_usuarios():
             db.commit()
     except Exception:
         db.rollback()
+    finally:
+        db.close()
+
+
+def crear_admin_inicial_si_vacio():
+    """En SQLite local crea un admin por defecto si la BD está vacía."""
+    if engine.dialect.name != "sqlite":
+        return
+
+    from app.models.models import UsuarioModel
+    from app.constants.roles import ADMIN
+    from app.utils.security import hash_password
+
+    db = SessionLocal()
+    try:
+        if db.query(UsuarioModel).count() > 0:
+            return
+
+        login = os.getenv("LOCAL_ADMIN_LOGIN", "admin")
+        password = os.getenv("LOCAL_ADMIN_PASSWORD", "admin123")
+        db.add(
+            UsuarioModel(
+                nombre="Administrador",
+                usuario_login=login,
+                hash_password=hash_password(password),
+                rol=ADMIN,
+            )
+        )
+        db.commit()
+        print(f"[LOCAL] Usuario admin creado: {login} / {password}")
+    except Exception as exc:
+        db.rollback()
+        print(f"[WARN] No se pudo crear admin inicial: {exc}")
     finally:
         db.close()
 
