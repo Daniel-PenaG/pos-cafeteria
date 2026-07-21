@@ -24,7 +24,7 @@ const MESES = [
   { v: 12, l: "Diciembre" },
 ];
 
-function TablaRanking({ productos, orden }) {
+function TablaRanking({ productos }) {
   if (!productos?.length) {
     return <p className="muted">Sin ventas de productos en este periodo.</p>;
   }
@@ -505,7 +505,7 @@ export default function Reportes() {
               Ranking —{" "}
               {ordenRank === "cantidad" ? "por cantidad vendida" : "por ingresos"}
             </h3>
-            <TablaRanking productos={ranking.productos} orden={ordenRank} />
+            <TablaRanking productos={ranking.productos} />
           </div>
         </>
       )}

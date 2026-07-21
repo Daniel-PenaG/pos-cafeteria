@@ -496,47 +496,6 @@ function InsumoSelector({ insumos, value, onChange }) {
 }
 
 /* ESTILOS */
-const headerStyle = {
-  marginBottom: 16,
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-};
-
-const tableStyle = {
-  width: "100%",
-  borderCollapse: "collapse",
-  backgroundColor: "#fff",
-};
-
-const thStyle = {
-  borderBottom: "1px solid #e5e7eb",
-  padding: 8,
-  textAlign: "left",
-};
-
-const tdStyle = {
-  borderBottom: "1px solid #f3f4f6",
-  padding: 8,
-};
-
-const modalOverlayStyle = {
-  position: "fixed",
-  inset: 0,
-  backgroundColor: "rgba(0,0,0,0.3)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-const modalStyle = {
-  backgroundColor: "#fff",
-  padding: 20,
-  borderRadius: 8,
-  width: 700,
-  maxWidth: "95%",
-};
-
 const formGroup = { marginBottom: 10 };
 
 const inputStyle = {

@@ -2,7 +2,8 @@
 
 Sistema integral de gestión para cafeterías con control de inventario, recetas, ventas y reportes.
 
-**Despliegue:** primero [GITHUB_SETUP.md](GITHUB_SETUP.md) (subir a GitHub), luego [DEPLOY_AWS.md](DEPLOY_AWS.md) (AWS automático).
+**Desarrollo local:** [ENTORNO_LOCAL_Y_PRODUCCION.md](ENTORNO_LOCAL_Y_PRODUCCION.md)  
+**Despliegue AWS:** [GITHUB_SETUP.md](GITHUB_SETUP.md) → [DEPLOY_AWS.md](DEPLOY_AWS.md)
 
 ## 📋 Tabla de Contenidos
 
@@ -57,27 +58,24 @@ frontend/
 
 ## 🚀 Instalación Rápida
 
+Guía completa (local ↔ producción): **[ENTORNO_LOCAL_Y_PRODUCCION.md](ENTORNO_LOCAL_Y_PRODUCCION.md)**
+
 ### Backend
 
-```bash
+```powershell
 cd backend
-python -m venv venv
-venv\Scripts\activate  # Windows
-
-pip install -r requerimientos.txt
-
-# Configurar .env
-echo SECRET_KEY=tu-clave-secreta > .env
-echo ALGORITHM=HS256 >> .env
-echo ACCESS_TOKEN_EXPIRE_MINUTES=30 >> .env
-
-uvicorn app.main:app --reload
+copy .env.example .env
+.\setup-dev.ps1   # primera vez
+.\run-dev.ps1
 ```
+
+API: http://127.0.0.1:8000 — Login inicial: `admin` / `admin123`
 
 ### Frontend
 
-```bash
+```powershell
 cd frontend
+copy .env.example .env.local
 npm install
 npm run dev
 ```
@@ -120,12 +118,12 @@ npm run dev
 ## 🔐 Autenticación
 
 ```bash
-# Login
+# Login (SQLite local)
 curl -X POST http://localhost:8000/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "usuario_login": "admin",
-    "password": "password123"
+    "password": "admin123"
   }'
 
 # Usar en otros endpoints

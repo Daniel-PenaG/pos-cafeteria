@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { getComandaPendientes, marcarLineaListo } from "../services/pedidosService";
 import PageHeader from "../components/PageHeader";
-import ElapsedTimer, { formatDuration } from "../components/ElapsedTimer";
+import ElapsedTimer from "../components/ElapsedTimer";
+import { formatDuration } from "../utils/formatDuration";
 
 export default function Comandera() {
   const [lineas, setLineas] = useState([]);

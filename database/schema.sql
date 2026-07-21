@@ -31,14 +31,27 @@ CREATE TABLE insumos (
 );
 
 -- ============================
--- TABLA: recetas
+-- TABLA: recetas (cabecera)
 -- ============================
 CREATE TABLE recetas (
     id_receta SERIAL PRIMARY KEY,
     id_producto INT NOT NULL,
+    nombre VARCHAR(150) NOT NULL,
+    descripcion VARCHAR(300),
+    activo BOOLEAN DEFAULT TRUE,
+    costo_total NUMERIC(12,4) DEFAULT 0,
+    FOREIGN KEY (id_producto) REFERENCES productos(id_producto)
+);
+
+-- ============================
+-- TABLA: receta_insumos (detalle)
+-- ============================
+CREATE TABLE receta_insumos (
+    id SERIAL PRIMARY KEY,
+    id_receta INT NOT NULL,
     id_insumo INT NOT NULL,
-    cantidad_por_producto NUMERIC(12,3) NOT NULL,
-    FOREIGN KEY (id_producto) REFERENCES productos(id_producto),
+    cantidad NUMERIC(12,3) NOT NULL,
+    FOREIGN KEY (id_receta) REFERENCES recetas(id_receta) ON DELETE CASCADE,
     FOREIGN KEY (id_insumo) REFERENCES insumos(id_insumo)
 );
 

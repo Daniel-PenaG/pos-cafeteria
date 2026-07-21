@@ -1,0 +1,24 @@
+Requerimiento Evaluación Técnica Banca Mifel
+Se solicita la creación de un proyecto que cumpla con las siguientes características:
+Frameworks a usar:
+Java 11
+Spring-Boot
+Spring-Security
+H2
+JPA
+Maven
+Publicación de un Api Rest, usando las herramientas mencionadas arriba, con las siguientes características:
+Implementar mecanismo de autenticación vía JWT, con OAUT 2
+Publicar un servicio REST, que regrese como respuesta un JSON, con un catálogo de Items, generado desde una tabla de BD desplegada en H2, el servicio debe poder regresar el catálogo completo o bien con un parámetro de entrada para poder filtrar por alguno de los criterios del catálogo.
+Ej:  Request: Filtra el catalogo por el nombre.
+{
+“nombre”: “Israel”
+}
+No filtra el catalogo y lo regresa completo
+{
+“nombre”: “”
+}
+-Implementar un servicio que haga uso de otro api, para poder publicar su respuesta en formato JSON.
+Consumir el siguiente api:  https://pokeapi.co/api/v2/pokemon/ditto
+Implementar un Servicio que reciba una cadena de cualquier longitud y que cifre la información haciendo uso de las librerías de Java, con el siguiente mecanismo de cifrado: AES/CBC/PKCS5Padding, haciendo uso de una llave publica y un vector de inicialización.
+Incluir collection de postman y evidencia de funcionamiento dentro del desarrollo.

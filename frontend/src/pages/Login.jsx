@@ -20,8 +20,13 @@ export default function Login() {
       });
       useAuthStore.getState().login(res.data.access_token, res.data.user);
       navigate(getDefaultRoute(res.data.user?.rol));
-    } catch {
-      alert("Credenciales incorrectas");
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      const msg =
+        typeof detail === "string"
+          ? detail
+          : "Credenciales incorrectas. En local usa admin / admin123";
+      alert(msg);
     } finally {
       setLoading(false);
     }
@@ -43,6 +48,12 @@ export default function Login() {
           <p>Ingresa tus credenciales para continuar</p>
 
           <form onSubmit={handleLogin}>
+            {import.meta.env.DEV && (
+              <p className="hint" style={{ marginBottom: "1rem" }}>
+                Desarrollo local: usuario <strong>admin</strong>, contraseña{" "}
+                <strong>admin123</strong>
+              </p>
+            )}
             <div className="form-row">
               <label htmlFor="user">Usuario</label>
               <input

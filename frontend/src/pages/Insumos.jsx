@@ -7,7 +7,45 @@ import {
 } from "../services/insumosService";
 import PageHeader from "../components/PageHeader";
 
-const UNIDADES = ["g", "kg", "ml", "L", "pz", "unidad", "taza", "cda", "cdta"];
+const UNIDADES_GRUPOS = [
+  {
+    label: "Peso",
+    opciones: [
+      { value: "g", label: "Gramos (g)" },
+      { value: "gr", label: "Gramos (gr)" },
+      { value: "kg", label: "Kilogramos (kg)" },
+    ],
+  },
+  {
+    label: "Volumen",
+    opciones: [
+      { value: "ml", label: "Mililitros (ml)" },
+      { value: "L", label: "Litros (L)" },
+      { value: "litro", label: "Litro" },
+    ],
+  },
+  {
+    label: "Cantidad",
+    opciones: [
+      { value: "pz", label: "Pieza (pz)" },
+      { value: "pieza", label: "Pieza" },
+      { value: "unidad", label: "Unidad" },
+    ],
+  },
+  {
+    label: "Medidas de cocina",
+    opciones: [
+      { value: "taza", label: "Taza" },
+      { value: "cda", label: "Cucharada (cda)" },
+      { value: "cdta", label: "Cucharadita (cdta)" },
+      { value: "oz", label: "Onza (oz)" },
+    ],
+  },
+];
+
+const UNIDADES_CONOCIDAS = UNIDADES_GRUPOS.flatMap((g) =>
+  g.opciones.map((o) => o.value)
+);
 const MARGEN_INSUMO = 0.1;
 
 /** costo_unitario = (precio_total * 1.10) / cantidad */
@@ -27,6 +65,8 @@ export default function Insumos() {
 
   const [nombre, setNombre] = useState("");
   const [unidad, setUnidad] = useState("g");
+  const [unidadOtra, setUnidadOtra] = useState("");
+  const [usarUnidadOtra, setUsarUnidadOtra] = useState(false);
   const [stockActual, setStockActual] = useState("0");
   const [stockMinimo, setStockMinimo] = useState("0");
   const [costoUnitario, setCostoUnitario] = useState("0");
@@ -41,6 +81,8 @@ export default function Insumos() {
   const resetForm = () => {
     setNombre("");
     setUnidad("g");
+    setUnidadOtra("");
+    setUsarUnidadOtra(false);
     setStockActual("0");
     setStockMinimo("0");
     setCostoUnitario("0");
@@ -57,7 +99,16 @@ export default function Insumos() {
   const openEditModal = (insumo) => {
     setEditing(insumo);
     setNombre(insumo.nombre);
-    setUnidad(insumo.unidad);
+    const u = insumo.unidad || "g";
+    if (UNIDADES_CONOCIDAS.includes(u)) {
+      setUnidad(u);
+      setUsarUnidadOtra(false);
+      setUnidadOtra("");
+    } else {
+      setUnidad("otra");
+      setUsarUnidadOtra(true);
+      setUnidadOtra(u);
+    }
     setStockActual(String(insumo.stock_actual ?? 0));
     setStockMinimo(String(insumo.stock_minimo ?? 0));
     setCostoUnitario(String(insumo.costo_unitario ?? 0));
@@ -120,9 +171,18 @@ export default function Insumos() {
       return;
     }
 
+    const unidadFinal = usarUnidadOtra || unidad === "otra"
+      ? unidadOtra.trim()
+      : unidad.trim();
+
+    if (!unidadFinal) {
+      alert("Selecciona o escribe una unidad");
+      return;
+    }
+
     const payload = {
       nombre: nombre.trim(),
-      unidad: unidad.trim(),
+      unidad: unidadFinal,
       stock_actual: stock,
       stock_minimo: minimo,
       costo_unitario: costo,
@@ -286,19 +346,42 @@ export default function Insumos() {
                 <label style={{ display: "block", marginBottom: 6 }}>
                   Unidad *
                 </label>
-                <input
-                  type="text"
-                  list="unidades-sugeridas"
-                  value={unidad}
-                  onChange={(e) => setUnidad(e.target.value)}
-                  required
-                  placeholder="g, kg, ml, L, pz..."
-                />
-                <datalist id="unidades-sugeridas">
-                  {UNIDADES.map((u) => (
-                    <option key={u} value={u} />
+                <select
+                  value={usarUnidadOtra || unidad === "otra" ? "otra" : unidad}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "otra") {
+                      setUsarUnidadOtra(true);
+                      setUnidad("otra");
+                    } else {
+                      setUsarUnidadOtra(false);
+                      setUnidad(val);
+                      setUnidadOtra("");
+                    }
+                  }}
+                  required={!usarUnidadOtra}
+                >
+                  {UNIDADES_GRUPOS.map((grupo) => (
+                    <optgroup key={grupo.label} label={grupo.label}>
+                      {grupo.opciones.map((op) => (
+                        <option key={op.value} value={op.value}>
+                          {op.label}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
-                </datalist>
+                  <option value="otra">Otra (escribir)</option>
+                </select>
+                {(usarUnidadOtra || unidad === "otra") && (
+                  <input
+                    type="text"
+                    value={unidadOtra}
+                    onChange={(e) => setUnidadOtra(e.target.value)}
+                    placeholder="Ej. bolsa, caja, lb..."
+                    required
+                    style={{ marginTop: 8 }}
+                  />
+                )}
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
