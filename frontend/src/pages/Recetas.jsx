@@ -30,9 +30,15 @@ export default function Recetas() {
 
   const insumosFiltrados = useMemo(() => {
     const q = busquedaInsumo.trim().toLowerCase();
-    if (!q) return insumos;
-    return insumos.filter((i) => i.nombre.toLowerCase().includes(q));
-  }, [insumos, busquedaInsumo]);
+    const idsYaAgregados = new Set(
+      listaInsumos.map((i) => Number(i.id_insumo)).filter(Boolean)
+    );
+    return insumos.filter((i) => {
+      if (idsYaAgregados.has(i.id_insumo)) return false;
+      if (!q) return true;
+      return i.nombre.toLowerCase().includes(q);
+    });
+  }, [insumos, busquedaInsumo, listaInsumos]);
 
   // ============================
   // RESET FORM
@@ -123,8 +129,18 @@ export default function Recetas() {
   // ============================
   // INSUMOS EN FORMULARIO
   // ============================
-  const addInsumo = () => {
-    setListaInsumos([...listaInsumos, { id_insumo: "", cantidad: 1 }]);
+  const agregarInsumoDesdeBusqueda = (idInsumo) => {
+    const id = Number(idInsumo);
+    if (!id) return;
+
+    if (listaInsumos.some((i) => Number(i.id_insumo) === id)) {
+      alert("Ese insumo ya está en la lista");
+      setBusquedaInsumo("");
+      return;
+    }
+
+    setListaInsumos([...listaInsumos, { id_insumo: id, cantidad: 1 }]);
+    setBusquedaInsumo("");
   };
 
   const updateInsumo = (index, field, value) => {
@@ -360,91 +376,84 @@ export default function Recetas() {
               <div style={formGroup}>
                 <input
                   type="text"
-                  placeholder="Buscar insumo por nombre..."
+                  placeholder="Buscar e agregar insumo por nombre..."
                   value={busquedaInsumo}
                   onChange={(e) => setBusquedaInsumo(e.target.value)}
                   style={inputStyle}
                 />
-              </div>
-              <button
-                type="button"
-                onClick={addInsumo}
-                style={{ marginBottom: 10 }}
-              >
-                Agregar insumo
-              </button>
-
-              {listaInsumos.map((item, index) => {
-                const ins = insumos.find(
-                  (i) => i.id_insumo === Number(item.id_insumo)
-                );
-                const costoUnit = ins ? Number(ins.costo_unitario) : 0;
-                const cant = Number(item.cantidad) || 0;
-                const subtotal = costoUnit * cant;
-
-                // Mantener el seleccionado visible aunque no coincida con el filtro
-                const opciones = (() => {
-                  const idSel = Number(item.id_insumo);
-                  if (!idSel) return insumosFiltrados;
-                  const seleccionado = insumos.find((i) => i.id_insumo === idSel);
-                  if (
-                    seleccionado &&
-                    !insumosFiltrados.some((i) => i.id_insumo === idSel)
-                  ) {
-                    return [seleccionado, ...insumosFiltrados];
-                  }
-                  return insumosFiltrados;
-                })();
-
-                return (
-                  <div key={index} style={insumoRow}>
-                    <select
-                      value={item.id_insumo}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        updateInsumo(index, "id_insumo", v === "" ? "" : Number(v));
-                      }}
-                      style={{ ...inputStyle, flex: 1, minWidth: 0 }}
-                    >
-                      <option value="">Seleccione insumo...</option>
-                      {opciones.length === 0 ? (
-                        <option value="" disabled>
-                          No hay insumos que coincidan
-                        </option>
-                      ) : (
-                        opciones.map((i) => (
-                          <option key={i.id_insumo} value={i.id_insumo}>
-                            {i.nombre} ({i.unidad}) - $
-                            {Number(i.costo_unitario ?? 0).toFixed(4)}
-                          </option>
-                        ))
-                      )}
-                    </select>
-
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.001"
-                      value={item.cantidad}
-                      onChange={(e) =>
-                        updateInsumo(index, "cantidad", Number(e.target.value))
-                      }
-                      style={{ ...inputStyle, width: 120 }}
-                      placeholder="Cantidad"
-                    />
-
-                    <div style={{ minWidth: 120 }}>
-                      <small>Costo unitario: ${costoUnit.toFixed(4)}</small>
-                      <br />
-                      <small>Subtotal: ${subtotal.toFixed(2)}</small>
-                    </div>
-
-                    <button type="button" onClick={() => removeInsumo(index)}>
-                      X
-                    </button>
+                {busquedaInsumo.trim() !== "" && (
+                  <div style={sugerenciasBox}>
+                    {insumosFiltrados.length === 0 ? (
+                      <div style={sugerenciaItemVacio}>No hay insumos que coincidan</div>
+                    ) : (
+                      insumosFiltrados.slice(0, 8).map((i) => (
+                        <button
+                          key={i.id_insumo}
+                          type="button"
+                          style={sugerenciaItem}
+                          onClick={() => agregarInsumoDesdeBusqueda(i.id_insumo)}
+                        >
+                          {i.nombre} ({i.unidad}) — $
+                          {Number(i.costo_unitario ?? 0).toFixed(4)}
+                        </button>
+                      ))
+                    )}
                   </div>
-                );
-              })}
+                )}
+                <small style={{ color: "#6b7280" }}>
+                  Escribe el nombre y haz clic en el resultado para agregarlo.
+                </small>
+              </div>
+
+              {listaInsumos.length === 0 ? (
+                <p style={{ color: "#6b7280", marginBottom: 12 }}>
+                  Aún no hay insumos en la receta.
+                </p>
+              ) : (
+                listaInsumos.map((item, index) => {
+                  const ins = insumos.find(
+                    (i) => i.id_insumo === Number(item.id_insumo)
+                  );
+                  const costoUnit = ins ? Number(ins.costo_unitario) : 0;
+                  const cant = Number(item.cantidad) || 0;
+                  const subtotal = costoUnit * cant;
+
+                  return (
+                    <div key={item.id_insumo || index} style={insumoRow}>
+                      <div style={{ flex: 1, minWidth: 140, paddingTop: 6 }}>
+                        <strong>{ins?.nombre || `Insumo #${item.id_insumo}`}</strong>
+                        {ins?.unidad ? (
+                          <small style={{ marginLeft: 6, color: "#6b7280" }}>
+                            ({ins.unidad})
+                          </small>
+                        ) : null}
+                      </div>
+
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        value={item.cantidad}
+                        onChange={(e) =>
+                          updateInsumo(index, "cantidad", Number(e.target.value))
+                        }
+                        style={{ ...inputStyle, width: 120 }}
+                        placeholder="Cantidad"
+                      />
+
+                      <div style={{ minWidth: 120 }}>
+                        <small>Costo unitario: ${costoUnit.toFixed(4)}</small>
+                        <br />
+                        <small>Subtotal: ${subtotal.toFixed(2)}</small>
+                      </div>
+
+                      <button type="button" onClick={() => removeInsumo(index)}>
+                        X
+                      </button>
+                    </div>
+                  );
+                })
+              )}
 
               {/* COSTO TOTAL */}
               <div style={{ marginTop: 20, fontWeight: "bold" }}>
@@ -504,6 +513,31 @@ const insumoRow = {
   marginBottom: 10,
   alignItems: "flex-start",
   flexWrap: "wrap",
+};
+
+const sugerenciasBox = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 6,
+  marginTop: 6,
+  maxHeight: 220,
+  overflowY: "auto",
+  background: "#fff",
+};
+
+const sugerenciaItem = {
+  display: "block",
+  width: "100%",
+  textAlign: "left",
+  border: "none",
+  borderBottom: "1px solid #f3f4f6",
+  background: "#fff",
+  padding: "8px 10px",
+  cursor: "pointer",
+};
+
+const sugerenciaItemVacio = {
+  padding: "8px 10px",
+  color: "#6b7280",
 };
 
 const footerButtons = {
