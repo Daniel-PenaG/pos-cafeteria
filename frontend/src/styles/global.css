@@ -570,6 +570,72 @@ body {
   pointer-events: none;
 }
 
+.ventas-catalogo {
+  margin-top: 0.5rem;
+}
+
+.ventas-categorias-list {
+  margin-top: 0.75rem;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.ventas-categoria {
+  border: 1px solid var(--latte);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.ventas-categoria__header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 0.85rem;
+  background: #f8fafc;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--coffee);
+  font-size: 0.9rem;
+}
+
+.ventas-categoria__header:hover {
+  background: #f1f5f9;
+}
+
+.ventas-producto-item {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.85rem;
+  border: none;
+  border-top: 1px solid #eef2f7;
+  background: var(--paper);
+  cursor: pointer;
+  text-align: left;
+  color: var(--coffee);
+  font-size: 0.9rem;
+}
+
+.ventas-producto-item:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.ventas-producto-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.ventas-producto-item__precio {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .mesa-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));

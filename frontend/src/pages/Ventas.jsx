@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { getProductos } from "../services/productosService";
+import { getProductos, getCategorias } from "../services/productosService";
 import { getExtrasVenta } from "../services/ventasService";
 import {
   getPedidosActivos,
@@ -36,6 +36,9 @@ function sumExtras(extras) {
 
 export default function Ventas() {
   const [productos, setProductos] = useState([]);
+  const [categorias, setCategorias] = useState([]);
+  const [busquedaProducto, setBusquedaProducto] = useState("");
+  const [categoriasAbiertas, setCategoriasAbiertas] = useState({});
   const [extrasModal, setExtrasModal] = useState([]);
   const [cargandoExtras, setCargandoExtras] = useState(false);
   const [pedido, setPedido] = useState(null);
@@ -104,11 +107,10 @@ export default function Ventas() {
   useEffect(() => {
     const load = async () => {
       try {
-        const prods = await getProductos();
-        setProductos(
-          prods
-            .filter((p) => p.activo !== false)
-            .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
+        const [prods, cats] = await Promise.all([getProductos(), getCategorias()]);
+        setProductos(prods.filter((p) => p.activo !== false));
+        setCategorias(
+          [...cats].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
         );
       } catch (err) {
         console.error(err);
@@ -118,6 +120,53 @@ export default function Ventas() {
     load();
     refrescarMesasActivas();
   }, []);
+
+  const productosPorCategoria = useMemo(() => {
+    const q = busquedaProducto.trim().toLowerCase();
+    const filtrados = productos.filter(
+      (p) => !q || p.nombre.toLowerCase().includes(q)
+    );
+
+    const mapa = new Map();
+    categorias.forEach((c) => {
+      mapa.set(c.id_categoria, {
+        id: c.id_categoria,
+        nombre: c.nombre,
+        productos: [],
+      });
+    });
+    mapa.set(0, { id: 0, nombre: "Sin categoría", productos: [] });
+
+    filtrados.forEach((p) => {
+      const grupo = mapa.get(p.id_categoria) || mapa.get(0);
+      grupo.productos.push(p);
+    });
+
+    return [...mapa.values()]
+      .filter((g) => g.productos.length > 0)
+      .map((g) => ({
+        ...g,
+        productos: g.productos.sort((a, b) =>
+          a.nombre.localeCompare(b.nombre, "es")
+        ),
+      }));
+  }, [productos, categorias, busquedaProducto]);
+
+  useEffect(() => {
+    if (!busquedaProducto.trim()) return;
+    const abiertas = {};
+    productosPorCategoria.forEach((g) => {
+      abiertas[g.id] = true;
+    });
+    setCategoriasAbiertas(abiertas);
+  }, [busquedaProducto, productosPorCategoria]);
+
+  const toggleCategoria = (id) => {
+    setCategoriasAbiertas((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
 
   useEffect(() => {
     if (!showCobroModal || total <= 0) {
@@ -409,33 +458,56 @@ export default function Ventas() {
           {!numeroMesa && (
             <p className="hint">Selecciona una mesa para habilitar productos</p>
           )}
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Nombre</th>
-                  <th>Precio base</th>
-                  <th>Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                {productos.map((p) => (
-                  <tr key={p.id_producto}>
-                    <td>{p.nombre}</td>
-                    <td>${Number(p.precio_venta).toFixed(2)}</td>
-                    <td>
+          <div className="ventas-catalogo">
+            <input
+              type="text"
+              className="input"
+              placeholder="Buscar producto por nombre..."
+              value={busquedaProducto}
+              onChange={(e) => setBusquedaProducto(e.target.value)}
+              disabled={!numeroMesa}
+            />
+
+            {productosPorCategoria.length === 0 ? (
+              <p className="empty-state" style={{ marginTop: "0.75rem" }}>
+                No hay productos que coincidan
+              </p>
+            ) : (
+              <div className="ventas-categorias-list">
+                {productosPorCategoria.map((grupo) => {
+                  const abierta = categoriasAbiertas[grupo.id] ?? true;
+                  return (
+                    <div key={grupo.id} className="ventas-categoria">
                       <button
                         type="button"
-                        className="btn btn--primary btn--sm"
-                        onClick={() => abrirModalProducto(p)}
+                        className="ventas-categoria__header"
+                        onClick={() => toggleCategoria(grupo.id)}
                       >
-                        Agregar
+                        <span>
+                          {abierta ? "▼" : "▶"} {grupo.nombre}
+                        </span>
+                        <span className="hint">({grupo.productos.length})</span>
                       </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      {abierta &&
+                        grupo.productos.map((p) => (
+                          <button
+                            key={p.id_producto}
+                            type="button"
+                            className="ventas-producto-item"
+                            onClick={() => abrirModalProducto(p)}
+                            disabled={!numeroMesa}
+                          >
+                            <span>{p.nombre}</span>
+                            <span className="ventas-producto-item__precio">
+                              ${Number(p.precio_venta).toFixed(2)}
+                            </span>
+                          </button>
+                        ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
