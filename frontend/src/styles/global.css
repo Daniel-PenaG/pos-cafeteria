@@ -703,6 +703,17 @@ body {
   color: var(--mocha);
 }
 
+.cart-item__comentario {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  color: var(--espresso);
+  font-style: italic;
+  background: #fff8e7;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  display: inline-block;
+}
+
 .cart-total {
   font-family: var(--font-display);
   font-size: 1.35rem;

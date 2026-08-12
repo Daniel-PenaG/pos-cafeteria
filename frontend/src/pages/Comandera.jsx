@@ -120,6 +120,9 @@ export default function Comandera() {
                           ))}
                         </ul>
                       )}
+                      {l.comentario && (
+                        <p className="cart-item__comentario">📝 {l.comentario}</p>
+                      )}
                       {l.cantidad_pendiente < l.cantidad && (
                         <p className="hint">
                           {l.cantidad_lista}/{l.cantidad} listos

@@ -53,6 +53,7 @@ export default function Ventas() {
   const [promoSeleccionada, setPromoSeleccionada] = useState(null);
   const [calculoPromo, setCalculoPromo] = useState(null);
   const [cantidadModal, setCantidadModal] = useState(1);
+  const [comentarioModal, setComentarioModal] = useState("");
 
   const [showCobroModal, setShowCobroModal] = useState(false);
   const [clienteCobro, setClienteCobro] = useState(null);
@@ -297,6 +298,7 @@ export default function Ventas() {
     setPromoSeleccionada(null);
     setCalculoPromo(null);
     setCantidadModal(1);
+    setComentarioModal("");
     try {
       setCargandoExtras(true);
       const [extras, promos] = await Promise.all([
@@ -351,6 +353,7 @@ export default function Ventas() {
         id_promocion: calculoPromo.id_promocion,
         extras: extrasSeleccionados,
         enviar_comanda: true,
+        comentario: comentarioModal.trim() || null,
       });
       await cargarPedidoMesa(numeroMesa);
     } catch (err) {
@@ -367,6 +370,7 @@ export default function Ventas() {
     setPromoSeleccionada(null);
     setCalculoPromo(null);
     setCantidadModal(1);
+    setComentarioModal("");
   };
 
   const cambiarCantidad = async (idDetalle, value) => {
@@ -406,8 +410,14 @@ export default function Ventas() {
       }
       alert(msg);
       cerrarCobroModal();
+      const mesaCobrada = numeroMesa;
       setPedido(null);
       setNumeroMesa(null);
+      setMesasActivas((prev) => {
+        const next = { ...prev };
+        if (mesaCobrada) delete next[mesaCobrada];
+        return next;
+      });
       await refrescarMesasActivas();
     } catch (err) {
       console.error(err);
@@ -432,15 +442,16 @@ export default function Ventas() {
         <div className="mesa-grid">
           {Array.from({ length: NUM_MESAS }, (_, i) => i + 1).map((n) => {
             const activa = mesasActivas[n];
+            const ocupada = activa && activa.num_lineas > 0;
             return (
               <button
                 key={n}
                 type="button"
                 onClick={() => seleccionarMesa(n)}
-                className={`mesa-btn ${numeroMesa === n ? "mesa-btn--active" : ""} ${activa ? "mesa-btn--ocupada" : ""}`}
+                className={`mesa-btn ${numeroMesa === n ? "mesa-btn--active" : ""} ${ocupada ? "mesa-btn--ocupada" : ""}`}
               >
                 {n}
-                {activa && activa.num_lineas > 0 && (
+                {ocupada && (
                   <span className="mesa-btn__badge">{activa.num_lineas}</span>
                 )}
               </button>
@@ -540,6 +551,9 @@ export default function Ventas() {
                         ))}
                       </ul>
                     )}
+                    {item.comentario && (
+                      <p className="cart-item__comentario">📝 {item.comentario}</p>
+                    )}
                     <div className="hint" style={{ marginTop: "0.25rem" }}>
                       {(item.descuento_unitario ?? 0) > 0 ? (
                         <>
@@ -624,6 +638,18 @@ export default function Ventas() {
                 onChange={(e) => setCantidadModal(Math.max(1, parseInt(e.target.value, 10) || 1))}
                 className="input"
                 style={{ width: 80 }}
+              />
+            </div>
+
+            <div className="form-row" style={{ marginBottom: "1rem" }}>
+              <label>Comentario para cocina (opcional)</label>
+              <textarea
+                className="input"
+                rows={2}
+                maxLength={300}
+                placeholder="Ej. sin azúcar, extra caliente..."
+                value={comentarioModal}
+                onChange={(e) => setComentarioModal(e.target.value)}
               />
             </div>
 
