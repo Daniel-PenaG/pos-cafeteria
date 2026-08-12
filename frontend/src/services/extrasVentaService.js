@@ -11,6 +11,20 @@ export async function getExtrasCatalogo() {
   return res.data;
 }
 
+export async function getExtraTiposPos() {
+  const res = await api.get("/extras-venta/tipos", { headers: getAuthHeader() });
+  return res.data;
+}
+
+export async function createExtraTipoPos(etiqueta) {
+  const res = await api.post(
+    "/extras-venta/tipos",
+    { etiqueta },
+    { headers: getAuthHeader() }
+  );
+  return res.data;
+}
+
 export async function getInsumosImportables() {
   const res = await api.get("/extras-venta/insumos-importables", {
     headers: getAuthHeader(),

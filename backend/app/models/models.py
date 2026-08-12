@@ -155,6 +155,17 @@ class ExtraVentaModel(Base):
     productos = relationship("ProductoExtraModel", back_populates="extra", cascade="all, delete-orphan")
 
 
+class ExtraTipoPosModel(Base):
+    """Categorías para agrupar extras en el POS (Café, Leche, etc.)."""
+
+    __tablename__ = "extra_tipos_pos"
+
+    id_tipo = Column(Integer, primary_key=True, index=True)
+    codigo = Column(String(30), nullable=False, unique=True)
+    etiqueta = Column(String(80), nullable=False)
+    orden = Column(Integer, nullable=False, default=0)
+
+
 class CategoriaExtraModel(Base):
     """Qué extras del catálogo aplican a cada categoría de producto."""
     __tablename__ = "categoria_extras"

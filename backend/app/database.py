@@ -373,13 +373,30 @@ def aplicar_migraciones_sqlite():
         "ALTER TABLE recetas DROP COLUMN IF EXISTS cantidad",
         "ALTER TABLE recetas DROP COLUMN IF EXISTS cantidad_por_producto",
     ]
+    migraciones_extra_tipos_pg = [
+        """CREATE TABLE IF NOT EXISTS extra_tipos_pos (
+            id_tipo SERIAL PRIMARY KEY,
+            codigo VARCHAR(30) NOT NULL UNIQUE,
+            etiqueta VARCHAR(80) NOT NULL,
+            orden INTEGER NOT NULL DEFAULT 0
+        )""",
+    ]
+    migraciones_extra_tipos_sqlite = [
+        """CREATE TABLE IF NOT EXISTS extra_tipos_pos (
+            id_tipo INTEGER PRIMARY KEY AUTOINCREMENT,
+            codigo VARCHAR(30) NOT NULL UNIQUE,
+            etiqueta VARCHAR(80) NOT NULL,
+            orden INTEGER NOT NULL DEFAULT 0
+        )""",
+    ]
     migraciones = (
         migraciones_postgres + migraciones_sqlite_extras + migraciones_promos
         + migraciones_fidelidad_pg + migraciones_pedidos_pg + migraciones_comanda_tiempos_pg
-        + migraciones_recetas_pg
+        + migraciones_recetas_pg + migraciones_extra_tipos_pg
         if dialect == "postgresql"
         else migraciones_sqlite + migraciones_sqlite_extras + migraciones_sqlite_promos
         + migraciones_fidelidad_sqlite + migraciones_pedidos_sqlite + migraciones_comanda_tiempos_sqlite
+        + migraciones_extra_tipos_sqlite
     )
     for sql in migraciones:
         try:

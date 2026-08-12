@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { getProductos, getCategorias } from "../services/productosService";
 import { getExtrasVenta } from "../services/ventasService";
+import { getExtraTiposPos } from "../services/extrasVentaService";
 import {
   getPedidosActivos,
   getPedidoMesa,
@@ -23,12 +24,6 @@ import { useAuthStore } from "../store/authStore";
 import PageHeader from "../components/PageHeader";
 
 const NUM_MESAS = 20;
-const TIPO_LABEL = {
-  CAFE: "Café",
-  LECHE: "Leche",
-  SABORIZANTE: "Saborizantes",
-  OTRO: "Otros",
-};
 
 function sumExtras(extras) {
   return extras.reduce((acc, e) => acc + Number(e.precio), 0);
@@ -54,6 +49,7 @@ export default function Ventas() {
   const [calculoPromo, setCalculoPromo] = useState(null);
   const [cantidadModal, setCantidadModal] = useState(1);
   const [comentarioModal, setComentarioModal] = useState("");
+  const [tiposPosLabels, setTiposPosLabels] = useState({});
 
   const [showCobroModal, setShowCobroModal] = useState(false);
   const [clienteCobro, setClienteCobro] = useState(null);
@@ -108,10 +104,17 @@ export default function Ventas() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [prods, cats] = await Promise.all([getProductos(), getCategorias()]);
+        const [prods, cats, tipos] = await Promise.all([
+          getProductos(),
+          getCategorias(),
+          getExtraTiposPos(),
+        ]);
         setProductos(prods.filter((p) => p.activo !== false));
         setCategorias(
           [...cats].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
+        );
+        setTiposPosLabels(
+          Object.fromEntries(tipos.map((t) => [t.codigo, t.etiqueta]))
         );
       } catch (err) {
         console.error(err);
@@ -667,7 +670,7 @@ export default function Ventas() {
               Object.entries(extrasPorTipo).map(([tipo, lista]) => (
                 <div key={tipo} style={{ marginBottom: "1rem" }}>
                   <div style={{ fontWeight: 600, marginBottom: "0.4rem", fontSize: "0.85rem" }}>
-                    {TIPO_LABEL[tipo] || tipo}
+                    {tiposPosLabels[tipo] || tipo}
                   </div>
                   <div className="extra-chips">
                     {lista.map((extra) => {

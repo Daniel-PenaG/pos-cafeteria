@@ -14,20 +14,18 @@ from app.schemas.extras import (
     CategoriaExtrasConfigResponse,
     ProductoExtrasConfig,
     ProductoExtrasConfigResponse,
+    ExtraTipoPos,
+    ExtraTipoPosCreate,
 )
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 from app.services.extras_precio import extra_a_catalogo, sincronizar_precio_guardado
+from app.services.extras_tipo_service import listar_tipos, crear_tipo, validar_tipo_codigo
 
 router = APIRouter(prefix="/extras-venta", tags=["Extras de venta"])
 
-TIPOS_VALIDOS = {"CAFE", "LECHE", "SABORIZANTE", "OTRO"}
 
-
-def _validar_tipo(tipo: str) -> str:
-    t = (tipo or "OTRO").strip().upper()
-    if t not in TIPOS_VALIDOS:
-        raise DatosInvalidosException(f"Tipo debe ser: {', '.join(sorted(TIPOS_VALIDOS))}")
-    return t
+def _validar_tipo(db: Session, tipo: str) -> str:
+    return validar_tipo_codigo(db, tipo)
 
 
 def _aplicar_datos_precio(extra: ExtraVentaModel, data) -> None:
@@ -38,6 +36,16 @@ def _aplicar_datos_precio(extra: ExtraVentaModel, data) -> None:
         data.precio_personalizado if data.usar_precio_manual else None
     )
     sincronizar_precio_guardado(extra)
+
+
+@router.get("/tipos", response_model=List[ExtraTipoPos])
+def listar_tipos_pos(db: Session = Depends(get_db)):
+    return listar_tipos(db)
+
+
+@router.post("/tipos", response_model=ExtraTipoPos, status_code=201)
+def crear_tipo_pos(data: ExtraTipoPosCreate, db: Session = Depends(get_db)):
+    return crear_tipo(db, data.etiqueta)
 
 
 @router.get("/", response_model=List[ExtraVentaCatalogo])
@@ -71,7 +79,7 @@ def crear_extra_manual(data: ExtraVentaCatalogoCreate, db: Session = Depends(get
     extra = ExtraVentaModel(
         nombre=data.nombre.strip(),
         unidad=(data.unidad or "").strip() or None,
-        tipo=_validar_tipo(data.tipo),
+        tipo=_validar_tipo(db, data.tipo),
         activo=data.activo,
         id_insumo_origen=None,
         cantidad=data.cantidad,
@@ -104,7 +112,7 @@ def crear_extra_desde_insumo(
     extra = ExtraVentaModel(
         nombre=insumo.nombre,
         unidad=insumo.unidad,
-        tipo=_validar_tipo(data.tipo),
+        tipo=_validar_tipo(db, data.tipo),
         activo=data.activo,
         id_insumo_origen=insumo.id_insumo,
         cantidad=data.cantidad,
@@ -131,7 +139,7 @@ def actualizar_extra(
         raise DatosInvalidosException("El nombre es obligatorio")
     extra.nombre = data.nombre.strip()
     extra.unidad = (data.unidad or "").strip() or None
-    extra.tipo = _validar_tipo(data.tipo)
+    extra.tipo = _validar_tipo(db, data.tipo)
     extra.activo = data.activo
     _aplicar_datos_precio(extra, data)
     db.commit()

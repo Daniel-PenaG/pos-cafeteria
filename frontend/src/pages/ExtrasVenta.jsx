@@ -8,19 +8,17 @@ import {
   deleteExtra,
   getProductoExtrasConfig,
   saveProductoExtrasConfig,
+  getExtraTiposPos,
+  createExtraTipoPos,
 } from "../services/extrasVentaService";
 import { getProductos } from "../services/productosService";
 import PageHeader from "../components/PageHeader";
 
-const TIPOS = [
-  { value: "CAFE", label: "Café" },
-  { value: "LECHE", label: "Leche" },
-  { value: "SABORIZANTE", label: "Saborizante" },
-  { value: "OTRO", label: "Otro" },
-];
-
 export default function ExtrasVenta() {
   const [extras, setExtras] = useState([]);
+  const [tiposPos, setTiposPos] = useState([]);
+  const [nuevoTipoNombre, setNuevoTipoNombre] = useState("");
+  const [agregandoTipo, setAgregandoTipo] = useState(false);
   const [insumosImportables, setInsumosImportables] = useState([]);
   const [productos, setProductos] = useState([]);
   const [productoSel, setProductoSel] = useState("");
@@ -49,6 +47,11 @@ export default function ExtrasVenta() {
     setExtras(data);
   };
 
+  const loadTiposPos = async () => {
+    const data = await getExtraTiposPos();
+    setTiposPos(data);
+  };
+
   const loadProductos = async () => {
     const data = await getProductos();
     setProductos(
@@ -62,7 +65,7 @@ export default function ExtrasVenta() {
     (async () => {
       try {
         setLoading(true);
-        await Promise.all([loadExtras(), loadProductos()]);
+        await Promise.all([loadExtras(), loadProductos(), loadTiposPos()]);
       } catch (err) {
         console.error(err);
         alert("Error al cargar datos");
@@ -264,6 +267,23 @@ export default function ExtrasVenta() {
     }
   };
 
+  const handleAgregarTipo = async (ev) => {
+    ev?.preventDefault?.();
+    const nombre = nuevoTipoNombre.trim();
+    if (!nombre) return alert("Escribe el nombre de la categoría");
+    try {
+      setAgregandoTipo(true);
+      const creado = await createExtraTipoPos(nombre);
+      await loadTiposPos();
+      setTipo(creado.codigo);
+      setNuevoTipoNombre("");
+    } catch (err) {
+      alert(err.response?.data?.detail || "Error al crear categoría");
+    } finally {
+      setAgregandoTipo(false);
+    }
+  };
+
   const extrasActivos = extras.filter((e) => e.activo);
 
   const extrasAsignados = useMemo(
@@ -282,6 +302,9 @@ export default function ExtrasVenta() {
   const productoNombre = productos.find(
     (p) => String(p.id_producto) === String(productoSel)
   )?.nombre;
+
+  const etiquetaTipo = (codigo) =>
+    tiposPos.find((t) => t.codigo === codigo)?.etiqueta || codigo;
 
   const camposPrecio = (
     <>
@@ -326,6 +349,38 @@ export default function ExtrasVenta() {
         title="Extras de venta"
         subtitle="Catálogo de extras: nombre y si lleva costo al vender"
       />
+
+      <section className="card extras-tipos-panel">
+        <h2 style={{ marginTop: 0 }}>Tipos en POS</h2>
+        <p className="hint" style={{ marginTop: 0 }}>
+          Categorías para agrupar extras en ventas (Café, Leche, etc.). Agrega las que necesites.
+        </p>
+        <div className="extras-tipos-list">
+          {tiposPos.map((t) => (
+            <span key={t.codigo} className="extra-tipo-badge">
+              {t.etiqueta}
+            </span>
+          ))}
+        </div>
+        <form className="extras-tipos-form" onSubmit={handleAgregarTipo}>
+          <div className="form-row" style={{ marginBottom: 0, flex: 1 }}>
+            <label htmlFor="nuevo-tipo-pos">Nueva categoría</label>
+            <input
+              id="nuevo-tipo-pos"
+              value={nuevoTipoNombre}
+              onChange={(e) => setNuevoTipoNombre(e.target.value)}
+              placeholder="Ej. Jarabe, Topping…"
+            />
+          </div>
+          <button
+            type="submit"
+            className="btn btn--secondary"
+            disabled={agregandoTipo || !nuevoTipoNombre.trim()}
+          >
+            {agregandoTipo ? "Agregando…" : "Agregar categoría"}
+          </button>
+        </form>
+      </section>
 
       <div className="grid-2">
         <section className="card">
@@ -412,7 +467,7 @@ export default function ExtrasVenta() {
                           <span className="hint">Sin costo</span>
                         )}
                       </td>
-                      <td>{e.tipo}</td>
+                      <td>{etiquetaTipo(e.tipo)}</td>
                       <td>
                         <span className={e.activo ? "badge badge--ok" : "badge badge--off"}>
                           {e.activo ? "Activo" : "Inactivo"}
@@ -568,12 +623,27 @@ export default function ExtrasVenta() {
               <div className="form-row">
                 <label>Tipo en POS</label>
                 <select className="select" value={tipo} onChange={(e) => setTipo(e.target.value)}>
-                  {TIPOS.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
+                  {tiposPos.map((t) => (
+                    <option key={t.codigo} value={t.codigo}>
+                      {t.etiqueta}
                     </option>
                   ))}
                 </select>
+              </div>
+              <div className="extras-tipos-inline">
+                <input
+                  value={nuevoTipoNombre}
+                  onChange={(e) => setNuevoTipoNombre(e.target.value)}
+                  placeholder="Nueva categoría…"
+                />
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--sm"
+                  disabled={agregandoTipo || !nuevoTipoNombre.trim()}
+                  onClick={handleAgregarTipo}
+                >
+                  +
+                </button>
               </div>
               <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <input

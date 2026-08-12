@@ -81,3 +81,17 @@ class ProductoExtrasConfigResponse(BaseModel):
     nombre_categoria: str
     ids_extras: List[int] = []
     extras: List[ExtraVentaCatalogo] = []
+
+
+class ExtraTipoPos(BaseModel):
+    id_tipo: int
+    codigo: str
+    etiqueta: str
+    orden: int
+
+    class Config:
+        from_attributes = True
+
+
+class ExtraTipoPosCreate(BaseModel):
+    etiqueta: str
