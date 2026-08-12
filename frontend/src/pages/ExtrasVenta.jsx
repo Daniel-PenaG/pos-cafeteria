@@ -232,10 +232,26 @@ export default function ExtrasVenta() {
     }
   };
 
-  const toggleEnlace = (idExtra) => {
-    setIdsEnlazados((prev) =>
-      prev.includes(idExtra) ? prev.filter((id) => id !== idExtra) : [...prev, idExtra]
-    );
+  const quitarEnlace = (idExtra) => {
+    setIdsEnlazados((prev) => prev.filter((id) => id !== idExtra));
+  };
+
+  const agregarEnlace = (idExtra) => {
+    setIdsEnlazados((prev) => {
+      if (prev.includes(idExtra)) return prev;
+      return [...prev, idExtra];
+    });
+  };
+
+  const onDragStartExtra = (ev, idExtra) => {
+    ev.dataTransfer.setData("text/extra-id", String(idExtra));
+    ev.dataTransfer.effectAllowed = "copy";
+  };
+
+  const onDropEnProducto = (ev) => {
+    ev.preventDefault();
+    const id = Number(ev.dataTransfer.getData("text/extra-id"));
+    if (id) agregarEnlace(id);
   };
 
   const guardarEnlaces = async () => {
@@ -249,6 +265,23 @@ export default function ExtrasVenta() {
   };
 
   const extrasActivos = extras.filter((e) => e.activo);
+
+  const extrasAsignados = useMemo(
+    () =>
+      idsEnlazados
+        .map((id) => extrasActivos.find((e) => e.id_extra === id))
+        .filter(Boolean),
+    [idsEnlazados, extrasActivos]
+  );
+
+  const extrasDisponibles = useMemo(
+    () => extrasActivos.filter((e) => !idsEnlazados.includes(e.id_extra)),
+    [extrasActivos, idsEnlazados]
+  );
+
+  const productoNombre = productos.find(
+    (p) => String(p.id_producto) === String(productoSel)
+  )?.nombre;
 
   const camposPrecio = (
     <>
@@ -309,7 +342,40 @@ export default function ExtrasVenta() {
           </div>
           <p className="hint" style={{ marginTop: 0 }}>
             Define el nombre y si el extra tiene costo al agregarlo en una venta.
+            {productoSel && (
+              <>
+                {" "}
+                Arrastra un extra hacia el panel de la derecha para asignarlo a{" "}
+                <strong>{productoNombre}</strong>.
+              </>
+            )}
           </p>
+          {productoSel && extrasDisponibles.length > 0 && (
+            <div className="extras-drag-source">
+              <p className="hint" style={{ marginBottom: "0.5rem" }}>
+                Catálogo disponible (arrastra →)
+              </p>
+              <div className="extras-drag-list">
+                {extrasDisponibles.map((e) => (
+                  <div
+                    key={e.id_extra}
+                    className="extra-drag-chip"
+                    draggable
+                    onDragStart={(ev) => onDragStartExtra(ev, e.id_extra)}
+                    title="Arrastra al producto"
+                  >
+                    {e.nombre}
+                    {Number(e.precio) > 0 && (
+                      <span className="hint"> ${Number(e.precio).toFixed(2)}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {productoSel && extrasDisponibles.length === 0 && extrasActivos.length > 0 && (
+            <p className="hint">Todos los extras activos ya están en este producto.</p>
+          )}
           <div className="table-wrap">
             <table>
               <thead>
@@ -396,39 +462,41 @@ export default function ExtrasVenta() {
             </select>
           </div>
 
-          {productoSel && (
+          {productoSel ? (
             <>
               <p className="hint">
-                Marca los extras que aplican a este producto en ventas:
+                Arrastra extras desde el catálogo (izquierda) o suelta aquí:
               </p>
-              <div style={{ maxHeight: 320, overflowY: "auto" }}>
-                {extrasActivos.length === 0 ? (
-                  <p className="empty-state">No hay extras activos en el catálogo.</p>
+              <div
+                className="extras-drop-zone"
+                onDragOver={(ev) => ev.preventDefault()}
+                onDrop={onDropEnProducto}
+              >
+                {extrasAsignados.length === 0 ? (
+                  <p className="empty-state extras-drop-zone__empty">
+                    Sin extras — arrastra desde el catálogo
+                  </p>
                 ) : (
-                  extrasActivos.map((e) => (
-                    <label
-                      key={e.id_extra}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                        padding: "0.4rem 0",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={idsEnlazados.includes(e.id_extra)}
-                        onChange={() => toggleEnlace(e.id_extra)}
-                      />
-                      <span>
-                        {e.nombre} ({e.tipo})
-                        {Number(e.precio) > 0 && (
-                          <span className="hint"> — ${Number(e.precio).toFixed(2)}</span>
-                        )}
-                      </span>
-                    </label>
-                  ))
+                  <ul className="extras-asignados-list">
+                    {extrasAsignados.map((e) => (
+                      <li key={e.id_extra} className="extra-asignado-item">
+                        <span>
+                          {e.nombre}
+                          {Number(e.precio) > 0 && (
+                            <span className="hint"> — ${Number(e.precio).toFixed(2)}</span>
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn--danger btn--sm"
+                          onClick={() => quitarEnlace(e.id_extra)}
+                          title="Quitar"
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
               <button
@@ -440,6 +508,8 @@ export default function ExtrasVenta() {
                 Guardar en producto
               </button>
             </>
+          ) : (
+            <p className="hint">Selecciona un producto para asignar extras.</p>
           )}
         </section>
       </div>

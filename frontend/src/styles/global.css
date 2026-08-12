@@ -900,6 +900,74 @@ body {
   border: 1px solid var(--cream-dark);
 }
 
+/* ─── Extras drag & drop ─── */
+.extras-drag-source {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--latte);
+}
+
+.extras-drag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.extra-drag-chip {
+  padding: 0.4rem 0.65rem;
+  background: var(--paper);
+  border: 1px solid var(--latte);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: grab;
+  user-select: none;
+}
+
+.extra-drag-chip:active {
+  cursor: grabbing;
+  opacity: 0.85;
+}
+
+.extras-drop-zone {
+  min-height: 140px;
+  padding: 0.75rem;
+  border: 2px dashed var(--latte);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.extras-drop-zone:hover {
+  border-color: var(--accent);
+  background: #fffef9;
+}
+
+.extras-drop-zone__empty {
+  padding: 2rem 1rem;
+  margin: 0;
+}
+
+.extras-asignados-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.extra-asignado-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--cream-dark);
+}
+
+.extra-asignado-item:last-child {
+  border-bottom: none;
+}
+
 /* ─── Loading & empty ─── */
 .loading-state {
   padding: 3rem;
