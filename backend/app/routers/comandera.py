@@ -43,6 +43,7 @@ def listar_pendientes(db: Session = Depends(get_db)):
                 "cantidad_pendiente": pendiente,
                 "extras": _parse_extras(d.extras_json),
                 "nombre_promocion": d.nombre_promocion,
+                "comentario": d.comentario,
                 "fecha_envio_comanda": d.fecha_envio_comanda,
                 "segundos_en_preparacion": _segundos_transcurridos(d.fecha_envio_comanda),
             }
@@ -90,6 +91,7 @@ def marcar_listo(id_detalle_pedido: int, data: ComandaMarcarListo, db: Session =
         "cantidad_pendiente": max(0, cant - lista),
         "extras": _parse_extras(detalle.extras_json),
         "nombre_promocion": detalle.nombre_promocion,
+        "comentario": detalle.comentario,
         "fecha_envio_comanda": detalle.fecha_envio_comanda,
         "segundos_en_preparacion": _segundos_transcurridos(detalle.fecha_envio_comanda),
     }

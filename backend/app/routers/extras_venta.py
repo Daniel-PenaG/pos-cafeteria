@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.database import get_db
-from app.models import CategoriaModel, CategoriaExtraModel, ExtraVentaModel, InsumoModel
+from app.models import CategoriaModel, CategoriaExtraModel, ExtraVentaModel, InsumoModel, ProductoModel, ProductoExtraModel
 from app.schemas.extras import (
     ExtraVentaCatalogo,
     ExtraVentaCatalogoCreate,
@@ -12,6 +12,8 @@ from app.schemas.extras import (
     InsumoParaImportar,
     CategoriaExtrasConfig,
     CategoriaExtrasConfigResponse,
+    ProductoExtrasConfig,
+    ProductoExtrasConfigResponse,
 )
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 from app.services.extras_precio import extra_a_catalogo, sincronizar_precio_guardado
@@ -143,6 +145,7 @@ def eliminar_extra(id_extra: int, db: Session = Depends(get_db)):
     if not extra:
         raise RecursoNoEncontradoException("Extra no encontrado")
     db.query(CategoriaExtraModel).filter(CategoriaExtraModel.id_extra == id_extra).delete()
+    db.query(ProductoExtraModel).filter(ProductoExtraModel.id_extra == id_extra).delete()
     db.delete(extra)
     db.commit()
     return {"message": "Extra eliminado del catálogo"}
@@ -197,3 +200,62 @@ def guardar_config_categoria(
 
     db.commit()
     return obtener_config_categoria(id_categoria, db)
+
+
+@router.get("/productos/{id_producto}/config", response_model=ProductoExtrasConfigResponse)
+def obtener_config_producto(id_producto: int, db: Session = Depends(get_db)):
+    prod = (
+        db.query(ProductoModel)
+        .filter(ProductoModel.id_producto == id_producto)
+        .first()
+    )
+    if not prod:
+        raise RecursoNoEncontradoException("Producto no encontrado")
+
+    cat = db.query(CategoriaModel).filter(CategoriaModel.id_categoria == prod.id_categoria).first()
+
+    ids = [
+        r.id_extra
+        for r in db.query(ProductoExtraModel)
+        .filter(ProductoExtraModel.id_producto == id_producto)
+        .all()
+    ]
+    extras = []
+    if ids:
+        filas = (
+            db.query(ExtraVentaModel)
+            .filter(ExtraVentaModel.id_extra.in_(ids))
+            .order_by(ExtraVentaModel.nombre)
+            .all()
+        )
+        extras = [extra_a_catalogo(e) for e in filas]
+
+    return ProductoExtrasConfigResponse(
+        id_producto=prod.id_producto,
+        nombre_producto=prod.nombre,
+        id_categoria=prod.id_categoria,
+        nombre_categoria=cat.nombre if cat else "",
+        ids_extras=ids,
+        extras=extras,
+    )
+
+
+@router.put("/productos/{id_producto}/config", response_model=ProductoExtrasConfigResponse)
+def guardar_config_producto(
+    id_producto: int, data: ProductoExtrasConfig, db: Session = Depends(get_db)
+):
+    prod = db.query(ProductoModel).filter(ProductoModel.id_producto == id_producto).first()
+    if not prod:
+        raise RecursoNoEncontradoException("Producto no encontrado")
+
+    db.query(ProductoExtraModel).filter(
+        ProductoExtraModel.id_producto == id_producto
+    ).delete()
+
+    for id_extra in data.ids_extras:
+        existe = db.query(ExtraVentaModel).filter(ExtraVentaModel.id_extra == id_extra).first()
+        if existe:
+            db.add(ProductoExtraModel(id_producto=id_producto, id_extra=id_extra))
+
+    db.commit()
+    return obtener_config_producto(id_producto, db)

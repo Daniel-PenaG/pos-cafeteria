@@ -43,7 +43,11 @@ class ProductoModel(Base):
     categoria = relationship("CategoriaModel", back_populates="productos")
     recetas = relationship("RecetaModel", back_populates="producto", cascade="all, delete")
     detalles = relationship("DetalleVentaModel", back_populates="producto")
-   
+    extras_enlazados = relationship(
+        "ProductoExtraModel",
+        back_populates="producto",
+        cascade="all, delete-orphan",
+    )
 
 
 # ============================
@@ -148,6 +152,7 @@ class ExtraVentaModel(Base):
     id_insumo_origen = Column(Integer, nullable=True)
 
     categorias = relationship("CategoriaExtraModel", back_populates="extra")
+    productos = relationship("ProductoExtraModel", back_populates="extra", cascade="all, delete-orphan")
 
 
 class CategoriaExtraModel(Base):
@@ -160,6 +165,18 @@ class CategoriaExtraModel(Base):
 
     categoria = relationship("CategoriaModel", back_populates="extras_enlazados")
     extra = relationship("ExtraVentaModel", back_populates="categorias")
+
+
+class ProductoExtraModel(Base):
+    """Qué extras del catálogo aplican a cada producto."""
+    __tablename__ = "producto_extras"
+
+    id = Column(Integer, primary_key=True, index=True)
+    id_producto = Column(Integer, ForeignKey("productos.id_producto"), nullable=False)
+    id_extra = Column(Integer, ForeignKey("extras_venta.id_extra"), nullable=False)
+
+    producto = relationship("ProductoModel", back_populates="extras_enlazados")
+    extra = relationship("ExtraVentaModel", back_populates="productos")
 
 
 class DetalleVentaModel(Base):
@@ -324,6 +341,7 @@ class DetallePedidoModel(Base):
     fecha_envio_comanda = Column(DateTime, nullable=True)
     fecha_listo_comanda = Column(DateTime, nullable=True)
     line_key = Column(String(120), nullable=False)
+    comentario = Column(String(300), nullable=True)
 
     pedido = relationship("PedidoModel", back_populates="detalles")
     producto = relationship("ProductoModel")

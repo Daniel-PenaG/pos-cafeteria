@@ -68,3 +68,16 @@ class CategoriaExtrasConfigResponse(BaseModel):
     nombre_categoria: str
     ids_extras: List[int] = []
     extras: List[ExtraVentaCatalogo] = []
+
+
+class ProductoExtrasConfig(BaseModel):
+    ids_extras: List[int] = Field(default_factory=list)
+
+
+class ProductoExtrasConfigResponse(BaseModel):
+    id_producto: int
+    nombre_producto: str
+    id_categoria: int
+    nombre_categoria: str
+    ids_extras: List[int] = []
+    extras: List[ExtraVentaCatalogo] = []

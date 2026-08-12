@@ -15,9 +15,13 @@ from app.services.venta_service import registrar_venta
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 
 
-def _line_key(id_producto: int, extras: list, id_promocion) -> str:
+def _line_key(id_producto: int, extras: list, id_promocion, comentario: str | None = None) -> str:
     ids = sorted([e.id_extra for e in extras])
-    return f"{id_producto}-{id_promocion or 'np'}-{'-'.join(map(str, ids))}"
+    base = f"{id_producto}-{id_promocion or 'np'}-{'-'.join(map(str, ids))}"
+    com = (comentario or "").strip().lower()[:50]
+    if com:
+        return f"{base}-c:{com}"[:120]
+    return base[:120]
 
 
 def _parse_extras(extras_json: str | None) -> list:
@@ -47,6 +51,7 @@ def _detalle_a_dict(d: DetallePedidoModel) -> dict:
         "nombre_promocion": d.nombre_promocion,
         "extras": extras,
         "en_comanda": bool(d.en_comanda),
+        "comentario": d.comentario,
         "line_key": d.line_key,
     }
 
@@ -109,7 +114,8 @@ def agregar_linea_pedido(
             f"Precio inválido. Esperado: {esperado:.2f}, recibido: {data.precio_unitario:.2f}"
         )
 
-    key = _line_key(data.id_producto, data.extras, data.id_promocion)
+    comentario = (data.comentario or "").strip() or None
+    key = _line_key(data.id_producto, data.extras, data.id_promocion, comentario)
     existente = (
         db.query(DetallePedidoModel)
         .filter(DetallePedidoModel.id_pedido == pedido.id_pedido, DetallePedidoModel.line_key == key)
@@ -150,6 +156,7 @@ def agregar_linea_pedido(
         en_comanda=data.enviar_comanda,
         fecha_envio_comanda=ahora if data.enviar_comanda else None,
         line_key=key,
+        comentario=comentario,
     )
     db.add(detalle)
     db.commit()

@@ -39,6 +39,8 @@ def listar_pedidos_activos(db: Session = Depends(get_db)):
     )
     res = []
     for p in pedidos:
+        if not p.detalles:
+            continue
         total = sum(float(d.cantidad) * float(d.precio_unitario) for d in p.detalles)
         pendientes = sum(
             1

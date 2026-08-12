@@ -1,5 +1,5 @@
 import json
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 
@@ -30,6 +30,7 @@ class DetallePedidoLinea(BaseModel):
     nombre_promocion: Optional[str] = None
     extras: List[ExtraLineaPedido] = []
     en_comanda: bool
+    comentario: Optional[str] = None
     line_key: str
 
 
@@ -62,6 +63,7 @@ class PedidoLineaCreate(BaseModel):
     id_promocion: Optional[int] = None
     extras: List[ExtraLineaPedido] = []
     enviar_comanda: bool = True
+    comentario: Optional[str] = Field(None, max_length=300)
 
 
 class PedidoLineaUpdate(BaseModel):
@@ -88,6 +90,7 @@ class ComandaLinea(BaseModel):
     cantidad_pendiente: float
     extras: List[ExtraLineaPedido] = []
     nombre_promocion: Optional[str] = None
+    comentario: Optional[str] = None
     fecha_envio_comanda: Optional[datetime] = None
     segundos_en_preparacion: Optional[int] = None
 

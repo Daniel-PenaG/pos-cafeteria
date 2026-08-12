@@ -2,21 +2,14 @@ from typing import List
 
 from sqlalchemy.orm import Session
 
-from app.models import CategoriaExtraModel, ExtraVentaModel, ProductoModel
+from app.models import CategoriaExtraModel, ExtraVentaModel, ProductoExtraModel, ProductoModel
 from app.schemas.ventas import ExtraVenta
 from app.services.extras_precio import precio_desde_modelo
 
 
-def extras_para_categoria(db: Session, id_categoria: int) -> List[ExtraVenta]:
-    enlaces = (
-        db.query(CategoriaExtraModel.id_extra)
-        .filter(CategoriaExtraModel.id_categoria == id_categoria)
-        .all()
-    )
-    if not enlaces:
+def _extras_desde_ids(db: Session, ids: List[int]) -> List[ExtraVenta]:
+    if not ids:
         return []
-
-    ids = [e[0] for e in enlaces]
     extras = (
         db.query(ExtraVentaModel)
         .filter(
@@ -38,10 +31,31 @@ def extras_para_categoria(db: Session, id_categoria: int) -> List[ExtraVenta]:
     ]
 
 
+def extras_para_categoria(db: Session, id_categoria: int) -> List[ExtraVenta]:
+    enlaces = (
+        db.query(CategoriaExtraModel.id_extra)
+        .filter(CategoriaExtraModel.id_categoria == id_categoria)
+        .all()
+    )
+    ids = [e[0] for e in enlaces]
+    return _extras_desde_ids(db, ids)
+
+
 def extras_para_producto(db: Session, id_producto: int) -> List[ExtraVenta]:
     producto = (
         db.query(ProductoModel).filter(ProductoModel.id_producto == id_producto).first()
     )
     if not producto:
         return []
+
+    enlaces_producto = (
+        db.query(ProductoExtraModel.id_extra)
+        .filter(ProductoExtraModel.id_producto == id_producto)
+        .all()
+    )
+    if enlaces_producto:
+        ids = [e[0] for e in enlaces_producto]
+        return _extras_desde_ids(db, ids)
+
+    # Si el producto no tiene extras propios, usa los de su categoría (compatibilidad)
     return extras_para_categoria(db, producto.id_categoria)

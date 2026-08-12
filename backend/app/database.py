@@ -56,6 +56,12 @@ def aplicar_migraciones_sqlite():
         "ALTER TABLE categoria_extras ADD COLUMN IF NOT EXISTS id_extra INTEGER REFERENCES extras_venta(id_extra)",
         "ALTER TABLE categoria_extras DROP CONSTRAINT IF EXISTS categoria_extras_id_insumo_fkey",
         "ALTER TABLE categoria_extras DROP COLUMN IF EXISTS id_insumo",
+        """CREATE TABLE IF NOT EXISTS producto_extras (
+            id SERIAL PRIMARY KEY,
+            id_producto INTEGER NOT NULL REFERENCES productos(id_producto) ON DELETE CASCADE,
+            id_extra INTEGER NOT NULL REFERENCES extras_venta(id_extra) ON DELETE CASCADE,
+            UNIQUE (id_producto, id_extra)
+        )""",
     ]
     migraciones_sqlite_extras = [
         """CREATE TABLE IF NOT EXISTS extras_venta (
@@ -76,6 +82,12 @@ def aplicar_migraciones_sqlite():
         "ALTER TABLE extras_venta ADD COLUMN usar_precio_manual BOOLEAN DEFAULT 0",
         "ALTER TABLE extras_venta ADD COLUMN precio_personalizado NUMERIC(10, 2)",
         "ALTER TABLE categoria_extras ADD COLUMN id_extra INTEGER REFERENCES extras_venta(id_extra)",
+        """CREATE TABLE IF NOT EXISTS producto_extras (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_producto INTEGER NOT NULL REFERENCES productos(id_producto),
+            id_extra INTEGER NOT NULL REFERENCES extras_venta(id_extra),
+            UNIQUE (id_producto, id_extra)
+        )""",
     ]
     migraciones_promos = [
         """CREATE TABLE IF NOT EXISTS promociones (
@@ -260,9 +272,11 @@ def aplicar_migraciones_sqlite():
     ]
     migraciones_comanda_tiempos_pg = [
         "ALTER TABLE detalle_pedido ADD COLUMN IF NOT EXISTS fecha_listo_comanda TIMESTAMP",
+        "ALTER TABLE detalle_pedido ADD COLUMN IF NOT EXISTS comentario VARCHAR(300)",
     ]
     migraciones_comanda_tiempos_sqlite = [
         "ALTER TABLE detalle_pedido ADD COLUMN fecha_listo_comanda TIMESTAMP",
+        "ALTER TABLE detalle_pedido ADD COLUMN comentario VARCHAR(300)",
     ]
     # Esquema nuevo: recetas (cabecera) + receta_insumos (detalle).
     # Producción puede tener aún id_insumo/cantidad en recetas (NOT NULL) → falla el INSERT.
