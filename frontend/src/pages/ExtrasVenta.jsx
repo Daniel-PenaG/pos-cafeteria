@@ -19,10 +19,6 @@ const TIPOS = [
   { value: "OTRO", label: "Otro" },
 ];
 
-function precioCalculado(costo, cantidad) {
-  return (parseFloat(costo) || 0) * (parseFloat(cantidad) || 1);
-}
-
 export default function ExtrasVenta() {
   const [extras, setExtras] = useState([]);
   const [insumosImportables, setInsumosImportables] = useState([]);
@@ -36,21 +32,17 @@ export default function ExtrasVenta() {
   const [editing, setEditing] = useState(null);
   const [nombre, setNombre] = useState("");
   const [unidad, setUnidad] = useState("");
-  const [cantidad, setCantidad] = useState("1");
-  const [costoUnitario, setCostoUnitario] = useState("0");
-  const [usarPrecioManual, setUsarPrecioManual] = useState(false);
-  const [precioPersonalizado, setPrecioPersonalizado] = useState("");
+  const [tieneCosto, setTieneCosto] = useState(false);
+  const [precioExtra, setPrecioExtra] = useState("");
   const [tipo, setTipo] = useState("OTRO");
   const [activo, setActivo] = useState(true);
   const [insumoSel, setInsumoSel] = useState("");
 
   const precioPreview = useMemo(() => {
-    if (usarPrecioManual) {
-      const p = parseFloat(precioPersonalizado);
-      return isNaN(p) ? 0 : p;
-    }
-    return precioCalculado(costoUnitario, cantidad);
-  }, [usarPrecioManual, precioPersonalizado, costoUnitario, cantidad]);
+    if (!tieneCosto) return 0;
+    const p = parseFloat(precioExtra);
+    return isNaN(p) ? 0 : p;
+  }, [tieneCosto, precioExtra]);
 
   const loadExtras = async () => {
     const data = await getExtrasCatalogo();
@@ -95,10 +87,8 @@ export default function ExtrasVenta() {
   const resetForm = () => {
     setNombre("");
     setUnidad("");
-    setCantidad("1");
-    setCostoUnitario("0");
-    setUsarPrecioManual(false);
-    setPrecioPersonalizado("");
+    setTieneCosto(false);
+    setPrecioExtra("");
     setTipo("OTRO");
     setActivo(true);
     setInsumoSel("");
@@ -129,12 +119,9 @@ export default function ExtrasVenta() {
     setModoModal("edit");
     setNombre(e.nombre);
     setUnidad(e.unidad || "");
-    setCantidad(String(e.cantidad ?? 1));
-    setCostoUnitario(String(e.costo_unitario ?? 0));
-    setUsarPrecioManual(!!e.usar_precio_manual);
-    setPrecioPersonalizado(
-      e.precio_personalizado != null ? String(e.precio_personalizado) : String(e.precio)
-    );
+    const precio = Number(e.precio) || 0;
+    setTieneCosto(precio > 0);
+    setPrecioExtra(precio > 0 ? String(precio) : "");
     setTipo(e.tipo || "OTRO");
     setActivo(e.activo !== false);
     setShowModal(true);
@@ -146,36 +133,30 @@ export default function ExtrasVenta() {
     if (ins) {
       setNombre(ins.nombre);
       setUnidad(ins.unidad);
-      setCostoUnitario(String(ins.costo_unitario));
-      setCantidad("1");
-      setUsarPrecioManual(false);
+      setTieneCosto(false);
+      setPrecioExtra("");
     }
   };
 
   const buildPayloadPrecio = () => {
-    const cant = parseFloat(cantidad);
-    const costo = parseFloat(costoUnitario);
-    if (isNaN(cant) || cant <= 0) {
-      alert("La cantidad debe ser mayor a 0");
-      return null;
+    if (!tieneCosto) {
+      return {
+        cantidad: 1,
+        costo_unitario: 0,
+        usar_precio_manual: true,
+        precio_personalizado: 0,
+      };
     }
-    if (isNaN(costo) || costo < 0) {
-      alert("Indica un costo unitario válido");
+    const precio = parseFloat(precioExtra);
+    if (isNaN(precio) || precio <= 0) {
+      alert("Indica un precio mayor a 0 o desmarca «Tiene costo»");
       return null;
-    }
-    let precioPers = null;
-    if (usarPrecioManual) {
-      precioPers = parseFloat(precioPersonalizado);
-      if (isNaN(precioPers) || precioPers < 0) {
-        alert("Indica un precio personalizado válido");
-        return null;
-      }
     }
     return {
-      cantidad: cant,
-      costo_unitario: costo,
-      usar_precio_manual: usarPrecioManual,
-      precio_personalizado: precioPers,
+      cantidad: 1,
+      costo_unitario: 0,
+      usar_precio_manual: true,
+      precio_personalizado: precio,
     };
   };
 
@@ -267,57 +248,35 @@ export default function ExtrasVenta() {
 
   const camposPrecio = (
     <>
-      <div className="form-grid">
-        <div className="form-row">
-          <label>Cantidad</label>
-          <input
-            type="number"
-            min="0.001"
-            step="0.001"
-            value={cantidad}
-            onChange={(e) => setCantidad(e.target.value)}
-            required
-          />
-        </div>
-        <div className="form-row">
-          <label>Costo unitario (ref.)</label>
-          <input
-            type="number"
-            min="0"
-            step="0.0001"
-            value={costoUnitario}
-            onChange={(e) => setCostoUnitario(e.target.value)}
-            required
-          />
-        </div>
-      </div>
-      <p className="hint">
-        Precio calculado: <strong>${precioCalculado(costoUnitario, cantidad).toFixed(2)}</strong>
-        {" "}(costo × cantidad)
-      </p>
       <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
         <input
           type="checkbox"
-          checked={usarPrecioManual}
-          onChange={(e) => setUsarPrecioManual(e.target.checked)}
+          checked={tieneCosto}
+          onChange={(e) => {
+            setTieneCosto(e.target.checked);
+            if (!e.target.checked) setPrecioExtra("");
+          }}
         />
-        Usar precio personalizado
+        Tiene costo adicional
       </label>
-      {usarPrecioManual && (
+      {tieneCosto && (
         <div className="form-row">
-          <label>Precio de venta *</label>
+          <label>Precio *</label>
           <input
             type="number"
-            min="0"
+            min="0.01"
             step="0.01"
-            value={precioPersonalizado}
-            onChange={(e) => setPrecioPersonalizado(e.target.value)}
+            value={precioExtra}
+            onChange={(e) => setPrecioExtra(e.target.value)}
+            placeholder="Ej. 15.00"
             required
           />
         </div>
       )}
       <p className="hint" style={{ marginTop: 0 }}>
-        Precio en POS: <strong>${precioPreview.toFixed(2)}</strong>
+        {tieneCosto
+          ? <>Se cobrará <strong>${precioPreview.toFixed(2)}</strong> al agregarlo en venta.</>
+          : <>Sin costo: solo aparece el nombre en venta.</>}
       </p>
     </>
   );
@@ -328,7 +287,7 @@ export default function ExtrasVenta() {
     <div className="page">
       <PageHeader
         title="Extras de venta"
-        subtitle="Catálogo propio con precio por cantidad (costo × cant.) o precio fijo que definas"
+        subtitle="Catálogo de extras: nombre y si lleva costo al vender"
       />
 
       <div className="grid-2">
@@ -345,16 +304,14 @@ export default function ExtrasVenta() {
             </div>
           </div>
           <p className="hint" style={{ marginTop: 0 }}>
-            El precio de venta es costo unitario × cantidad, salvo que actives precio personalizado.
+            Define el nombre y si el extra tiene costo al agregarlo en una venta.
           </p>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>Nombre</th>
-                  <th>Cant.</th>
-                  <th>Costo u.</th>
-                  <th>Precio venta</th>
+                  <th>Costo</th>
                   <th>Tipo</th>
                   <th>Estado</th>
                   <th>Acciones</th>
@@ -363,7 +320,7 @@ export default function ExtrasVenta() {
               <tbody>
                 {extras.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="empty-state">
+                    <td colSpan="5" className="empty-state">
                       Sin extras. Crea uno manual o importa desde insumos.
                     </td>
                   </tr>
@@ -378,14 +335,11 @@ export default function ExtrasVenta() {
                           </span>
                         )}
                       </td>
-                      <td>{Number(e.cantidad).toFixed(3)}</td>
-                      <td>${Number(e.costo_unitario).toFixed(2)}</td>
                       <td>
-                        ${Number(e.precio).toFixed(2)}
-                        {e.usar_precio_manual && (
-                          <span className="badge" style={{ marginLeft: "0.35rem" }}>
-                            fijo
-                          </span>
+                        {Number(e.precio) > 0 ? (
+                          <>${Number(e.precio).toFixed(2)}</>
+                        ) : (
+                          <span className="hint">Sin costo</span>
                         )}
                       </td>
                       <td>{e.tipo}</td>
@@ -462,12 +416,9 @@ export default function ExtrasVenta() {
                         onChange={() => toggleEnlace(e.id_extra)}
                       />
                       <span>
-                        {e.nombre} ({e.tipo}) — ${Number(e.precio).toFixed(2)}
-                        {!e.usar_precio_manual && (
-                          <span className="hint">
-                            {" "}
-                            ({Number(e.cantidad)} × ${Number(e.costo_unitario).toFixed(2)})
-                          </span>
+                        {e.nombre} ({e.tipo})
+                        {Number(e.precio) > 0 && (
+                          <span className="hint"> — ${Number(e.precio).toFixed(2)}</span>
                         )}
                       </span>
                     </label>

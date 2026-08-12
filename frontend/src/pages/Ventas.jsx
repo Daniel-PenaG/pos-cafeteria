@@ -546,7 +546,8 @@ export default function Ventas() {
                       <ul className="cart-item__extras">
                         {item.extras.map((e) => (
                           <li key={e.id_extra}>
-                            + {e.nombre} (${Number(e.precio).toFixed(2)})
+                            + {e.nombre}
+                            {Number(e.precio) > 0 && ` ($${Number(e.precio).toFixed(2)})`}
                           </li>
                         ))}
                       </ul>
@@ -680,7 +681,7 @@ export default function Ventas() {
                           onClick={() => toggleExtra(extra)}
                           className={`extra-chip ${sel ? "extra-chip--selected" : ""}`}
                         >
-                          {extra.nombre} (+${Number(extra.precio).toFixed(2)})
+                          {extra.nombre}
                         </button>
                       );
                     })}
