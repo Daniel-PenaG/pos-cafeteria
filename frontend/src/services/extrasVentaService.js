@@ -55,3 +55,19 @@ export async function saveCategoriaExtrasConfig(idCategoria, idsExtras) {
   );
   return res.data;
 }
+
+export async function getProductoExtrasConfig(idProducto) {
+  const res = await api.get(`/extras-venta/productos/${idProducto}/config`, {
+    headers: getAuthHeader(),
+  });
+  return res.data;
+}
+
+export async function saveProductoExtrasConfig(idProducto, idsExtras) {
+  const res = await api.put(
+    `/extras-venta/productos/${idProducto}/config`,
+    { ids_extras: idsExtras },
+    { headers: getAuthHeader() }
+  );
+  return res.data;
+}

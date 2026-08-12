@@ -6,10 +6,10 @@ import {
   createExtraDesdeInsumo,
   updateExtra,
   deleteExtra,
-  getCategoriaExtrasConfig,
-  saveCategoriaExtrasConfig,
+  getProductoExtrasConfig,
+  saveProductoExtrasConfig,
 } from "../services/extrasVentaService";
-import { getCategorias } from "../services/categoriasService";
+import { getProductos } from "../services/productosService";
 import PageHeader from "../components/PageHeader";
 
 const TIPOS = [
@@ -22,8 +22,8 @@ const TIPOS = [
 export default function ExtrasVenta() {
   const [extras, setExtras] = useState([]);
   const [insumosImportables, setInsumosImportables] = useState([]);
-  const [categorias, setCategorias] = useState([]);
-  const [categoriaSel, setCategoriaSel] = useState("");
+  const [productos, setProductos] = useState([]);
+  const [productoSel, setProductoSel] = useState("");
   const [idsEnlazados, setIdsEnlazados] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -49,16 +49,20 @@ export default function ExtrasVenta() {
     setExtras(data);
   };
 
-  const loadCategorias = async () => {
-    const data = await getCategorias();
-    setCategorias(data);
+  const loadProductos = async () => {
+    const data = await getProductos();
+    setProductos(
+      data
+        .filter((p) => p.activo !== false)
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
+    );
   };
 
   useEffect(() => {
     (async () => {
       try {
         setLoading(true);
-        await Promise.all([loadExtras(), loadCategorias()]);
+        await Promise.all([loadExtras(), loadProductos()]);
       } catch (err) {
         console.error(err);
         alert("Error al cargar datos");
@@ -69,20 +73,20 @@ export default function ExtrasVenta() {
   }, []);
 
   useEffect(() => {
-    if (!categoriaSel) {
+    if (!productoSel) {
       setIdsEnlazados([]);
       return;
     }
     (async () => {
       try {
-        const cfg = await getCategoriaExtrasConfig(Number(categoriaSel));
+        const cfg = await getProductoExtrasConfig(Number(productoSel));
         setIdsEnlazados(cfg.ids_extras || []);
       } catch (err) {
         console.error(err);
-        alert("Error al cargar configuración de categoría");
+        alert("Error al cargar extras del producto");
       }
     })();
-  }, [categoriaSel]);
+  }, [productoSel]);
 
   const resetForm = () => {
     setNombre("");
@@ -219,8 +223,8 @@ export default function ExtrasVenta() {
     try {
       await deleteExtra(e.id_extra);
       await loadExtras();
-      if (categoriaSel) {
-        const cfg = await getCategoriaExtrasConfig(Number(categoriaSel));
+      if (productoSel) {
+        const cfg = await getProductoExtrasConfig(Number(productoSel));
         setIdsEnlazados(cfg.ids_extras || []);
       }
     } catch (err) {
@@ -235,10 +239,10 @@ export default function ExtrasVenta() {
   };
 
   const guardarEnlaces = async () => {
-    if (!categoriaSel) return alert("Selecciona una categoría");
+    if (!productoSel) return alert("Selecciona un producto");
     try {
-      await saveCategoriaExtrasConfig(Number(categoriaSel), idsEnlazados);
-      alert("Enlaces guardados.");
+      await saveProductoExtrasConfig(Number(productoSel), idsEnlazados);
+      alert("Extras asignados al producto.");
     } catch (err) {
       alert(err.response?.data?.detail || "Error al guardar enlaces");
     }
@@ -375,26 +379,28 @@ export default function ExtrasVenta() {
         </section>
 
         <section className="card panel-muted">
-          <h2>Enlazar por categoría</h2>
+          <h2>Asignar por producto</h2>
           <div className="form-row">
-            <label>Categoría de producto</label>
+            <label>Producto</label>
             <select
               className="select"
-              value={categoriaSel}
-              onChange={(e) => setCategoriaSel(e.target.value)}
+              value={productoSel}
+              onChange={(e) => setProductoSel(e.target.value)}
             >
-              <option value="">Seleccione categoría…</option>
-              {categorias.map((c) => (
-                <option key={c.id_categoria} value={c.id_categoria}>
-                  {c.nombre}
+              <option value="">Seleccione producto…</option>
+              {productos.map((p) => (
+                <option key={p.id_producto} value={p.id_producto}>
+                  {p.nombre}
                 </option>
               ))}
             </select>
           </div>
 
-          {categoriaSel && (
+          {productoSel && (
             <>
-              <p className="hint">Extras del catálogo para productos de esta categoría:</p>
+              <p className="hint">
+                Marca los extras que aplican a este producto en ventas:
+              </p>
               <div style={{ maxHeight: 320, overflowY: "auto" }}>
                 {extrasActivos.length === 0 ? (
                   <p className="empty-state">No hay extras activos en el catálogo.</p>
@@ -431,7 +437,7 @@ export default function ExtrasVenta() {
                 style={{ marginTop: "1rem" }}
                 onClick={guardarEnlaces}
               >
-                Guardar enlaces
+                Guardar en producto
               </button>
             </>
           )}
