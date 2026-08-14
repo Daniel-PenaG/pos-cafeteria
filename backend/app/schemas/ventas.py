@@ -34,6 +34,7 @@ class VentaCreate(BaseModel):
     numero_mesa: int
     forma_pago: str
     id_cliente: Optional[int] = None
+    para_llevar: bool = False
     detalles: List[DetalleVentaItem]
 
 
@@ -48,6 +49,8 @@ class VentaResponse(BaseModel):
     puntos_generados: int = 0
     cliente_nombre: Optional[str] = None
     cliente_puntos_saldo: Optional[int] = None
+    para_llevar: bool = False
+    advertencias_stock: List[str] = []
 
     class Config:
         from_attributes = True

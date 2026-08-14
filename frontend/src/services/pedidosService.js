@@ -11,17 +11,17 @@ export async function getPedidosActivos() {
   return res.data;
 }
 
-export async function getPedidoMesa(numeroMesa, idUsuario) {
+export async function getPedidoMesa(numeroMesa, idUsuario, paraLlevar = false) {
   const res = await api.get(`/pedidos/mesa/${numeroMesa}`, {
-    params: { id_usuario: idUsuario },
+    params: { id_usuario: idUsuario, para_llevar: paraLlevar },
     headers: getAuthHeader(),
   });
   return res.data;
 }
 
-export async function agregarLineaPedido(numeroMesa, idUsuario, data) {
+export async function agregarLineaPedido(numeroMesa, idUsuario, data, paraLlevar = false) {
   const res = await api.post(`/pedidos/mesa/${numeroMesa}/lineas`, data, {
-    params: { id_usuario: idUsuario },
+    params: { id_usuario: idUsuario, para_llevar: paraLlevar },
     headers: getAuthHeader(),
   });
   return res.data;

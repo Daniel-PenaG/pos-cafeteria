@@ -70,6 +70,22 @@ export async function deleteProducto(id) {
   return res.data;
 }
 
+export async function getProductosParaLlevar() {
+  const res = await api.get("/catalogo/productos/para-llevar", {
+    headers: getAuthHeader(),
+  });
+  return res.data;
+}
+
+export async function saveParaLlevarConfig(idsProductos) {
+  const res = await api.put(
+    "/catalogo/productos/para-llevar/config",
+    { ids_productos: idsProductos },
+    { headers: getAuthHeader() }
+  );
+  return res.data;
+}
+
 // INSUMOS
 export async function getInsumos() {
   const res = await api.get("/catalogo/insumos", { headers: getAuthHeader() });

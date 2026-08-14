@@ -6,6 +6,7 @@ from app.schemas.productos import (
     CategoriaCreate, CategoriaUpdate, Categoria,
     ProductoCreate, ProductoUpdate, Producto,
     InsumoCreate, InsumoUpdate, Insumo, InsumoActualizado,
+    ParaLlevarConfigUpdate,
 )
 from app.services import RecetaService
 from app.exceptions import (
@@ -85,7 +86,8 @@ def crear_producto(data: ProductoCreate, db: Session = Depends(get_db)):
         nombre=data.nombre.strip(),
         id_categoria=data.id_categoria,
         precio_venta=data.precio_venta,
-        activo=data.activo
+        activo=data.activo,
+        para_llevar=bool(data.para_llevar),
     )
     db.add(nuevo_producto)
     db.commit()
@@ -95,6 +97,27 @@ def crear_producto(data: ProductoCreate, db: Session = Depends(get_db)):
 @router.get("/productos", response_model=list[Producto])
 def listar_productos(db: Session = Depends(get_db)):
     return db.query(ProductoModel).all()
+
+
+@router.get("/productos/para-llevar", response_model=list[Producto])
+def listar_productos_para_llevar(db: Session = Depends(get_db)):
+    return (
+        db.query(ProductoModel)
+        .filter(ProductoModel.para_llevar == True, ProductoModel.activo == True)
+        .order_by(ProductoModel.nombre)
+        .all()
+    )
+
+
+@router.put("/productos/para-llevar/config")
+def guardar_config_para_llevar(data: ParaLlevarConfigUpdate, db: Session = Depends(get_db)):
+    ids = set(data.ids_productos or [])
+    productos = db.query(ProductoModel).all()
+    for producto in productos:
+        producto.para_llevar = producto.id_producto in ids
+    db.commit()
+    return {"ok": True, "total": len(ids)}
+
 
 @router.get("/productos/{id_producto}", response_model=Producto)
 def obtener_producto(id_producto: int, db: Session = Depends(get_db)):
@@ -123,6 +146,7 @@ def actualizar_producto(id_producto: int, data: ProductoUpdate, db: Session = De
     producto.id_categoria = data.id_categoria
     producto.precio_venta = data.precio_venta
     producto.activo = data.activo
+    producto.para_llevar = bool(data.para_llevar)
     db.commit()
     db.refresh(producto)
     return producto

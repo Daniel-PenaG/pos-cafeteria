@@ -6,8 +6,10 @@ function getAuthHeader() {
   return { Authorization: `Bearer ${token}` };
 }
 
-export async function getResumenDashboard() {
+export async function getResumenDashboard(fecha) {
+  const params = fecha ? { fecha } : {};
   const res = await api.get("/reportes/resumen-dashboard", {
+    params,
     headers: getAuthHeader(),
   });
   return res.data;

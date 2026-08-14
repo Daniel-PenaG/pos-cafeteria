@@ -1,5 +1,7 @@
 import json
 from datetime import datetime
+from typing import List
+
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -19,8 +21,67 @@ from app.services.fidelidad_service import obtener_config, calcular_puntos_ganad
 from app.exceptions import (
     RecursoNoEncontradoException,
     DatosInvalidosException,
-    StockInsuficienteException,
 )
+
+MESA_PARA_LLEVAR = 99
+
+
+def _revisar_stock_para_llevar(db: Session, detalles, advertencias: List[str]) -> None:
+    for item in detalles:
+        receta = (
+            db.query(RecetaModel)
+            .filter(RecetaModel.id_producto == item.id_producto, RecetaModel.activo == True)
+            .first()
+        )
+        if not receta:
+            continue
+        receta_insumos = (
+            db.query(RecetaInsumoModel)
+            .filter(RecetaInsumoModel.id_receta == receta.id_receta)
+            .all()
+        )
+        for ri in receta_insumos:
+            insumo = db.query(InsumoModel).filter(InsumoModel.id_insumo == ri.id_insumo).first()
+            if not insumo:
+                continue
+            cantidad_requerida = float(ri.cantidad) * float(item.cantidad)
+            stock_disponible = float(insumo.stock_actual)
+            if stock_disponible < cantidad_requerida:
+                advertencias.append(
+                    f"Stock insuficiente de '{insumo.nombre}'. "
+                    f"Disponible: {stock_disponible}, Requerido: {cantidad_requerida}"
+                )
+
+
+def _descontar_stock_para_llevar(db: Session, venta_id: int, detalles) -> None:
+    for item in detalles:
+        receta = (
+            db.query(RecetaModel)
+            .filter(RecetaModel.id_producto == item.id_producto, RecetaModel.activo == True)
+            .first()
+        )
+        if not receta:
+            continue
+        receta_insumos = (
+            db.query(RecetaInsumoModel)
+            .filter(RecetaInsumoModel.id_receta == receta.id_receta)
+            .all()
+        )
+        for ri in receta_insumos:
+            insumo = db.query(InsumoModel).filter(InsumoModel.id_insumo == ri.id_insumo).first()
+            if not insumo:
+                continue
+            cantidad_total = float(ri.cantidad) * float(item.cantidad)
+            insumo.stock_actual = float(insumo.stock_actual) - cantidad_total
+            mov = MovimientoInventarioModel(
+                id_insumo=insumo.id_insumo,
+                tipo="SALIDA",
+                cantidad=cantidad_total,
+                motivo="VENTA",
+                referencia=f"VENTA {venta_id}",
+                fecha_hora=datetime.now(),
+            )
+            db.add(mov)
 
 
 def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
@@ -31,7 +92,11 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
     if not data.detalles or len(data.detalles) == 0:
         raise DatosInvalidosException("La venta debe tener al menos un producto")
 
-    if not data.numero_mesa or data.numero_mesa < 1:
+    para_llevar = bool(data.para_llevar)
+    if para_llevar:
+        if data.numero_mesa != MESA_PARA_LLEVAR:
+            raise DatosInvalidosException("Venta para llevar inválida")
+    elif not data.numero_mesa or data.numero_mesa < 1:
         raise DatosInvalidosException("Selecciona un número de mesa válido")
 
     if not data.forma_pago or data.forma_pago.strip() == "":
@@ -48,6 +113,8 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
             raise RecursoNoEncontradoException(f"Producto {item.id_producto} no encontrado")
         if not producto.activo:
             raise DatosInvalidosException(f"Producto {producto.nombre} no está activo")
+        if para_llevar and not producto.para_llevar:
+            raise DatosInvalidosException(f"Producto {producto.nombre} no está disponible para llevar")
 
         precio_extras = sum(float(e.precio) for e in item.extras)
         calculo = calcular_linea(
@@ -84,35 +151,15 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
         config_fid = obtener_config(db)
         puntos_generados = calcular_puntos_ganados(total_calculado, config_fid)
 
-    for item in data.detalles:
-        producto = db.query(ProductoModel).filter(ProductoModel.id_producto == item.id_producto).first()
-        receta = (
-            db.query(RecetaModel)
-            .filter(RecetaModel.id_producto == item.id_producto, RecetaModel.activo == True)
-            .first()
-        )
-        if receta:
-            receta_insumos = (
-                db.query(RecetaInsumoModel)
-                .filter(RecetaInsumoModel.id_receta == receta.id_receta)
-                .all()
-            )
-            for ri in receta_insumos:
-                insumo = db.query(InsumoModel).filter(InsumoModel.id_insumo == ri.id_insumo).first()
-                if not insumo:
-                    continue
-                cantidad_requerida = float(ri.cantidad) * float(item.cantidad)
-                stock_disponible = float(insumo.stock_actual)
-                if stock_disponible < cantidad_requerida:
-                    raise StockInsuficienteException(
-                        f"Stock insuficiente de '{insumo.nombre}'. "
-                        f"Disponible: {stock_disponible}, Requerido: {cantidad_requerida}"
-                    )
+    advertencias_stock: List[str] = []
+    if para_llevar:
+        _revisar_stock_para_llevar(db, data.detalles, advertencias_stock)
 
     venta = VentaModel(
         fecha_hora=datetime.now(),
         id_usuario=data.id_usuario,
         numero_mesa=data.numero_mesa,
+        para_llevar=para_llevar,
         total=total_calculado,
         forma_pago=data.forma_pago,
         id_cliente=data.id_cliente if cliente else None,
@@ -151,32 +198,8 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
         )
         db.add(detalle)
 
-        receta = (
-            db.query(RecetaModel)
-            .filter(RecetaModel.id_producto == item.id_producto, RecetaModel.activo == True)
-            .first()
-        )
-        if receta:
-            receta_insumos = (
-                db.query(RecetaInsumoModel)
-                .filter(RecetaInsumoModel.id_receta == receta.id_receta)
-                .all()
-            )
-            for ri in receta_insumos:
-                insumo = db.query(InsumoModel).filter(InsumoModel.id_insumo == ri.id_insumo).first()
-                if not insumo:
-                    continue
-                cantidad_total = float(ri.cantidad) * float(item.cantidad)
-                insumo.stock_actual = float(insumo.stock_actual) - cantidad_total
-                mov = MovimientoInventarioModel(
-                    id_insumo=insumo.id_insumo,
-                    tipo="SALIDA",
-                    cantidad=cantidad_total,
-                    motivo="VENTA",
-                    referencia=f"VENTA {venta.id_venta}",
-                    fecha_hora=datetime.now(),
-                )
-                db.add(mov)
+    if para_llevar:
+        _descontar_stock_para_llevar(db, venta.id_venta, data.detalles)
 
     if cliente and puntos_generados > 0:
         acumular_puntos_venta(db, cliente, puntos_generados, venta.id_venta, data.id_usuario)
@@ -202,4 +225,6 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
         puntos_generados=int(venta.puntos_generados or 0),
         cliente_nombre=cliente_nombre,
         cliente_puntos_saldo=cliente_puntos_saldo,
+        para_llevar=bool(venta.para_llevar),
+        advertencias_stock=advertencias_stock,
     )

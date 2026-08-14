@@ -20,10 +20,12 @@ const NAV = [
     group: "Operación",
     items: [
       { to: "/ventas", label: "Ventas", icon: "◎", roles: ["ADMIN", "CAJERO"] },
+      { to: "/ventas-para-llevar", label: "Para llevar", icon: "⎘", roles: ["ADMIN", "CAJERO"] },
       { to: "/comandera", label: "Comandera", icon: "☰", roles: ["ADMIN", "CAJERO", "COCINA"] },
       { to: "/clientes", label: "Clientes", icon: "♥", roles: ["ADMIN", "CAJERO"] },
       { to: "/promociones", label: "Promociones", icon: "％", roles: ["ADMIN"] },
       { to: "/extras-venta", label: "Extras de venta", icon: "＋", roles: ["ADMIN"] },
+      { to: "/para-llevar", label: "Productos para llevar", icon: "▣", roles: ["ADMIN"] },
       { to: "/compras", label: "Compras", icon: "↗", roles: ["ADMIN"] },
     ],
   },

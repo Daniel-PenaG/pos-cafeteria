@@ -21,6 +21,8 @@ const ALL_ROUTES = [
   "/clientes",
   "/promociones",
   "/extras-venta",
+  "/para-llevar",
+  "/ventas-para-llevar",
   "/compras",
   "/reportes",
   "/usuarios",
@@ -28,7 +30,7 @@ const ALL_ROUTES = [
 
 export const ROLE_ROUTES = {
   ADMIN: ALL_ROUTES,
-  CAJERO: ["/dashboard", "/ventas", "/comandera", "/clientes"],
+  CAJERO: ["/dashboard", "/ventas", "/ventas-para-llevar", "/comandera", "/clientes"],
   COCINA: ["/comandera"],
 };
 

@@ -21,6 +21,7 @@ from app.services.pedido_service import (
     _pedido_a_dict,
     _detalle_a_dict,
 )
+from app.services.venta_service import MESA_PARA_LLEVAR
 from app.services.promocion_service import calcular_linea
 from app.models import ProductoModel
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
@@ -60,10 +61,18 @@ def listar_pedidos_activos(db: Session = Depends(get_db)):
 
 
 @router.get("/mesa/{numero_mesa}", response_model=Pedido)
-def obtener_pedido_mesa(numero_mesa: int, id_usuario: int, db: Session = Depends(get_db)):
-    if numero_mesa < 1:
+def obtener_pedido_mesa(
+    numero_mesa: int,
+    id_usuario: int,
+    para_llevar: bool = False,
+    db: Session = Depends(get_db),
+):
+    if para_llevar:
+        if numero_mesa != MESA_PARA_LLEVAR:
+            raise DatosInvalidosException("Mesa inválida para venta para llevar")
+    elif numero_mesa < 1:
         raise DatosInvalidosException("Mesa inválida")
-    pedido = obtener_pedido_abierto_mesa(db, numero_mesa, id_usuario)
+    pedido = obtener_pedido_abierto_mesa(db, numero_mesa, id_usuario, para_llevar=para_llevar)
     pedido = (
         db.query(PedidoModel)
         .options(joinedload(PedidoModel.detalles), joinedload(PedidoModel.cliente))
@@ -78,9 +87,15 @@ def agregar_linea(
     numero_mesa: int,
     data: PedidoLineaCreate,
     id_usuario: int,
+    para_llevar: bool = False,
     db: Session = Depends(get_db),
 ):
-    pedido = obtener_pedido_abierto_mesa(db, numero_mesa, id_usuario)
+    if para_llevar:
+        if numero_mesa != MESA_PARA_LLEVAR:
+            raise DatosInvalidosException("Mesa inválida para venta para llevar")
+    elif numero_mesa < 1:
+        raise DatosInvalidosException("Mesa inválida")
+    pedido = obtener_pedido_abierto_mesa(db, numero_mesa, id_usuario, para_llevar=para_llevar)
     detalle = agregar_linea_pedido(db, pedido, data)
     return _detalle_a_dict(detalle)
 

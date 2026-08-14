@@ -94,7 +94,10 @@ export default function Reportes() {
   const hoy = new Date();
   const [tab, setTab] = useState("dia");
 
-  const [fecha, setFecha] = useState(hoy.toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
   const [anioMes, setAnioMes] = useState(hoy.getFullYear());
   const [mes, setMes] = useState(hoy.getMonth() + 1);
   const [anio, setAnio] = useState(hoy.getFullYear());

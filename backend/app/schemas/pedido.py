@@ -37,6 +37,7 @@ class DetallePedidoLinea(BaseModel):
 class Pedido(BaseModel):
     id_pedido: int
     numero_mesa: int
+    para_llevar: bool = False
     estado: str
     id_cliente: Optional[int] = None
     id_usuario: int

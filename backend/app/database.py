@@ -389,14 +389,24 @@ def aplicar_migraciones_sqlite():
             orden INTEGER NOT NULL DEFAULT 0
         )""",
     ]
+    migraciones_para_llevar_pg = [
+        "ALTER TABLE productos ADD COLUMN IF NOT EXISTS para_llevar BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS para_llevar BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE ventas ADD COLUMN IF NOT EXISTS para_llevar BOOLEAN DEFAULT FALSE",
+    ]
+    migraciones_para_llevar_sqlite = [
+        "ALTER TABLE productos ADD COLUMN para_llevar BOOLEAN DEFAULT 0",
+        "ALTER TABLE pedidos ADD COLUMN para_llevar BOOLEAN DEFAULT 0",
+        "ALTER TABLE ventas ADD COLUMN para_llevar BOOLEAN DEFAULT 0",
+    ]
     migraciones = (
         migraciones_postgres + migraciones_sqlite_extras + migraciones_promos
         + migraciones_fidelidad_pg + migraciones_pedidos_pg + migraciones_comanda_tiempos_pg
-        + migraciones_recetas_pg + migraciones_extra_tipos_pg
+        + migraciones_recetas_pg + migraciones_extra_tipos_pg + migraciones_para_llevar_pg
         if dialect == "postgresql"
         else migraciones_sqlite + migraciones_sqlite_extras + migraciones_sqlite_promos
         + migraciones_fidelidad_sqlite + migraciones_pedidos_sqlite + migraciones_comanda_tiempos_sqlite
-        + migraciones_extra_tipos_sqlite
+        + migraciones_extra_tipos_sqlite + migraciones_para_llevar_sqlite
     )
     for sql in migraciones:
         try:

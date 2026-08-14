@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract, and_
 from datetime import date
+from typing import Optional
 
 from app.database import get_db
 from app.models.models import (
@@ -476,10 +477,11 @@ def tiempos_preparacion_dia(fecha: date, db: Session = Depends(get_db)):
 
 @router.get("/resumen-dashboard")
 def resumen_dashboard(
+    fecha: Optional[date] = None,
     db: Session = Depends(get_db),
     _: object = Depends(get_current_user),
 ):
-    hoy = date.today()
+    hoy = fecha or date.today()
 
     total_hoy = (
         db.query(func.coalesce(func.sum(VentaModel.total), 0))

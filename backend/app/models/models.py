@@ -39,6 +39,7 @@ class ProductoModel(Base):
     id_categoria = Column(Integer, ForeignKey("categorias.id_categoria"), nullable=False)
     precio_venta = Column(Numeric(10, 2), nullable=False)
     activo = Column(Boolean, default=True)
+    para_llevar = Column(Boolean, default=False)
 
     categoria = relationship("CategoriaModel", back_populates="productos")
     recetas = relationship("RecetaModel", back_populates="producto", cascade="all, delete")
@@ -121,6 +122,7 @@ class VentaModel(Base):
     fecha_hora = Column(DateTime, nullable=False)
     id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
     numero_mesa = Column(Integer, nullable=False, default=1)
+    para_llevar = Column(Boolean, default=False)
     total = Column(Numeric(10, 2), nullable=False)
     forma_pago = Column(String(30), nullable=False)
     id_cliente = Column(Integer, ForeignKey("clientes.id_cliente"), nullable=True)
@@ -320,6 +322,7 @@ class PedidoModel(Base):
 
     id_pedido = Column(Integer, primary_key=True, index=True)
     numero_mesa = Column(Integer, nullable=False, index=True)
+    para_llevar = Column(Boolean, default=False, index=True)
     estado = Column(String(20), nullable=False, default="ABIERTO")  # ABIERTO, COBRADO, CANCELADO
     id_cliente = Column(Integer, ForeignKey("clientes.id_cliente"), nullable=True)
     id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)

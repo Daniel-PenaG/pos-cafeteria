@@ -5,6 +5,14 @@ import PageHeader from "../components/PageHeader";
 import { useAuthStore } from "../store/authStore";
 import { isAdmin } from "../config/permissions";
 
+function fechaLocalISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export default function Dashboard() {
   const rol = useAuthStore((state) => state.user?.rol);
   const admin = isAdmin(rol);
@@ -13,26 +21,49 @@ export default function Dashboard() {
   const [editing, setEditing] = useState(false);
   const [margenEditado, setMargenEditado] = useState("");
   const [gastosEditados, setGastosEditados] = useState("");
+  const [fechaConsulta, setFechaConsulta] = useState(fechaLocalISO());
+
+  const cargarDashboard = async () => {
+    const hoy = fechaLocalISO();
+    try {
+      const resumenData = await getResumenDashboard(hoy);
+      setData(resumenData);
+      setFechaConsulta(resumenData.hoy || hoy);
+
+      if (admin) {
+        const configData = await getConfiguracion();
+        setConfig(configData);
+        setMargenEditado(configData.margen_ganancia);
+        setGastosEditados(configData.gastos_fijos);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error al cargar el dashboard");
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const resumenData = await getResumenDashboard();
-        setData(resumenData);
+    cargarDashboard();
 
-        if (admin) {
-          const configData = await getConfiguracion();
-          setConfig(configData);
-          setMargenEditado(configData.margen_ganancia);
-          setGastosEditados(configData.gastos_fijos);
-        }
-      } catch (err) {
-        console.error(err);
-        alert("Error al cargar el dashboard");
+    const interval = setInterval(() => {
+      const hoy = fechaLocalISO();
+      if (hoy !== fechaConsulta) {
+        cargarDashboard();
+      }
+    }, 60000);
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        cargarDashboard();
       }
     };
-    load();
-  }, [admin]);
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [admin, fechaConsulta]);
 
   const handleGuardarConfiguracion = async () => {
     if (margenEditado < 0 || margenEditado > 100) {
@@ -71,16 +102,16 @@ export default function Dashboard() {
     <div className="page">
       <PageHeader
         title="Dashboard"
-        subtitle="Resumen del día y configuración de precios"
+        subtitle={`Resumen del ${fechaConsulta} — ventas de hoy y del día`}
       />
 
       <div className="stat-grid">
         <div className="stat-card">
-          <div className="stat-card__label">Ventas hoy</div>
+          <div className="stat-card__label">Ventas hoy ($)</div>
           <div className="stat-card__value">${data.total_hoy.toFixed(2)}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-card__label">Ventas del día</div>
+          <div className="stat-card__label">Ventas al día (tickets)</div>
           <div className="stat-card__value">{data.num_ventas_hoy}</div>
         </div>
         <div className="stat-card">

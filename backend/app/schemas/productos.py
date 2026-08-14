@@ -25,6 +25,7 @@ class ProductoBase(BaseModel):
     id_categoria: int
     precio_venta: float
     activo: Optional[bool] = True
+    para_llevar: Optional[bool] = False
 
 class ProductoCreate(ProductoBase):
     pass
@@ -37,6 +38,10 @@ class Producto(ProductoBase):
 
     class Config:
         from_attributes = True
+
+
+class ParaLlevarConfigUpdate(BaseModel):
+    ids_productos: list[int] = []
 
 #Onsumo
 class InsumoBase(BaseModel):

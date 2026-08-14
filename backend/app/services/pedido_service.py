@@ -11,7 +11,7 @@ from app.models.models import (
 from app.schemas.pedido import PedidoLineaCreate
 from app.schemas.ventas import VentaCreate, DetalleVentaItem, ExtraVentaLinea
 from app.services.promocion_service import calcular_linea
-from app.services.venta_service import registrar_venta
+from app.services.venta_service import registrar_venta, MESA_PARA_LLEVAR
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 
 
@@ -63,6 +63,7 @@ def _pedido_a_dict(p: PedidoModel) -> dict:
     return {
         "id_pedido": p.id_pedido,
         "numero_mesa": p.numero_mesa,
+        "para_llevar": bool(getattr(p, "para_llevar", False)),
         "estado": p.estado,
         "id_cliente": p.id_cliente,
         "id_usuario": p.id_usuario,
@@ -74,15 +75,26 @@ def _pedido_a_dict(p: PedidoModel) -> dict:
     }
 
 
-def obtener_pedido_abierto_mesa(db: Session, numero_mesa: int, id_usuario: int) -> PedidoModel:
+def obtener_pedido_abierto_mesa(
+    db: Session, numero_mesa: int, id_usuario: int, para_llevar: bool = False
+) -> PedidoModel:
     pedido = (
         db.query(PedidoModel)
         .options(joinedload(PedidoModel.detalles), joinedload(PedidoModel.cliente))
-        .filter(PedidoModel.numero_mesa == numero_mesa, PedidoModel.estado == "ABIERTO")
+        .filter(
+            PedidoModel.numero_mesa == numero_mesa,
+            PedidoModel.estado == "ABIERTO",
+            PedidoModel.para_llevar == para_llevar,
+        )
         .first()
     )
     if not pedido:
-        pedido = PedidoModel(numero_mesa=numero_mesa, id_usuario=id_usuario, estado="ABIERTO")
+        pedido = PedidoModel(
+            numero_mesa=numero_mesa,
+            id_usuario=id_usuario,
+            estado="ABIERTO",
+            para_llevar=para_llevar,
+        )
         db.add(pedido)
         db.commit()
         db.refresh(pedido)
@@ -100,6 +112,8 @@ def agregar_linea_pedido(
         raise RecursoNoEncontradoException("Producto no encontrado")
     if not producto.activo:
         raise DatosInvalidosException(f"Producto {producto.nombre} no está activo")
+    if pedido.para_llevar and not producto.para_llevar:
+        raise DatosInvalidosException(f"Producto {producto.nombre} no está disponible para llevar")
 
     precio_extras = sum(float(e.precio) for e in data.extras)
     calculo = calcular_linea(
@@ -192,6 +206,7 @@ def cobrar_pedido(db: Session, pedido: PedidoModel, id_usuario: int, forma_pago:
         numero_mesa=pedido.numero_mesa,
         forma_pago=forma_pago,
         id_cliente=pedido.id_cliente,
+        para_llevar=bool(getattr(pedido, "para_llevar", False)),
         detalles=detalles_venta,
     )
     resp = registrar_venta(db, venta_data)

@@ -24,12 +24,13 @@ import { useAuthStore } from "../store/authStore";
 import PageHeader from "../components/PageHeader";
 
 const NUM_MESAS = 20;
+const MESA_PARA_LLEVAR = 99;
 
 function sumExtras(extras) {
   return extras.reduce((acc, e) => acc + Number(e.precio), 0);
 }
 
-export default function Ventas() {
+export default function Ventas({ modoParaLlevar = false }) {
   const [productos, setProductos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [busquedaProducto, setBusquedaProducto] = useState("");
@@ -84,15 +85,17 @@ export default function Ventas() {
     }
   };
 
-  const cargarPedidoMesa = async (mesa) => {
+  const cargarPedidoMesa = async (mesa, paraLlevar = modoParaLlevar) => {
     if (!usuario?.id_usuario) return;
     try {
-      const p = await getPedidoMesa(mesa, usuario.id_usuario);
+      const p = await getPedidoMesa(mesa, usuario.id_usuario, paraLlevar);
       setPedido(p);
-      await refrescarMesasActivas();
+      if (!paraLlevar) {
+        await refrescarMesasActivas();
+      }
     } catch (err) {
       console.error(err);
-      alert("Error al cargar pedido de la mesa");
+      alert(paraLlevar ? "Error al cargar pedido para llevar" : "Error al cargar pedido de la mesa");
     }
   };
 
@@ -109,7 +112,10 @@ export default function Ventas() {
           getCategorias(),
           getExtraTiposPos(),
         ]);
-        setProductos(prods.filter((p) => p.activo !== false));
+        const activos = prods.filter((p) => p.activo !== false);
+        setProductos(
+          modoParaLlevar ? activos.filter((p) => p.para_llevar) : activos
+        );
         setCategorias(
           [...cats].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
         );
@@ -122,12 +128,25 @@ export default function Ventas() {
       }
     };
     load();
-    refrescarMesasActivas();
-  }, []);
+    if (modoParaLlevar) {
+      refrescarMesasActivas();
+    } else {
+      refrescarMesasActivas();
+    }
+  }, [modoParaLlevar]);
+
+  useEffect(() => {
+    if (!modoParaLlevar || !usuario?.id_usuario) return;
+    setNumeroMesa(MESA_PARA_LLEVAR);
+    cargarPedidoMesa(MESA_PARA_LLEVAR, true);
+  }, [modoParaLlevar, usuario?.id_usuario]);
 
   const productosPorCategoria = useMemo(() => {
     const q = busquedaProducto.trim().toLowerCase();
-    const filtrados = productos.filter(
+    const base = modoParaLlevar
+      ? productos.filter((p) => p.para_llevar)
+      : productos;
+    const filtrados = base.filter(
       (p) => !q || p.nombre.toLowerCase().includes(q)
     );
 
@@ -154,7 +173,7 @@ export default function Ventas() {
           a.nombre.localeCompare(b.nombre, "es")
         ),
       }));
-  }, [productos, categorias, busquedaProducto]);
+  }, [productos, categorias, busquedaProducto, modoParaLlevar]);
 
   useEffect(() => {
     if (!busquedaProducto.trim()) return;
@@ -291,7 +310,7 @@ export default function Ventas() {
 
   const abrirModalProducto = async (producto) => {
     if (!numeroMesa) {
-      alert("Primero selecciona el número de mesa");
+      alert(modoParaLlevar ? "Espera a que cargue el pedido" : "Primero selecciona el número de mesa");
       return;
     }
     setProductoModal(producto);
@@ -355,10 +374,10 @@ export default function Ventas() {
         precio_original: Number(calculoPromo.precio_original_unitario),
         id_promocion: calculoPromo.id_promocion,
         extras: extrasSeleccionados,
-        enviar_comanda: true,
+        enviar_comanda: !modoParaLlevar,
         comentario: comentarioModal.trim() || null,
-      });
-      await cargarPedidoMesa(numeroMesa);
+      }, modoParaLlevar);
+      await cargarPedidoMesa(numeroMesa, modoParaLlevar);
     } catch (err) {
       alert(err.response?.data?.detail || "Error al agregar al pedido");
       return;
@@ -381,7 +400,7 @@ export default function Ventas() {
     if (isNaN(cant) || cant < 1 || !numeroMesa) return;
     try {
       await actualizarLineaPedido(idDetalle, { cantidad: cant });
-      await cargarPedidoMesa(numeroMesa);
+      await cargarPedidoMesa(numeroMesa, modoParaLlevar);
     } catch (err) {
       alert(err.response?.data?.detail || "Error al actualizar cantidad");
     }
@@ -391,7 +410,7 @@ export default function Ventas() {
     if (!numeroMesa) return;
     try {
       await eliminarLineaPedido(idDetalle);
-      await cargarPedidoMesa(numeroMesa);
+      await cargarPedidoMesa(numeroMesa, modoParaLlevar);
     } catch (err) {
       alert(err.response?.data?.detail || "Error al eliminar línea");
     }
@@ -407,21 +426,31 @@ export default function Ventas() {
         forma_pago: formaPago,
         id_cliente: conCliente && clienteCobro ? clienteCobro.id_cliente : null,
       });
-      let msg = `Cuenta cerrada. Mesa ${res.numero_mesa} — Folio: ${res.id_venta}\nTotal: $${Number(res.total).toFixed(2)}`;
+      let msg = modoParaLlevar
+        ? `Venta para llevar — Folio: ${res.id_venta}\nTotal: $${Number(res.total).toFixed(2)}`
+        : `Cuenta cerrada. Mesa ${res.numero_mesa} — Folio: ${res.id_venta}\nTotal: $${Number(res.total).toFixed(2)}`;
+      if (res.advertencias_stock?.length) {
+        msg += `\n\n⚠ Avisos de inventario (la venta se completó):\n${res.advertencias_stock.join("\n")}`;
+      }
       if (res.puntos_generados > 0) {
         msg += `\n\n+${res.puntos_generados} pts → ${res.cliente_nombre}\nNuevo saldo: ${res.cliente_puntos_saldo} pts`;
       }
       alert(msg);
       cerrarCobroModal();
-      const mesaCobrada = numeroMesa;
-      setPedido(null);
-      setNumeroMesa(null);
-      setMesasActivas((prev) => {
-        const next = { ...prev };
-        if (mesaCobrada) delete next[mesaCobrada];
-        return next;
-      });
-      await refrescarMesasActivas();
+      if (modoParaLlevar) {
+        setPedido(null);
+        await cargarPedidoMesa(MESA_PARA_LLEVAR, true);
+      } else {
+        const mesaCobrada = numeroMesa;
+        setPedido(null);
+        setNumeroMesa(null);
+        setMesasActivas((prev) => {
+          const next = { ...prev };
+          if (mesaCobrada) delete next[mesaCobrada];
+          return next;
+        });
+        await refrescarMesasActivas();
+      }
     } catch (err) {
       console.error(err);
       alert(err.response?.data?.detail || "Error al cobrar");
@@ -432,13 +461,20 @@ export default function Ventas() {
 
   const precioPreview = calculoPromo ? Number(calculoPromo.precio_unitario) : 0;
 
+  const ventasHabilitadas = Boolean(numeroMesa);
+
   return (
     <div className="page">
       <PageHeader
-        title="Punto de venta"
-        subtitle="Pedidos por mesa — al cobrar puedes asignar cliente y puntos"
+        title={modoParaLlevar ? "Venta para llevar" : "Punto de venta"}
+        subtitle={
+          modoParaLlevar
+            ? "Solo productos para llevar — al cobrar se descuenta inventario"
+            : "Pedidos por mesa — al cobrar puedes asignar cliente y puntos"
+        }
       />
 
+      {!modoParaLlevar && (
       <section className="section">
         <h2>1. Selecciona la mesa</h2>
         <p className="hint">Cada mesa mantiene su pedido abierto. Puedes cambiar de mesa sin perder nada.</p>
@@ -465,12 +501,18 @@ export default function Ventas() {
           <p className="mesa-selected">Mesa {numeroMesa} seleccionada</p>
         )}
       </section>
+      )}
 
-      <div className={`ventas-layout ${!numeroMesa ? "ventas-layout--disabled" : ""}`}>
+      <div className={`ventas-layout ${!ventasHabilitadas ? "ventas-layout--disabled" : ""}`}>
         <div>
-          <h2>2. Productos</h2>
-          {!numeroMesa && (
+          <h2>{modoParaLlevar ? "Productos para llevar" : "2. Productos"}</h2>
+          {!ventasHabilitadas && !modoParaLlevar && (
             <p className="hint">Selecciona una mesa para habilitar productos</p>
+          )}
+          {modoParaLlevar && productos.length === 0 && (
+            <p className="hint">
+              No hay productos para llevar. Configúralos en el módulo «Productos para llevar».
+            </p>
           )}
           <div className="ventas-catalogo">
             <input
@@ -479,7 +521,7 @@ export default function Ventas() {
               placeholder="Buscar producto por nombre..."
               value={busquedaProducto}
               onChange={(e) => setBusquedaProducto(e.target.value)}
-              disabled={!numeroMesa}
+              disabled={!ventasHabilitadas}
             />
 
             {productosPorCategoria.length === 0 ? (
@@ -509,7 +551,7 @@ export default function Ventas() {
                             type="button"
                             className="ventas-producto-item"
                             onClick={() => abrirModalProducto(p)}
-                            disabled={!numeroMesa}
+                            disabled={!ventasHabilitadas}
                           >
                             <span>{p.nombre}</span>
                             <span className="ventas-producto-item__precio">
@@ -526,7 +568,11 @@ export default function Ventas() {
         </div>
 
         <div className="cart-panel">
-          <h2>Pedido {numeroMesa ? `(Mesa ${numeroMesa})` : ""}</h2>
+          <h2>
+            {modoParaLlevar
+              ? "Pedido para llevar"
+              : `Pedido ${numeroMesa ? `(Mesa ${numeroMesa})` : ""}`}
+          </h2>
           {carrito.length === 0 ? (
             <p className="empty-state">Sin productos en esta mesa</p>
           ) : (
@@ -601,7 +647,7 @@ export default function Ventas() {
             onClick={abrirCobroModal}
             disabled={loading || carrito.length === 0 || !numeroMesa}
           >
-            Cerrar cuenta / Cobrar
+            {modoParaLlevar ? "Cobrar para llevar" : "Cerrar cuenta / Cobrar"}
           </button>
         </div>
       </div>
@@ -611,7 +657,8 @@ export default function Ventas() {
           <div className="modal-box">
             <h2>{productoModal.nombre}</h2>
             <p className="hint">
-              Precio base ${Number(productoModal.precio_venta).toFixed(2)} · Mesa {numeroMesa}
+              Precio base ${Number(productoModal.precio_venta).toFixed(2)}
+              {modoParaLlevar ? " · Para llevar" : ` · Mesa ${numeroMesa}`}
             </p>
             {!cargandoExtras && promosDisponibles.length > 0 && (
               <div style={{ marginBottom: "1rem" }}>
@@ -731,7 +778,7 @@ export default function Ventas() {
                 onClick={confirmarAgregarAlCarrito}
                 disabled={!calculoPromo || !calculoPromo.margen_ok}
               >
-                Agregar y enviar a comanda
+                {modoParaLlevar ? "Agregar al pedido" : "Agregar y enviar a comanda"}
               </button>
             </div>
           </div>
@@ -741,7 +788,7 @@ export default function Ventas() {
       {showCobroModal && (
         <div className="modal-overlay" onClick={cerrarCobroModal}>
           <div className="modal-box modal-box--wide" onClick={(e) => e.stopPropagation()}>
-            <h2>Cerrar cuenta — Mesa {numeroMesa}</h2>
+            <h2>{modoParaLlevar ? "Cobrar para llevar" : `Cerrar cuenta — Mesa ${numeroMesa}`}</h2>
             <p className="cart-total" style={{ margin: "0.5rem 0 1rem" }}>
               Total: ${total.toFixed(2)}
             </p>

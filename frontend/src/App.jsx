@@ -5,6 +5,8 @@ import Productos from "./pages/Productos";
 import Categorias from "./pages/Categorias";
 import Recetas from "./pages/Recetas";
 import Ventas from "./pages/Ventas";
+import VentasParaLlevar from "./pages/VentasParaLlevar";
+import ParaLlevar from "./pages/ParaLlevar";
 import Compras from "./pages/Compras";
 import Insumos from "./pages/Insumos";
 import ExtrasVenta from "./pages/ExtrasVenta";
@@ -53,6 +55,8 @@ export default function App() {
           <Route path="insumos" element={withRole("/insumos", <Insumos />)} />
           <Route path="recetas" element={withRole("/recetas", <Recetas />)} />
           <Route path="ventas" element={withRole("/ventas", <Ventas />)} />
+          <Route path="ventas-para-llevar" element={withRole("/ventas-para-llevar", <VentasParaLlevar />)} />
+          <Route path="para-llevar" element={withRole("/para-llevar", <ParaLlevar />)} />
           <Route path="comandera" element={withRole("/comandera", <Comandera />)} />
           <Route path="extras-venta" element={withRole("/extras-venta", <ExtrasVenta />)} />
           <Route path="promociones" element={withRole("/promociones", <Promociones />)} />
