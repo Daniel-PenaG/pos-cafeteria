@@ -483,7 +483,7 @@ export default function Ventas({ modoParaLlevar = false }) {
   const ventasHabilitadas = Boolean(numeroMesa);
 
   return (
-    <div className="page">
+    <div className="page page--ventas">
       <PageHeader
         title={modoParaLlevar ? "Venta para llevar" : "Punto de venta"}
         subtitle={
@@ -494,40 +494,41 @@ export default function Ventas({ modoParaLlevar = false }) {
       />
 
       {!modoParaLlevar && (
-      <section className="section">
-        <h2>1. Selecciona la mesa</h2>
-        <p className="hint">Cada mesa mantiene su pedido abierto. Puedes cambiar de mesa sin perder nada.</p>
-        <div className="mesa-grid">
-          {Array.from({ length: NUM_MESAS }, (_, i) => i + 1).map((n) => {
-            const activa = mesasActivas[n];
-            const ocupada = activa && activa.num_lineas > 0;
-            return (
-              <button
-                key={n}
-                type="button"
-                onClick={() => seleccionarMesa(n)}
-                className={`mesa-btn ${numeroMesa === n ? "mesa-btn--active" : ""} ${ocupada ? "mesa-btn--ocupada" : ""}`}
-              >
-                {n}
-                {ocupada && (
-                  <span className="mesa-btn__badge">{activa.num_lineas}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        {numeroMesa && (
-          <p className="mesa-selected">Mesa {numeroMesa} seleccionada</p>
-        )}
-      </section>
+        <section className="ventas-mesas-bar">
+          <span className="ventas-mesas-bar__label">Mesa</span>
+          <div className="ventas-mesas-bar__grid">
+            {Array.from({ length: NUM_MESAS }, (_, i) => i + 1).map((n) => {
+              const activa = mesasActivas[n];
+              const ocupada = activa && activa.num_lineas > 0;
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => seleccionarMesa(n)}
+                  className={`mesa-btn mesa-btn--compact ${numeroMesa === n ? "mesa-btn--active" : ""} ${ocupada ? "mesa-btn--ocupada" : ""}`}
+                >
+                  {n}
+                  {ocupada && (
+                    <span className="mesa-btn__badge">{activa.num_lineas}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {numeroMesa && (
+            <span className="ventas-mesas-bar__actual">Mesa {numeroMesa}</span>
+          )}
+        </section>
       )}
 
-      <div className={`ventas-layout ${!ventasHabilitadas ? "ventas-layout--disabled" : ""}`}>
-        <div>
-          <h2>{modoParaLlevar ? "Productos para llevar" : "2. Productos"}</h2>
-          {!ventasHabilitadas && !modoParaLlevar && (
-            <p className="hint">Selecciona una mesa para habilitar productos</p>
-          )}
+      <div className={`ventas-workspace ${!ventasHabilitadas ? "ventas-workspace--disabled" : ""}`}>
+        <section className="ventas-catalogo-panel">
+          <div className="ventas-catalogo-panel__head">
+            <h2>{modoParaLlevar ? "Productos" : "Catálogo"}</h2>
+            {!ventasHabilitadas && !modoParaLlevar && (
+              <p className="hint">Selecciona una mesa</p>
+            )}
+          </div>
           <div className="ventas-catalogo">
             <input
               type="text"
@@ -559,17 +560,17 @@ export default function Ventas({ modoParaLlevar = false }) {
                         <span className="hint">({grupo.productos.length})</span>
                       </button>
                       {abierta && (
-                        <div className="ventas-productos-grid">
+                        <div className="ventas-productos-list">
                           {grupo.productos.map((p) => (
                             <button
                               key={p.id_producto}
                               type="button"
-                              className="ventas-producto-card"
+                              className="ventas-producto-item"
                               onClick={() => abrirModalProducto(p)}
                               disabled={!ventasHabilitadas}
                             >
-                              <span className="ventas-producto-card__nombre">{p.nombre}</span>
-                              <span className="ventas-producto-card__precio">
+                              <span className="ventas-producto-item__nombre">{p.nombre}</span>
+                              <span className="ventas-producto-item__precio">
                                 ${Number(p.precio_venta).toFixed(2)}
                               </span>
                             </button>
@@ -582,18 +583,18 @@ export default function Ventas({ modoParaLlevar = false }) {
               </div>
             )}
           </div>
-        </div>
+        </section>
 
-        <div className="cart-panel">
+        <aside className="cart-panel">
           <h2>
             {modoParaLlevar
               ? "Pedido para llevar"
               : `Pedido ${numeroMesa ? `(Mesa ${numeroMesa})` : ""}`}
           </h2>
           {carrito.length === 0 ? (
-            <p className="empty-state">Sin productos en esta mesa</p>
+            <p className="empty-state">Sin productos en el pedido</p>
           ) : (
-            <>
+            <div className="cart-panel__items">
               {carrito.map((item) => (
                 <div key={item.id_detalle_pedido} className="cart-item">
                   <div style={{ flex: 1 }}>
@@ -658,9 +659,10 @@ export default function Ventas({ modoParaLlevar = false }) {
                   </button>
                 </div>
               ))}
-            </>
+            </div>
           )}
 
+          <div className="cart-panel__footer">
           <div className="cart-total">Total: ${total.toFixed(2)}</div>
           {!modoParaLlevar && (
             <button
@@ -687,7 +689,8 @@ export default function Ventas({ modoParaLlevar = false }) {
           >
             {modoParaLlevar ? "Cobrar para llevar" : "Cerrar cuenta / Cobrar"}
           </button>
-        </div>
+          </div>
+        </aside>
       </div>
 
       {productoModal && (
