@@ -1065,6 +1065,11 @@ body {
   color: var(--sage);
 }
 
+.badge--pending {
+  background: #fff3cd;
+  color: #856404;
+}
+
 .ranking-pos {
   display: inline-flex;
   align-items: center;

@@ -63,7 +63,7 @@ class PedidoLineaCreate(BaseModel):
     precio_original: Optional[float] = None
     id_promocion: Optional[int] = None
     extras: List[ExtraLineaPedido] = []
-    enviar_comanda: bool = True
+    enviar_comanda: bool = False
     comentario: Optional[str] = Field(None, max_length=300)
 
 

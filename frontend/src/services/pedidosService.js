@@ -50,6 +50,13 @@ export async function asignarClientePedido(idPedido, idCliente) {
   return res.data;
 }
 
+export async function confirmarComandaPedido(idPedido) {
+  const res = await api.post(`/pedidos/${idPedido}/confirmar-comanda`, null, {
+    headers: getAuthHeader(),
+  });
+  return res.data;
+}
+
 export async function cobrarPedido(idPedido, data) {
   const res = await api.post(`/pedidos/${idPedido}/cobrar`, data, {
     headers: getAuthHeader(),

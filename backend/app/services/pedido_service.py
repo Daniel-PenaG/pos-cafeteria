@@ -142,7 +142,10 @@ def agregar_linea_pedido(
         )
 
     ahora = datetime.now()
-    if existente:
+    if existente and existente.en_comanda and not data.enviar_comanda:
+        existente = None
+        key = f"{key}-n{int(ahora.timestamp() * 1000)}"[:120]
+    elif existente:
         existente.cantidad = float(existente.cantidad) + float(data.cantidad)
         if data.enviar_comanda:
             existente.en_comanda = True
@@ -174,6 +177,29 @@ def agregar_linea_pedido(
     db.commit()
     db.refresh(detalle)
     return detalle
+
+
+def confirmar_comanda_pedido(db: Session, pedido: PedidoModel) -> int:
+    if pedido.estado != "ABIERTO":
+        raise DatosInvalidosException("El pedido ya está cerrado")
+    if getattr(pedido, "para_llevar", False):
+        raise DatosInvalidosException("Los pedidos para llevar no usan comanda")
+
+    ahora = datetime.now()
+    enviadas = 0
+    for detalle in pedido.detalles:
+        if detalle.en_comanda:
+            continue
+        detalle.en_comanda = True
+        detalle.fecha_envio_comanda = ahora
+        detalle.fecha_listo_comanda = None
+        enviadas += 1
+
+    if enviadas == 0:
+        raise DatosInvalidosException("No hay productos pendientes de confirmar")
+
+    db.commit()
+    return enviadas
 
 
 def cobrar_pedido(db: Session, pedido: PedidoModel, id_usuario: int, forma_pago: str):

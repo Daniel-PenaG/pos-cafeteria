@@ -9,6 +9,7 @@ import {
   actualizarLineaPedido,
   eliminarLineaPedido,
   cobrarPedido,
+  confirmarComandaPedido,
 } from "../services/pedidosService";
 import {
   calcularPromocion,
@@ -69,6 +70,11 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const total = useMemo(
     () => carrito.reduce((acc, item) => acc + item.cantidad * item.precio_unitario, 0),
+    [carrito]
+  );
+
+  const lineasPendientesConfirmar = useMemo(
+    () => carrito.filter((item) => !item.en_comanda),
     [carrito]
   );
 
@@ -369,7 +375,7 @@ export default function Ventas({ modoParaLlevar = false }) {
         precio_original: Number(calculoPromo.precio_original_unitario),
         id_promocion: calculoPromo.id_promocion,
         extras: extrasSeleccionados,
-        enviar_comanda: !modoParaLlevar,
+        enviar_comanda: false,
         comentario: comentarioModal.trim() || null,
       }, modoParaLlevar);
       await cargarPedidoMesa(numeroMesa, modoParaLlevar);
@@ -408,6 +414,24 @@ export default function Ventas({ modoParaLlevar = false }) {
       await cargarPedidoMesa(numeroMesa, modoParaLlevar);
     } catch (err) {
       alert(err.response?.data?.detail || "Error al eliminar línea");
+    }
+  };
+
+  const confirmarPedidoComanda = async () => {
+    if (!pedido?.id_pedido || modoParaLlevar) return;
+    if (lineasPendientesConfirmar.length === 0) {
+      alert("No hay productos pendientes de confirmar");
+      return;
+    }
+    try {
+      setLoading(true);
+      await confirmarComandaPedido(pedido.id_pedido);
+      await cargarPedidoMesa(numeroMesa, modoParaLlevar);
+      alert("Pedido confirmado y enviado a comanda");
+    } catch (err) {
+      alert(err.response?.data?.detail || "Error al confirmar pedido");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -576,6 +600,11 @@ export default function Ventas({ modoParaLlevar = false }) {
                         {item.nombre_promocion}
                       </span>
                     )}
+                    {!item.en_comanda && !modoParaLlevar && (
+                      <span className="badge badge--pending" style={{ marginLeft: "0.35rem" }}>
+                        sin confirmar
+                      </span>
+                    )}
                     {item.cantidad_pendiente > 0 && item.en_comanda && (
                       <span className="badge badge--kitchen" style={{ marginLeft: "0.35rem" }}>
                         en comanda
@@ -630,6 +659,22 @@ export default function Ventas({ modoParaLlevar = false }) {
           )}
 
           <div className="cart-total">Total: ${total.toFixed(2)}</div>
+          {!modoParaLlevar && (
+            <button
+              type="button"
+              className="btn btn--accent"
+              style={{ width: "100%", marginTop: "0.75rem", padding: "0.75rem" }}
+              onClick={confirmarPedidoComanda}
+              disabled={
+                loading ||
+                carrito.length === 0 ||
+                !numeroMesa ||
+                lineasPendientesConfirmar.length === 0
+              }
+            >
+              Confirmar pedido ({lineasPendientesConfirmar.length})
+            </button>
+          )}
           <button
             type="button"
             className="btn btn--success"
@@ -768,7 +813,7 @@ export default function Ventas({ modoParaLlevar = false }) {
                 onClick={confirmarAgregarAlCarrito}
                 disabled={!calculoPromo || !calculoPromo.margen_ok}
               >
-                {modoParaLlevar ? "Agregar al pedido" : "Agregar y enviar a comanda"}
+                Agregar al pedido
               </button>
             </div>
           </div>

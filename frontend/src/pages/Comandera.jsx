@@ -66,7 +66,7 @@ export default function Comandera() {
     <div className="page comandera-page">
       <PageHeader
         title="Comandera"
-        subtitle="Cronómetro desde que se envía a cocina hasta marcar listo"
+        subtitle="Cronómetro desde que se confirma el pedido en ventas hasta marcar listo"
       >
         <button type="button" className="btn btn--secondary" onClick={load} disabled={loading}>
           {loading ? "Actualizando…" : "Actualizar"}

@@ -18,6 +18,7 @@ from app.services.pedido_service import (
     obtener_pedido_abierto_mesa,
     agregar_linea_pedido,
     cobrar_pedido,
+    confirmar_comanda_pedido,
     _pedido_a_dict,
     _detalle_a_dict,
 )
@@ -168,6 +169,21 @@ def asignar_cliente(id_pedido: int, data: PedidoClienteUpdate, db: Session = Dep
         pedido.id_cliente = None
 
     db.commit()
+    db.refresh(pedido)
+    return _pedido_a_dict(pedido)
+
+
+@router.post("/{id_pedido}/confirmar-comanda", response_model=Pedido)
+def confirmar_comanda(id_pedido: int, db: Session = Depends(get_db)):
+    pedido = (
+        db.query(PedidoModel)
+        .options(joinedload(PedidoModel.detalles), joinedload(PedidoModel.cliente))
+        .filter(PedidoModel.id_pedido == id_pedido)
+        .first()
+    )
+    if not pedido:
+        raise RecursoNoEncontradoException("Pedido no encontrado")
+    confirmar_comanda_pedido(db, pedido)
     db.refresh(pedido)
     return _pedido_a_dict(pedido)
 
