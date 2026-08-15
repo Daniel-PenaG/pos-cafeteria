@@ -113,9 +113,7 @@ export default function Ventas({ modoParaLlevar = false }) {
           getExtraTiposPos(),
         ]);
         const activos = prods.filter((p) => p.activo !== false);
-        setProductos(
-          modoParaLlevar ? activos.filter((p) => p.para_llevar) : activos
-        );
+        setProductos(activos);
         setCategorias(
           [...cats].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
         );
@@ -143,10 +141,7 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const productosPorCategoria = useMemo(() => {
     const q = busquedaProducto.trim().toLowerCase();
-    const base = modoParaLlevar
-      ? productos.filter((p) => p.para_llevar)
-      : productos;
-    const filtrados = base.filter(
+    const filtrados = productos.filter(
       (p) => !q || p.nombre.toLowerCase().includes(q)
     );
 
@@ -173,7 +168,7 @@ export default function Ventas({ modoParaLlevar = false }) {
           a.nombre.localeCompare(b.nombre, "es")
         ),
       }));
-  }, [productos, categorias, busquedaProducto, modoParaLlevar]);
+  }, [productos, categorias, busquedaProducto]);
 
   useEffect(() => {
     if (!busquedaProducto.trim()) return;
@@ -469,7 +464,7 @@ export default function Ventas({ modoParaLlevar = false }) {
         title={modoParaLlevar ? "Venta para llevar" : "Punto de venta"}
         subtitle={
           modoParaLlevar
-            ? "Solo productos para llevar — al cobrar se descuenta inventario"
+            ? "Mismo catálogo que ventas en mesa — al cobrar se descuenta inventario"
             : "Pedidos por mesa — al cobrar puedes asignar cliente y puntos"
         }
       />
@@ -508,11 +503,6 @@ export default function Ventas({ modoParaLlevar = false }) {
           <h2>{modoParaLlevar ? "Productos para llevar" : "2. Productos"}</h2>
           {!ventasHabilitadas && !modoParaLlevar && (
             <p className="hint">Selecciona una mesa para habilitar productos</p>
-          )}
-          {modoParaLlevar && productos.length === 0 && (
-            <p className="hint">
-              No hay productos para llevar. Configúralos en el módulo «Productos para llevar».
-            </p>
           )}
           <div className="ventas-catalogo">
             <input

@@ -393,11 +393,13 @@ def aplicar_migraciones_sqlite():
         "ALTER TABLE productos ADD COLUMN IF NOT EXISTS para_llevar BOOLEAN DEFAULT FALSE",
         "ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS para_llevar BOOLEAN DEFAULT FALSE",
         "ALTER TABLE ventas ADD COLUMN IF NOT EXISTS para_llevar BOOLEAN DEFAULT FALSE",
+        "UPDATE productos SET para_llevar = TRUE WHERE activo = TRUE AND (para_llevar IS NULL OR para_llevar = FALSE)",
     ]
     migraciones_para_llevar_sqlite = [
         "ALTER TABLE productos ADD COLUMN para_llevar BOOLEAN DEFAULT 0",
         "ALTER TABLE pedidos ADD COLUMN para_llevar BOOLEAN DEFAULT 0",
         "ALTER TABLE ventas ADD COLUMN para_llevar BOOLEAN DEFAULT 0",
+        "UPDATE productos SET para_llevar = 1 WHERE activo = 1",
     ]
     migraciones = (
         migraciones_postgres + migraciones_sqlite_extras + migraciones_promos

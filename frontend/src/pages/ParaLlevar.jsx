@@ -17,8 +17,11 @@ export default function ParaLlevar() {
       const activos = prods.filter((p) => p.activo !== false);
       setProductos(activos);
       setCategorias(cats);
+      const marcados = activos.filter((p) => p.para_llevar);
       setSeleccionados(
-        new Set(activos.filter((p) => p.para_llevar).map((p) => p.id_producto))
+        new Set(
+          (marcados.length > 0 ? marcados : activos).map((p) => p.id_producto)
+        )
       );
     } catch (err) {
       console.error(err);
@@ -78,7 +81,7 @@ export default function ParaLlevar() {
     <div className="page">
       <PageHeader
         title="Productos para llevar"
-        subtitle="Selecciona qué productos aparecen en ventas para llevar y descuentan inventario al cobrar"
+        subtitle="Mismo catálogo que ventas en mesa. Marca cuáles prefieres destacar para llevar (opcional)."
       />
 
       <section className="card">

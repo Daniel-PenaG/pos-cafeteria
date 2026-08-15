@@ -112,8 +112,6 @@ def agregar_linea_pedido(
         raise RecursoNoEncontradoException("Producto no encontrado")
     if not producto.activo:
         raise DatosInvalidosException(f"Producto {producto.nombre} no está activo")
-    if pedido.para_llevar and not producto.para_llevar:
-        raise DatosInvalidosException(f"Producto {producto.nombre} no está disponible para llevar")
 
     precio_extras = sum(float(e.precio) for e in data.extras)
     calculo = calcular_linea(

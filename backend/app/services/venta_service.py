@@ -113,8 +113,6 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
             raise RecursoNoEncontradoException(f"Producto {item.id_producto} no encontrado")
         if not producto.activo:
             raise DatosInvalidosException(f"Producto {producto.nombre} no está activo")
-        if para_llevar and not producto.para_llevar:
-            raise DatosInvalidosException(f"Producto {producto.nombre} no está disponible para llevar")
 
         precio_extras = sum(float(e.precio) for e in item.extras)
         calculo = calcular_linea(
