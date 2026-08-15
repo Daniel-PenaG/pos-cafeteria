@@ -20,7 +20,7 @@ from app.models.models import (
 )
 from app.services.comanda_tiempo_service import formatear_duracion, segundos_entre
 from app.utils.deps import get_current_user, require_admin
-from app.constants.roles import normalizar_rol
+from app.constants.roles import ADMIN, normalizar_rol
 
 router = APIRouter(prefix="/reportes", tags=["Reportes"])
 
@@ -136,6 +136,57 @@ def _productos_ranking(db: Session, filtro, orden: str = "cantidad"):
         })
 
     return ranking, total_cantidad, total_subtotal
+
+
+def _tiempo_comanda_pedido(db: Session, pedido_id: int) -> dict:
+    """Duración desde envío a comanda hasta que todas las líneas quedan listas."""
+    lineas = (
+        db.query(DetallePedidoModel)
+        .filter(
+            DetallePedidoModel.id_pedido == pedido_id,
+            DetallePedidoModel.en_comanda == True,
+            DetallePedidoModel.fecha_envio_comanda.isnot(None),
+        )
+        .all()
+    )
+    if not lineas:
+        return {
+            "estado": "no_aplica",
+            "segundos": None,
+            "texto": "—",
+            "inicio": None,
+            "fin": None,
+        }
+
+    inicios = [l.fecha_envio_comanda for l in lineas if l.fecha_envio_comanda]
+    fines = [l.fecha_listo_comanda for l in lineas if l.fecha_listo_comanda]
+    pendientes = any(l.fecha_listo_comanda is None for l in lineas)
+
+    if pendientes or not inicios:
+        return {
+            "estado": "en_preparacion",
+            "segundos": None,
+            "texto": "En preparación",
+            "inicio": min(inicios).isoformat() if inicios else None,
+            "fin": None,
+        }
+
+    inicio = min(inicios)
+    fin = max(fines)
+    seg = segundos_entre(inicio, fin) or 0
+    return {
+        "estado": "completada",
+        "segundos": seg,
+        "texto": formatear_duracion(seg),
+        "inicio": inicio.isoformat(),
+        "fin": fin.isoformat(),
+    }
+
+
+def _mesa_label_venta(venta: VentaModel) -> str:
+    if venta.para_llevar or venta.numero_mesa == 99:
+        return "Para llevar"
+    return f"Mesa {venta.numero_mesa}"
 
 
 # ============================
@@ -559,9 +610,10 @@ def tiempos_preparacion_dia(fecha: date, db: Session = Depends(get_db)):
 def resumen_dashboard(
     fecha: Optional[date] = None,
     db: Session = Depends(get_db),
-    _: object = Depends(get_current_user),
+    current: UsuarioModel = Depends(get_current_user),
 ):
     hoy = fecha or date.today()
+    es_admin = normalizar_rol(current.rol) == ADMIN
 
     total_hoy = (
         db.query(func.coalesce(func.sum(VentaModel.total), 0))
@@ -575,9 +627,81 @@ def resumen_dashboard(
         .scalar()
     )
 
+    if not es_admin:
+        total_hoy = (
+            db.query(func.coalesce(func.sum(VentaModel.total), 0))
+            .filter(
+                func.date(VentaModel.fecha_hora) == hoy,
+                VentaModel.id_usuario == current.id_usuario,
+            )
+            .scalar()
+        )
+        num_ventas_hoy = (
+            db.query(func.count(VentaModel.id_venta))
+            .filter(
+                func.date(VentaModel.fecha_hora) == hoy,
+                VentaModel.id_usuario == current.id_usuario,
+            )
+            .scalar()
+        )
+
     total_general = (
         db.query(func.coalesce(func.sum(VentaModel.total), 0))
         .scalar()
+    )
+
+    ventas_query = (
+        db.query(VentaModel, UsuarioModel, ClienteModel)
+        .join(UsuarioModel, UsuarioModel.id_usuario == VentaModel.id_usuario)
+        .outerjoin(ClienteModel, ClienteModel.id_cliente == VentaModel.id_cliente)
+        .filter(func.date(VentaModel.fecha_hora) == hoy)
+        .order_by(VentaModel.fecha_hora.desc())
+    )
+    if not es_admin:
+        ventas_query = ventas_query.filter(VentaModel.id_usuario == current.id_usuario)
+
+    cuentas_hoy = []
+    segundos_comanda = []
+    for venta, usuario, cliente in ventas_query.all():
+        pedido = (
+            db.query(PedidoModel)
+            .filter(PedidoModel.id_venta == venta.id_venta)
+            .first()
+        )
+        if venta.para_llevar or not pedido:
+            comanda = {
+                "estado": "no_aplica",
+                "segundos": None,
+                "texto": "—",
+                "inicio": None,
+                "fin": None,
+            }
+        else:
+            comanda = _tiempo_comanda_pedido(db, pedido.id_pedido)
+            if comanda["estado"] == "completada" and comanda["segundos"] is not None:
+                segundos_comanda.append(comanda["segundos"])
+
+        cuentas_hoy.append({
+            "id_venta": venta.id_venta,
+            "fecha_hora": venta.fecha_hora.isoformat(),
+            "mesa_label": _mesa_label_venta(venta),
+            "para_llevar": bool(venta.para_llevar),
+            "total": float(venta.total),
+            "forma_pago": venta.forma_pago,
+            "cajero_nombre": usuario.nombre,
+            "cajero_login": usuario.usuario_login,
+            "cliente_nombre": cliente.nombre if cliente else None,
+            "comanda_estado": comanda["estado"],
+            "comanda_inicio": comanda["inicio"],
+            "comanda_fin": comanda["fin"],
+            "comanda_segundos": comanda["segundos"],
+            "comanda_texto": comanda["texto"],
+        })
+
+    comanda_promedio_segundos = (
+        round(sum(segundos_comanda) / len(segundos_comanda))
+        if segundos_comanda
+        else 0
     )
 
     # Top 5 productos por ventas (histórico)
@@ -610,4 +734,8 @@ def resumen_dashboard(
         "num_ventas_hoy": int(num_ventas_hoy),
         "total_general": float(total_general),
         "top_productos": productos_data,
+        "cuentas_hoy": cuentas_hoy,
+        "comanda_promedio_segundos": comanda_promedio_segundos,
+        "comanda_promedio_texto": formatear_duracion(comanda_promedio_segundos),
+        "comanda_completadas_hoy": len(segundos_comanda),
     }

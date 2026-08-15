@@ -13,6 +13,22 @@ function fechaLocalISO() {
   return `${y}-${m}-${day}`;
 }
 
+function formatearHora(iso) {
+  return new Date(iso).toLocaleTimeString("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatearFormaPago(forma) {
+  const map = {
+    EFECTIVO: "Efectivo",
+    TARJETA: "Tarjeta",
+    TRANSFERENCIA: "Transferencia",
+  };
+  return map[forma] || forma;
+}
+
 export default function Dashboard() {
   const rol = useAuthStore((state) => state.user?.rol);
   const admin = isAdmin(rol);
@@ -111,14 +127,95 @@ export default function Dashboard() {
           <div className="stat-card__value">${data.total_hoy.toFixed(2)}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-card__label">Ventas al día (tickets)</div>
+          <div className="stat-card__label">Cuentas de hoy</div>
           <div className="stat-card__value">{data.num_ventas_hoy}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-card__label">Tiempo prom. comanda</div>
+          <div className="stat-card__value">{data.comanda_promedio_texto || "0s"}</div>
         </div>
         <div className="stat-card">
           <div className="stat-card__label">Acumulado</div>
           <div className="stat-card__value">${data.total_general.toFixed(2)}</div>
         </div>
       </div>
+
+      <section className="card" style={{ marginBottom: "1.5rem" }}>
+        <h2>Cuentas de hoy</h2>
+        <p className="hint" style={{ marginTop: "0.35rem" }}>
+          Cada fila es una cuenta cobrada. El tiempo de comanda va desde que se envía a cocina hasta
+          que todas las líneas quedan listas.
+        </p>
+        {!data.cuentas_hoy?.length ? (
+          <p className="empty-state">No hay cuentas cobradas hoy.</p>
+        ) : (
+          <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Folio</th>
+                  <th>Hora</th>
+                  <th>Origen</th>
+                  {admin && <th>Cajero</th>}
+                  <th>Pago</th>
+                  <th>Comanda</th>
+                  <th>Inicio</th>
+                  <th>Fin</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.cuentas_hoy.map((c) => (
+                  <tr key={c.id_venta}>
+                    <td>#{c.id_venta}</td>
+                    <td>{formatearHora(c.fecha_hora)}</td>
+                    <td>
+                      {c.mesa_label}
+                      {c.para_llevar && (
+                        <span className="badge" style={{ marginLeft: "0.35rem" }}>
+                          llevar
+                        </span>
+                      )}
+                    </td>
+                    {admin && (
+                      <td>
+                        {c.cajero_nombre}
+                        <span className="hint" style={{ marginLeft: "0.25rem" }}>
+                          @{c.cajero_login}
+                        </span>
+                      </td>
+                    )}
+                    <td>{formatearFormaPago(c.forma_pago)}</td>
+                    <td>
+                      <span
+                        className={
+                          c.comanda_estado === "completada"
+                            ? "badge badge--ok"
+                            : c.comanda_estado === "en_preparacion"
+                              ? "badge badge--kitchen"
+                              : ""
+                        }
+                      >
+                        {c.comanda_texto}
+                      </span>
+                    </td>
+                    <td>{c.comanda_inicio ? formatearHora(c.comanda_inicio) : "—"}</td>
+                    <td>{c.comanda_fin ? formatearHora(c.comanda_fin) : "—"}</td>
+                    <td>${Number(c.total).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {data.comanda_completadas_hoy > 0 && (
+          <p className="hint" style={{ marginTop: "0.75rem", marginBottom: 0 }}>
+            {data.comanda_completadas_hoy} cuenta
+            {data.comanda_completadas_hoy !== 1 ? "s" : ""} con comanda completada · promedio{" "}
+            {data.comanda_promedio_texto}
+          </p>
+        )}
+      </section>
 
       {admin && (
       <section className="card" style={{ marginBottom: "1.5rem" }}>
