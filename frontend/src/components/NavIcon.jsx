@@ -14,6 +14,7 @@ import {
   HiOutlineChartBar,
   HiOutlineUsers,
   HiOutlineRectangleStack,
+  HiOutlineIdentification,
 } from "react-icons/hi2";
 
 const ICONS = {
@@ -31,6 +32,7 @@ const ICONS = {
   "/para-llevar": HiOutlineRectangleStack,
   "/compras": HiOutlineTruck,
   "/reportes": HiOutlineChartBar,
+  "/cuentas-cajero": HiOutlineIdentification,
   "/usuarios": HiOutlineUsers,
 };
 

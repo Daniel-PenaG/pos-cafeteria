@@ -15,9 +15,12 @@ from app.models.models import (
     InsumoModel,
     DetallePedidoModel,
     PedidoModel,
+    UsuarioModel,
+    ClienteModel,
 )
 from app.services.comanda_tiempo_service import formatear_duracion, segundos_entre
 from app.utils.deps import get_current_user, require_admin
+from app.constants.roles import normalizar_rol
 
 router = APIRouter(prefix="/reportes", tags=["Reportes"])
 
@@ -164,6 +167,83 @@ def ventas_por_dia(fecha: date, db: Session = Depends(get_db)):
         "total_dia": total_dia,
         "numero_ventas": len(ventas),
         "productos": productos
+    }
+
+
+# ============================
+# CUENTAS POR CAJERO (DÍA)
+# ============================
+@router.get("/cuentas-por-cajero", dependencies=[Depends(require_admin)])
+def cuentas_por_cajero(fecha: date, db: Session = Depends(get_db)):
+    ventas = (
+        db.query(VentaModel, UsuarioModel, ClienteModel)
+        .join(UsuarioModel, UsuarioModel.id_usuario == VentaModel.id_usuario)
+        .outerjoin(ClienteModel, ClienteModel.id_cliente == VentaModel.id_cliente)
+        .filter(func.date(VentaModel.fecha_hora) == fecha)
+        .order_by(VentaModel.fecha_hora)
+        .all()
+    )
+
+    if not ventas:
+        return {
+            "fecha": fecha,
+            "total_dia": 0,
+            "numero_ventas": 0,
+            "numero_cajeros": 0,
+            "por_cajero": [],
+        }
+
+    total_dia = sum(float(v.total) for v, _, _ in ventas)
+    por_usuario = {}
+
+    for venta, usuario, cliente in ventas:
+        uid = usuario.id_usuario
+        if uid not in por_usuario:
+            por_usuario[uid] = {
+                "id_usuario": uid,
+                "nombre": usuario.nombre,
+                "usuario_login": usuario.usuario_login,
+                "rol": normalizar_rol(usuario.rol),
+                "numero_ventas": 0,
+                "total": 0.0,
+                "ventas": [],
+            }
+
+        entry = por_usuario[uid]
+        entry["numero_ventas"] += 1
+        entry["total"] += float(venta.total)
+
+        if venta.para_llevar or venta.numero_mesa == 99:
+            mesa_label = "Para llevar"
+        else:
+            mesa_label = f"Mesa {venta.numero_mesa}"
+
+        entry["ventas"].append({
+            "id_venta": venta.id_venta,
+            "fecha_hora": venta.fecha_hora.isoformat(),
+            "numero_mesa": venta.numero_mesa,
+            "mesa_label": mesa_label,
+            "para_llevar": bool(venta.para_llevar),
+            "total": float(venta.total),
+            "forma_pago": venta.forma_pago,
+            "cliente_nombre": cliente.nombre if cliente else None,
+            "puntos_generados": int(venta.puntos_generados or 0),
+        })
+
+    por_cajero = sorted(por_usuario.values(), key=lambda x: -x["total"])
+    for cajero in por_cajero:
+        cajero["porcentaje_dia"] = round(
+            (cajero["total"] / total_dia * 100) if total_dia else 0,
+            1,
+        )
+        cajero["ventas"].sort(key=lambda v: v["fecha_hora"], reverse=True)
+
+    return {
+        "fecha": fecha,
+        "total_dia": total_dia,
+        "numero_ventas": len(ventas),
+        "numero_cajeros": len(por_cajero),
+        "por_cajero": por_cajero,
     }
 
 

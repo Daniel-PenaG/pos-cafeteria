@@ -35,6 +35,7 @@ const NAV = [
     group: "Administración",
     items: [
       { to: "/reportes", label: "Reportes", roles: ["ADMIN"] },
+      { to: "/cuentas-cajero", label: "Cuentas por cajero", roles: ["ADMIN"] },
       { to: "/usuarios", label: "Usuarios", roles: ["ADMIN"] },
     ],
   },

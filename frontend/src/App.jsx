@@ -14,6 +14,7 @@ import Promociones from "./pages/Promociones";
 import Clientes from "./pages/Clientes";
 import Comandera from "./pages/Comandera";
 import Reportes from "./pages/Reportes";
+import CuentasCajero from "./pages/CuentasCajero";
 import Usuarios from "./pages/Usuarios";
 import MainLayout from "./layout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -63,6 +64,7 @@ export default function App() {
           <Route path="clientes" element={withRole("/clientes", <Clientes />)} />
           <Route path="compras" element={withRole("/compras", <Compras />)} />
           <Route path="reportes" element={withRole("/reportes", <Reportes />)} />
+          <Route path="cuentas-cajero" element={withRole("/cuentas-cajero", <CuentasCajero />)} />
           <Route path="usuarios" element={withRole("/usuarios", <Usuarios />)} />
         </Route>
 

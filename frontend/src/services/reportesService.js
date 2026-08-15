@@ -58,3 +58,10 @@ export async function getResumenDashboard() {
   });
   return res.data;
 }
+
+export async function getCuentasPorCajero(fecha) {
+  const res = await api.get(`/reportes/cuentas-por-cajero?fecha=${fecha}`, {
+    headers: getAuthHeader(),
+  });
+  return res.data;
+}

@@ -1570,3 +1570,41 @@ body {
   font-size: 0.85rem;
   max-width: 220px;
 }
+
+/* ─── Cuentas por cajero ─── */
+.cuentas-cajero__controls {
+  margin-bottom: 1.25rem;
+}
+
+.cuentas-cajero__controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.cuentas-cajero__hint {
+  margin: 0.75rem 0 0;
+}
+
+.cuentas-cajero__persona {
+  margin-bottom: 1.25rem;
+}
+
+.cuentas-cajero__persona-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.cuentas-cajero__persona-head h3 {
+  margin: 0;
+}
+
+.cuentas-cajero__persona-meta {
+  font-size: 0.88rem;
+  color: var(--olive-muted);
+  font-weight: 600;
+}
