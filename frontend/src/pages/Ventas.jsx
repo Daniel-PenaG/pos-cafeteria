@@ -558,21 +558,24 @@ export default function Ventas({ modoParaLlevar = false }) {
                         </span>
                         <span className="hint">({grupo.productos.length})</span>
                       </button>
-                      {abierta &&
-                        grupo.productos.map((p) => (
-                          <button
-                            key={p.id_producto}
-                            type="button"
-                            className="ventas-producto-item"
-                            onClick={() => abrirModalProducto(p)}
-                            disabled={!ventasHabilitadas}
-                          >
-                            <span>{p.nombre}</span>
-                            <span className="ventas-producto-item__precio">
-                              ${Number(p.precio_venta).toFixed(2)}
-                            </span>
-                          </button>
-                        ))}
+                      {abierta && (
+                        <div className="ventas-productos-grid">
+                          {grupo.productos.map((p) => (
+                            <button
+                              key={p.id_producto}
+                              type="button"
+                              className="ventas-producto-card"
+                              onClick={() => abrirModalProducto(p)}
+                              disabled={!ventasHabilitadas}
+                            >
+                              <span className="ventas-producto-card__nombre">{p.nombre}</span>
+                              <span className="ventas-producto-card__precio">
+                                ${Number(p.precio_venta).toFixed(2)}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
