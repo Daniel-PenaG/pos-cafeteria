@@ -7,6 +7,8 @@ class ExtraVentaLinea(BaseModel):
     id_extra: int
     nombre: str
     precio: float
+    id_insumo: Optional[int] = None
+    cantidad_insumo: float = 1
 
 
 class ExtraVenta(BaseModel):
@@ -15,6 +17,9 @@ class ExtraVenta(BaseModel):
     precio: float
     tipo: str
     activo: bool
+    id_insumo: Optional[int] = None
+    cantidad_insumo: float = 1
+    unidad: Optional[str] = None
 
     class Config:
         from_attributes = True

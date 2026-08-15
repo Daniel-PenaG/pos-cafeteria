@@ -362,6 +362,8 @@ export default function Ventas({ modoParaLlevar = false }) {
           id_extra: extra.id_extra,
           nombre: extra.nombre,
           precio: Number(extra.precio),
+          id_insumo: extra.id_insumo ?? null,
+          cantidad_insumo: Number(extra.cantidad_insumo ?? 1),
         },
       ];
     });
@@ -802,6 +804,11 @@ export default function Ventas({ modoParaLlevar = false }) {
                           className={`extra-chip ${sel ? "extra-chip--selected" : ""}`}
                         >
                           {extra.nombre}
+                          {Number(extra.precio) > 0 && (
+                            <span className="extra-chip__precio">
+                              +${Number(extra.precio).toFixed(2)}
+                            </span>
+                          )}
                         </button>
                       );
                     })}

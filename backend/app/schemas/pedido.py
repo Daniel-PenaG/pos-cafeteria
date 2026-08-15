@@ -14,6 +14,8 @@ class ExtraLineaPedido(BaseModel):
     id_extra: int
     nombre: str
     precio: float
+    id_insumo: Optional[int] = None
+    cantidad_insumo: float = 1
 
 
 class DetallePedidoLinea(BaseModel):

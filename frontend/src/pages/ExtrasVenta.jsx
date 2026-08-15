@@ -35,6 +35,7 @@ export default function ExtrasVenta() {
   const [tipo, setTipo] = useState("OTRO");
   const [activo, setActivo] = useState(true);
   const [insumoSel, setInsumoSel] = useState("");
+  const [cantidadInsumo, setCantidadInsumo] = useState("1");
 
   const precioPreview = useMemo(() => {
     if (!tieneCosto) return 0;
@@ -99,14 +100,21 @@ export default function ExtrasVenta() {
     setTipo("OTRO");
     setActivo(true);
     setInsumoSel("");
+    setCantidadInsumo("1");
     setEditing(null);
     setModoModal("manual");
   };
 
-  const openNewManual = () => {
+  const openNewManual = async () => {
     resetForm();
     setModoModal("manual");
-    setShowModal(true);
+    try {
+      const lista = await getInsumosImportables();
+      setInsumosImportables(lista);
+      setShowModal(true);
+    } catch (err) {
+      alert(err.response?.data?.detail || "Error al cargar insumos");
+    }
   };
 
   const openNewFromInsumo = async () => {
@@ -121,7 +129,7 @@ export default function ExtrasVenta() {
     }
   };
 
-  const openEdit = (e) => {
+  const openEdit = async (e) => {
     setEditing(e);
     setModoModal("edit");
     setNombre(e.nombre);
@@ -131,7 +139,15 @@ export default function ExtrasVenta() {
     setPrecioExtra(precio > 0 ? String(precio) : "");
     setTipo(e.tipo || "OTRO");
     setActivo(e.activo !== false);
-    setShowModal(true);
+    setInsumoSel(e.id_insumo_origen ? String(e.id_insumo_origen) : "");
+    setCantidadInsumo(String(e.cantidad ?? 1));
+    try {
+      const lista = await getInsumosImportables();
+      setInsumosImportables(lista);
+      setShowModal(true);
+    } catch (err) {
+      alert(err.response?.data?.detail || "Error al cargar insumos");
+    }
   };
 
   const onInsumoSelect = (id) => {
@@ -146,9 +162,14 @@ export default function ExtrasVenta() {
   };
 
   const buildPayloadPrecio = () => {
+    const cantidad = parseFloat(cantidadInsumo);
+    if (isNaN(cantidad) || cantidad <= 0) {
+      alert("Indica una cantidad de insumo mayor a 0");
+      return null;
+    }
     if (!tieneCosto) {
       return {
-        cantidad: 1,
+        cantidad,
         costo_unitario: 0,
         usar_precio_manual: true,
         precio_personalizado: 0,
@@ -160,7 +181,7 @@ export default function ExtrasVenta() {
       return null;
     }
     return {
-      cantidad: 1,
+      cantidad,
       costo_unitario: 0,
       usar_precio_manual: true,
       precio_personalizado: precio,
@@ -197,10 +218,15 @@ export default function ExtrasVenta() {
       alert("El nombre es obligatorio");
       return;
     }
+    if (!insumoSel) {
+      alert("Selecciona el insumo del que se descontará inventario");
+      return;
+    }
 
     const payload = {
       nombre: nombre.trim(),
       unidad: unidad.trim() || null,
+      id_insumo_origen: Number(insumoSel),
       ...precioData,
       tipo,
       activo,
@@ -308,6 +334,20 @@ export default function ExtrasVenta() {
 
   const camposPrecio = (
     <>
+      <div className="form-row">
+        <label>Cantidad de insumo por extra *</label>
+        <input
+          type="number"
+          min="0.001"
+          step="0.001"
+          value={cantidadInsumo}
+          onChange={(e) => setCantidadInsumo(e.target.value)}
+          required
+        />
+        <p className="hint" style={{ marginTop: "0.35rem", marginBottom: 0 }}>
+          Se descuenta del inventario por cada unidad del producto vendido.
+        </p>
+      </div>
       <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
         <input
           type="checkbox"
@@ -336,7 +376,7 @@ export default function ExtrasVenta() {
       <p className="hint" style={{ marginTop: 0 }}>
         {tieneCosto
           ? <>Se cobrará <strong>${precioPreview.toFixed(2)}</strong> al agregarlo en venta.</>
-          : <>Sin costo: solo aparece el nombre en venta.</>}
+          : <>Sin costo al cliente, pero sí descuenta inventario del insumo.</>}
       </p>
     </>
   );
@@ -347,7 +387,7 @@ export default function ExtrasVenta() {
     <div className="page">
       <PageHeader
         title="Extras de venta"
-        subtitle="Catálogo de extras: nombre y si lleva costo al vender"
+        subtitle="Catálogo de extras ligados a insumos: precio en venta y descuento de inventario"
       />
 
       <section className="card extras-tipos-panel">
@@ -396,7 +436,7 @@ export default function ExtrasVenta() {
             </div>
           </div>
           <p className="hint" style={{ marginTop: 0 }}>
-            Define el nombre y si el extra tiene costo al agregarlo en una venta.
+            Cada extra debe estar ligado a un insumo. Al venderse descuenta stock en mesa y para llevar.
             {productoSel && (
               <>
                 {" "}
@@ -601,6 +641,32 @@ export default function ExtrasVenta() {
 
               {(modoModal === "manual" || modoModal === "edit") && (
                 <>
+                  <div className="form-row">
+                    <label>Insumo (inventario) *</label>
+                    <select
+                      className="select"
+                      value={insumoSel}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setInsumoSel(id);
+                        const ins = insumosImportables.find(
+                          (i) => String(i.id_insumo) === String(id)
+                        );
+                        if (ins && modoModal === "manual") {
+                          setNombre(ins.nombre);
+                          setUnidad(ins.unidad);
+                        }
+                      }}
+                      required
+                    >
+                      <option value="">Seleccione insumo…</option>
+                      {insumosImportables.map((i) => (
+                        <option key={i.id_insumo} value={i.id_insumo}>
+                          {i.nombre} — stock en {i.unidad}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="form-row">
                     <label>Nombre *</label>
                     <input value={nombre} onChange={(e) => setNombre(e.target.value)} required />

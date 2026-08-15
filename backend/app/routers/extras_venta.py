@@ -76,12 +76,19 @@ def listar_insumos_para_importar(db: Session = Depends(get_db)):
 def crear_extra_manual(data: ExtraVentaCatalogoCreate, db: Session = Depends(get_db)):
     if not data.nombre.strip():
         raise DatosInvalidosException("El nombre es obligatorio")
+    insumo = (
+        db.query(InsumoModel)
+        .filter(InsumoModel.id_insumo == data.id_insumo_origen)
+        .first()
+    )
+    if not insumo:
+        raise RecursoNoEncontradoException("Insumo no encontrado")
     extra = ExtraVentaModel(
         nombre=data.nombre.strip(),
-        unidad=(data.unidad or "").strip() or None,
+        unidad=(data.unidad or insumo.unidad or "").strip() or None,
         tipo=_validar_tipo(db, data.tipo),
         activo=data.activo,
-        id_insumo_origen=None,
+        id_insumo_origen=insumo.id_insumo,
         cantidad=data.cantidad,
         costo_unitario=data.costo_unitario,
         usar_precio_manual=data.usar_precio_manual,
@@ -137,10 +144,18 @@ def actualizar_extra(
         raise RecursoNoEncontradoException("Extra no encontrado")
     if not data.nombre.strip():
         raise DatosInvalidosException("El nombre es obligatorio")
+    insumo = (
+        db.query(InsumoModel)
+        .filter(InsumoModel.id_insumo == data.id_insumo_origen)
+        .first()
+    )
+    if not insumo:
+        raise RecursoNoEncontradoException("Insumo no encontrado")
     extra.nombre = data.nombre.strip()
-    extra.unidad = (data.unidad or "").strip() or None
+    extra.unidad = (data.unidad or insumo.unidad or "").strip() or None
     extra.tipo = _validar_tipo(db, data.tipo)
     extra.activo = data.activo
+    extra.id_insumo_origen = insumo.id_insumo
     _aplicar_datos_precio(extra, data)
     db.commit()
     db.refresh(extra)

@@ -21,11 +21,11 @@ class ExtraVentaCatalogoBase(BaseModel):
 
 
 class ExtraVentaCatalogoCreate(ExtraVentaCatalogoBase):
-    pass
+    id_insumo_origen: int
 
 
 class ExtraVentaCatalogoUpdate(ExtraVentaCatalogoBase):
-    pass
+    id_insumo_origen: int
 
 
 class ExtraVentaCatalogo(ExtraVentaCatalogoBase):

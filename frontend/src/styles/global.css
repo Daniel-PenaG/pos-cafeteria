@@ -1090,6 +1090,12 @@ body {
   font-weight: 600;
 }
 
+.extra-chip__precio {
+  margin-left: 0.35rem;
+  font-size: 0.78rem;
+  opacity: 0.85;
+}
+
 .extra-chips {
   display: flex;
   flex-wrap: wrap;

@@ -9,7 +9,13 @@ from app.models.models import (
     ClienteModel,
 )
 from app.schemas.pedido import PedidoLineaCreate
-from app.schemas.ventas import VentaCreate, DetalleVentaItem, ExtraVentaLinea
+from app.schemas.ventas import VentaCreate, DetalleVentaItem
+from app.services.extras_validacion_service import (
+    validar_extras_producto,
+    extras_json_desde_normalizados,
+    parsear_extras_json,
+    extras_linea_desde_json,
+)
 from app.services.promocion_service import calcular_linea
 from app.services.venta_service import registrar_venta, MESA_PARA_LLEVAR
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
@@ -25,12 +31,7 @@ def _line_key(id_producto: int, extras: list, id_promocion, comentario: str | No
 
 
 def _parse_extras(extras_json: str | None) -> list:
-    if not extras_json:
-        return []
-    try:
-        return json.loads(extras_json)
-    except json.JSONDecodeError:
-        return []
+    return parsear_extras_json(extras_json)
 
 
 def _detalle_a_dict(d: DetallePedidoModel) -> dict:
@@ -120,6 +121,8 @@ def agregar_linea_pedido(
     if not calculo["margen_ok"]:
         raise DatosInvalidosException(calculo["mensaje"] or "Margen insuficiente")
 
+    extras_normalizados = validar_extras_producto(db, data.id_producto, data.extras)
+
     esperado = calculo["precio_unitario"]
     if abs(float(data.precio_unitario) - esperado) > 0.02:
         raise DatosInvalidosException(
@@ -134,12 +137,7 @@ def agregar_linea_pedido(
         .first()
     )
 
-    extras_json = None
-    if data.extras:
-        extras_json = json.dumps(
-            [{"id_extra": e.id_extra, "nombre": e.nombre, "precio": float(e.precio)} for e in data.extras],
-            ensure_ascii=False,
-        )
+    extras_json = extras_json_desde_normalizados(extras_normalizados)
 
     ahora = datetime.now()
     if existente and existente.en_comanda and not data.enviar_comanda:
@@ -210,10 +208,7 @@ def cobrar_pedido(db: Session, pedido: PedidoModel, id_usuario: int, forma_pago:
 
     detalles_venta = []
     for d in pedido.detalles:
-        extras = [
-            ExtraVentaLinea(id_extra=e["id_extra"], nombre=e["nombre"], precio=e["precio"])
-            for e in _parse_extras(d.extras_json)
-        ]
+        extras = extras_linea_desde_json(_parse_extras(d.extras_json))
         detalles_venta.append(
             DetalleVentaItem(
                 id_producto=d.id_producto,

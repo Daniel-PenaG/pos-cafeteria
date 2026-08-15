@@ -14,10 +14,12 @@ from app.models import (
     MovimientoInventarioModel,
     UsuarioModel,
     ClienteModel,
+    ExtraVentaModel,
 )
-from app.schemas.ventas import VentaCreate, VentaResponse
+from app.schemas.ventas import VentaCreate, VentaResponse, ExtraVentaLinea
 from app.services.promocion_service import calcular_linea
 from app.services.fidelidad_service import obtener_config, calcular_puntos_ganados, acumular_puntos_venta
+from app.services.extras_validacion_service import validar_extras_producto
 from app.exceptions import (
     RecursoNoEncontradoException,
     DatosInvalidosException,
@@ -26,7 +28,24 @@ from app.exceptions import (
 MESA_PARA_LLEVAR = 99
 
 
-def _revisar_stock_para_llevar(db: Session, detalles, advertencias: List[str]) -> None:
+def _resolver_extra_insumo(
+    db: Session, extra: ExtraVentaLinea
+) -> tuple[int | None, float]:
+    if extra.id_insumo:
+        return int(extra.id_insumo), float(extra.cantidad_insumo or 1)
+
+    if extra.id_extra:
+        model = (
+            db.query(ExtraVentaModel)
+            .filter(ExtraVentaModel.id_extra == extra.id_extra)
+            .first()
+        )
+        if model and model.id_insumo_origen:
+            return int(model.id_insumo_origen), float(model.cantidad or 1)
+    return None, 0.0
+
+
+def _revisar_stock_receta_para_llevar(db: Session, detalles, advertencias: List[str]) -> None:
     for item in detalles:
         receta = (
             db.query(RecetaModel)
@@ -53,7 +72,25 @@ def _revisar_stock_para_llevar(db: Session, detalles, advertencias: List[str]) -
                 )
 
 
-def _descontar_stock_para_llevar(db: Session, venta_id: int, detalles) -> None:
+def _revisar_stock_extras(db: Session, detalles, advertencias: List[str]) -> None:
+    for item in detalles:
+        for extra in item.extras:
+            id_insumo, cantidad_por_unidad = _resolver_extra_insumo(db, extra)
+            if not id_insumo:
+                continue
+            insumo = db.query(InsumoModel).filter(InsumoModel.id_insumo == id_insumo).first()
+            if not insumo:
+                continue
+            cantidad_requerida = cantidad_por_unidad * float(item.cantidad)
+            stock_disponible = float(insumo.stock_actual)
+            if stock_disponible < cantidad_requerida:
+                advertencias.append(
+                    f"Stock insuficiente de '{insumo.nombre}' (extra). "
+                    f"Disponible: {stock_disponible}, Requerido: {cantidad_requerida}"
+                )
+
+
+def _descontar_stock_receta_para_llevar(db: Session, venta_id: int, detalles) -> None:
     for item in detalles:
         receta = (
             db.query(RecetaModel)
@@ -78,6 +115,28 @@ def _descontar_stock_para_llevar(db: Session, venta_id: int, detalles) -> None:
                 tipo="SALIDA",
                 cantidad=cantidad_total,
                 motivo="VENTA",
+                referencia=f"VENTA {venta_id}",
+                fecha_hora=datetime.now(),
+            )
+            db.add(mov)
+
+
+def _descontar_stock_extras(db: Session, venta_id: int, detalles) -> None:
+    for item in detalles:
+        for extra in item.extras:
+            id_insumo, cantidad_por_unidad = _resolver_extra_insumo(db, extra)
+            if not id_insumo:
+                continue
+            insumo = db.query(InsumoModel).filter(InsumoModel.id_insumo == id_insumo).first()
+            if not insumo:
+                continue
+            cantidad_total = cantidad_por_unidad * float(item.cantidad)
+            insumo.stock_actual = float(insumo.stock_actual) - cantidad_total
+            mov = MovimientoInventarioModel(
+                id_insumo=insumo.id_insumo,
+                tipo="SALIDA",
+                cantidad=cantidad_total,
+                motivo="VENTA_EXTRA",
                 referencia=f"VENTA {venta_id}",
                 fecha_hora=datetime.now(),
             )
@@ -113,6 +172,8 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
             raise RecursoNoEncontradoException(f"Producto {item.id_producto} no encontrado")
         if not producto.activo:
             raise DatosInvalidosException(f"Producto {producto.nombre} no está activo")
+
+        validar_extras_producto(db, item.id_producto, item.extras)
 
         precio_extras = sum(float(e.precio) for e in item.extras)
         calculo = calcular_linea(
@@ -151,7 +212,8 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
 
     advertencias_stock: List[str] = []
     if para_llevar:
-        _revisar_stock_para_llevar(db, data.detalles, advertencias_stock)
+        _revisar_stock_receta_para_llevar(db, data.detalles, advertencias_stock)
+    _revisar_stock_extras(db, data.detalles, advertencias_stock)
 
     venta = VentaModel(
         fecha_hora=datetime.now(),
@@ -171,13 +233,8 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
         producto = db.query(ProductoModel).filter(ProductoModel.id_producto == item.id_producto).first()
         extras_json = None
         if item.extras:
-            extras_json = json.dumps(
-                [
-                    {"id_extra": e.id_extra, "nombre": e.nombre, "precio": float(e.precio)}
-                    for e in item.extras
-                ],
-                ensure_ascii=False,
-            )
+            extras_normalizados = validar_extras_producto(db, item.id_producto, item.extras)
+            extras_json = json.dumps(extras_normalizados, ensure_ascii=False)
         precio_extras = sum(float(e.precio) for e in item.extras)
         calculo = calcular_linea(
             db, producto, float(item.cantidad), precio_extras, item.id_promocion
@@ -197,7 +254,8 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
         db.add(detalle)
 
     if para_llevar:
-        _descontar_stock_para_llevar(db, venta.id_venta, data.detalles)
+        _descontar_stock_receta_para_llevar(db, venta.id_venta, data.detalles)
+    _descontar_stock_extras(db, venta.id_venta, data.detalles)
 
     if cliente and puntos_generados > 0:
         acumular_puntos_venta(db, cliente, puntos_generados, venta.id_venta, data.id_usuario)
