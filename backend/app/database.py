@@ -477,6 +477,85 @@ def crear_admin_inicial_si_vacio():
         db.close()
 
 
+def crear_catalogo_demo_si_vacio():
+    """En SQLite local crea categorías y productos de ejemplo si el catálogo está vacío."""
+    if engine.dialect.name != "sqlite":
+        return
+    if os.getenv("LOCAL_SEED_CATALOG", "true").lower() in ("0", "false", "no"):
+        return
+
+    from app.models.models import CategoriaModel, ProductoModel
+
+    catalogo_demo = [
+        (
+            "Bebidas calientes",
+            [
+                ("Café americano", 35.00),
+                ("Capuccino", 45.00),
+                ("Latte", 48.00),
+                ("Chocolate caliente", 42.00),
+            ],
+        ),
+        (
+            "Bebidas frías",
+            [
+                ("Frappé de vainilla", 55.00),
+                ("Limonada natural", 38.00),
+                ("Agua embotellada", 20.00),
+            ],
+        ),
+        (
+            "Panadería",
+            [
+                ("Concha", 18.00),
+                ("Bolillo", 12.00),
+                ("Muffin de arándano", 32.00),
+            ],
+        ),
+        (
+            "Comida",
+            [
+                ("Sandwich de jamón", 65.00),
+                ("Ensalada mixta", 72.00),
+                ("Sopa del día", 58.00),
+            ],
+        ),
+    ]
+
+    db = SessionLocal()
+    try:
+        if db.query(CategoriaModel).count() > 0:
+            return
+
+        total_productos = 0
+        for nombre_categoria, productos in catalogo_demo:
+            categoria = CategoriaModel(nombre=nombre_categoria)
+            db.add(categoria)
+            db.flush()
+            for nombre_producto, precio in productos:
+                db.add(
+                    ProductoModel(
+                        nombre=nombre_producto,
+                        id_categoria=categoria.id_categoria,
+                        precio_venta=precio,
+                        activo=True,
+                        para_llevar=False,
+                    )
+                )
+                total_productos += 1
+
+        db.commit()
+        print(
+            f"[LOCAL] Catálogo demo creado: {len(catalogo_demo)} categorías, "
+            f"{total_productos} productos"
+        )
+    except Exception as exc:
+        db.rollback()
+        print(f"[WARN] No se pudo crear catálogo demo: {exc}")
+    finally:
+        db.close()
+
+
 def get_db():
     db = SessionLocal()
     try:

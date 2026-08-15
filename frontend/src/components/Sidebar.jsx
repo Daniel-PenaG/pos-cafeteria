@@ -48,7 +48,7 @@ export default function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar__brand">
         <div className="flex items-center gap-2.5">
-          <span className="flex size-9 items-center justify-center rounded-lg bg-cream/10 text-cream">
+          <span className="flex size-9 items-center justify-center rounded-lg bg-white/15 text-white">
             <HiOutlineBuildingStorefront className="size-5" aria-hidden />
           </span>
           <div>

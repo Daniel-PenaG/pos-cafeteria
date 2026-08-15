@@ -21,11 +21,17 @@ export default function Login() {
       useAuthStore.getState().login(res.data.access_token, res.data.user);
       navigate(getDefaultRoute(res.data.user?.rol));
     } catch (err) {
-      const detail = err.response?.data?.detail;
-      const msg =
-        typeof detail === "string"
-          ? detail
-          : "Credenciales incorrectas. En local usa admin / admin123";
+      let msg;
+      if (!err.response) {
+        msg =
+          "No se pudo conectar con el servidor. Inicia el backend en local: cd backend; .\\run-dev.ps1 (API en http://127.0.0.1:8000)";
+      } else {
+        const detail = err.response?.data?.detail;
+        msg =
+          typeof detail === "string"
+            ? detail
+            : "Credenciales incorrectas. En local usa admin / admin123";
+      }
       alert(msg);
     } finally {
       setLoading(false);

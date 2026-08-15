@@ -503,11 +503,16 @@ export default function Ventas({ modoParaLlevar = false }) {
 
       {!modoParaLlevar && (
         <section className="ventas-mesas-bar">
-          <span className="ventas-mesas-bar__label inline-flex items-center gap-1.5">
-            <HiOutlineTableCells className="size-4 text-coffee" aria-hidden />
-            Mesa
-          </span>
-          <div className="ventas-mesas-bar__grid">
+          <div className="ventas-mesas-bar__top">
+            <span className="ventas-mesas-bar__label inline-flex items-center gap-1.5">
+              <HiOutlineTableCells className="size-5 text-olive" aria-hidden />
+              Selecciona mesa
+            </span>
+            {numeroMesa && (
+              <span className="ventas-mesas-bar__actual">Mesa {numeroMesa} activa</span>
+            )}
+          </div>
+          <div className="ventas-mesas-grid">
             {Array.from({ length: NUM_MESAS }, (_, i) => i + 1).map((n) => {
               const activa = mesasActivas[n];
               const ocupada = activa && activa.num_lineas > 0;
@@ -516,19 +521,18 @@ export default function Ventas({ modoParaLlevar = false }) {
                   key={n}
                   type="button"
                   onClick={() => seleccionarMesa(n)}
-                  className={`mesa-btn mesa-btn--compact ${numeroMesa === n ? "mesa-btn--active" : ""} ${ocupada ? "mesa-btn--ocupada" : ""}`}
+                  className={`mesa-card ${numeroMesa === n ? "mesa-card--active" : ""} ${ocupada ? "mesa-card--ocupada" : ""}`}
                 >
-                  {n}
+                  <HiOutlineTableCells className="mesa-card__icon" aria-hidden />
+                  <span className="mesa-card__num">{n}</span>
+                  <span className="mesa-card__text">Mesa</span>
                   {ocupada && (
-                    <span className="mesa-btn__badge">{activa.num_lineas}</span>
+                    <span className="mesa-card__badge">{activa.num_lineas}</span>
                   )}
                 </button>
               );
             })}
           </div>
-          {numeroMesa && (
-            <span className="ventas-mesas-bar__actual">Mesa {numeroMesa}</span>
-          )}
         </section>
       )}
 
@@ -548,9 +552,14 @@ export default function Ventas({ modoParaLlevar = false }) {
               disabled={!ventasHabilitadas}
             />
 
-            {productosPorCategoria.length === 0 ? (
+            {productos.length === 0 ? (
               <p className="empty-state" style={{ marginTop: "0.75rem" }}>
-                No hay productos que coincidan
+                No hay productos en el catálogo. Agrega categorías y productos en el módulo{" "}
+                <strong>Productos</strong> del menú lateral.
+              </p>
+            ) : productosPorCategoria.length === 0 ? (
+              <p className="empty-state" style={{ marginTop: "0.75rem" }}>
+                No hay productos que coincidan con la búsqueda
               </p>
             ) : (
               <div className="ventas-categorias-list">
@@ -563,10 +572,11 @@ export default function Ventas({ modoParaLlevar = false }) {
                         className="ventas-categoria__header"
                         onClick={() => toggleCategoria(grupo.id)}
                       >
-                        <span>
-                          {abierta ? "▼" : "▶"} {grupo.nombre}
+                        <span className="ventas-categoria__title">
+                          <span className="ventas-categoria__chevron">{abierta ? "−" : "+"}</span>
+                          {grupo.nombre}
                         </span>
-                        <span className="hint">({grupo.productos.length})</span>
+                        <span className="ventas-categoria__count">{grupo.productos.length}</span>
                       </button>
                       {abierta && (
                         <div className="ventas-productos-list">
@@ -578,7 +588,10 @@ export default function Ventas({ modoParaLlevar = false }) {
                               onClick={() => abrirModalProducto(p)}
                               disabled={!ventasHabilitadas}
                             >
-                              <span className="ventas-producto-item__nombre">{p.nombre}</span>
+                              <span className="ventas-producto-item__main">
+                                <span className="ventas-producto-item__dot" aria-hidden />
+                                <span className="ventas-producto-item__nombre">{p.nombre}</span>
+                              </span>
                               <span className="ventas-producto-item__precio">
                                 ${Number(p.precio_venta).toFixed(2)}
                               </span>
@@ -597,9 +610,9 @@ export default function Ventas({ modoParaLlevar = false }) {
         <aside className="cart-panel">
           <h2 className="flex items-center gap-2">
             {modoParaLlevar ? (
-              <HiOutlineShoppingBag className="size-5 text-coffee shrink-0" aria-hidden />
+              <HiOutlineShoppingBag className="size-5 text-olive shrink-0" aria-hidden />
             ) : (
-              <HiOutlineShoppingCart className="size-5 text-coffee shrink-0" aria-hidden />
+              <HiOutlineShoppingCart className="size-5 text-olive shrink-0" aria-hidden />
             )}
             {modoParaLlevar
               ? "Pedido para llevar"
