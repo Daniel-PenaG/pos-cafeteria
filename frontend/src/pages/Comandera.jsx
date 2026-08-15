@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { HiOutlineArrowPath } from "react-icons/hi2";
 import { getComandaPendientes, marcarLineaListo } from "../services/pedidosService";
 import PageHeader from "../components/PageHeader";
 import ElapsedTimer from "../components/ElapsedTimer";
@@ -68,7 +69,13 @@ export default function Comandera() {
         title="Comandera"
         subtitle="Cronómetro desde que se confirma el pedido en ventas hasta marcar listo"
       >
-        <button type="button" className="btn btn--secondary" onClick={load} disabled={loading}>
+        <button
+          type="button"
+          className="btn btn--secondary inline-flex items-center gap-2"
+          onClick={load}
+          disabled={loading}
+        >
+          <HiOutlineArrowPath className={`size-4 ${loading ? "animate-spin" : ""}`} aria-hidden />
           {loading ? "Actualizando…" : "Actualizar"}
         </button>
       </PageHeader>

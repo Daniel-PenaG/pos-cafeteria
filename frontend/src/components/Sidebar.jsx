@@ -1,39 +1,41 @@
 import { Link, useLocation } from "react-router-dom";
+import { HiOutlineBuildingStorefront } from "react-icons/hi2";
 import { useAuthStore } from "../store/authStore";
 import { canAccessRoute, normalizeRole } from "../config/permissions";
+import NavIcon from "./NavIcon";
 
 const NAV = [
   {
     group: "Inicio",
-    items: [{ to: "/dashboard", label: "Dashboard", icon: "◆", roles: ["ADMIN", "CAJERO"] }],
+    items: [{ to: "/dashboard", label: "Dashboard", roles: ["ADMIN", "CAJERO"] }],
   },
   {
     group: "Catálogo",
     items: [
-      { to: "/categorias", label: "Categorías", icon: "▤", roles: ["ADMIN"] },
-      { to: "/productos", label: "Productos", icon: "☕", roles: ["ADMIN"] },
-      { to: "/insumos", label: "Insumos", icon: "◇", roles: ["ADMIN"] },
-      { to: "/recetas", label: "Recetas", icon: "✦", roles: ["ADMIN"] },
+      { to: "/categorias", label: "Categorías", roles: ["ADMIN"] },
+      { to: "/productos", label: "Productos", roles: ["ADMIN"] },
+      { to: "/insumos", label: "Insumos", roles: ["ADMIN"] },
+      { to: "/recetas", label: "Recetas", roles: ["ADMIN"] },
     ],
   },
   {
     group: "Operación",
     items: [
-      { to: "/ventas", label: "Ventas", icon: "◎", roles: ["ADMIN", "CAJERO"] },
-      { to: "/ventas-para-llevar", label: "Para llevar", icon: "⎘", roles: ["ADMIN", "CAJERO"] },
-      { to: "/comandera", label: "Comandera", icon: "☰", roles: ["ADMIN", "CAJERO", "COCINA"] },
-      { to: "/clientes", label: "Clientes", icon: "♥", roles: ["ADMIN", "CAJERO"] },
-      { to: "/promociones", label: "Promociones", icon: "％", roles: ["ADMIN"] },
-      { to: "/extras-venta", label: "Extras de venta", icon: "＋", roles: ["ADMIN"] },
-      { to: "/para-llevar", label: "Productos para llevar", icon: "▣", roles: ["ADMIN"] },
-      { to: "/compras", label: "Compras", icon: "↗", roles: ["ADMIN"] },
+      { to: "/ventas", label: "Ventas", roles: ["ADMIN", "CAJERO"] },
+      { to: "/ventas-para-llevar", label: "Para llevar", roles: ["ADMIN", "CAJERO"] },
+      { to: "/comandera", label: "Comandera", roles: ["ADMIN", "CAJERO", "COCINA"] },
+      { to: "/clientes", label: "Clientes", roles: ["ADMIN", "CAJERO"] },
+      { to: "/promociones", label: "Promociones", roles: ["ADMIN"] },
+      { to: "/extras-venta", label: "Extras de venta", roles: ["ADMIN"] },
+      { to: "/para-llevar", label: "Productos para llevar", roles: ["ADMIN"] },
+      { to: "/compras", label: "Compras", roles: ["ADMIN"] },
     ],
   },
   {
     group: "Administración",
     items: [
-      { to: "/reportes", label: "Reportes", icon: "▦", roles: ["ADMIN"] },
-      { to: "/usuarios", label: "Usuarios", icon: "◉", roles: ["ADMIN"] },
+      { to: "/reportes", label: "Reportes", roles: ["ADMIN"] },
+      { to: "/usuarios", label: "Usuarios", roles: ["ADMIN"] },
     ],
   },
 ];
@@ -45,8 +47,15 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar__brand">
-        <h1 className="sidebar__logo">Café POS</h1>
-        <p className="sidebar__tagline">Gestión de cafetería</p>
+        <div className="flex items-center gap-2.5">
+          <span className="flex size-9 items-center justify-center rounded-lg bg-cream/10 text-cream">
+            <HiOutlineBuildingStorefront className="size-5" aria-hidden />
+          </span>
+          <div>
+            <h1 className="sidebar__logo">Café POS</h1>
+            <p className="sidebar__tagline">Gestión de cafetería</p>
+          </div>
+        </div>
       </div>
 
       <nav className="sidebar__nav">
@@ -68,7 +77,7 @@ export default function Sidebar() {
                   }
                 >
                   <span className="sidebar__icon" aria-hidden>
-                    {item.icon}
+                    <NavIcon to={item.to} className="size-[1.1rem]" />
                   </span>
                   {item.label}
                 </Link>

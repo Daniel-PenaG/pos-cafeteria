@@ -1,6 +1,6 @@
 import { useState } from "react";
-import api from "../api/axios";
-import { useAuthStore } from "../store/authStore";
+import { HiOutlineUser, HiOutlineLockClosed, HiOutlineArrowRightCircle } from "react-icons/hi2";
+import api from "../api/axios";import { useAuthStore } from "../store/authStore";
 import { useNavigate } from "react-router-dom";
 import { getDefaultRoute } from "../config/permissions";
 
@@ -55,8 +55,10 @@ export default function Login() {
               </p>
             )}
             <div className="form-row">
-              <label htmlFor="user">Usuario</label>
-              <input
+              <label htmlFor="user" className="flex items-center gap-1.5">
+                <HiOutlineUser className="size-4 text-mocha" aria-hidden />
+                Usuario
+              </label>              <input
                 id="user"
                 className="input"
                 placeholder="Tu usuario"
@@ -66,8 +68,10 @@ export default function Login() {
               />
             </div>
             <div className="form-row">
-              <label htmlFor="pass">Contraseña</label>
-              <input
+              <label htmlFor="pass" className="flex items-center gap-1.5">
+                <HiOutlineLockClosed className="size-4 text-mocha" aria-hidden />
+                Contraseña
+              </label>              <input
                 id="pass"
                 className="input"
                 type="password"
@@ -79,13 +83,13 @@ export default function Login() {
             </div>
             <button
               type="submit"
-              className="btn btn--accent"
-              style={{ width: "100%", marginTop: "0.5rem", padding: "0.75rem" }}
+              className="btn btn--accent inline-flex w-full items-center justify-center gap-2"
+              style={{ marginTop: "0.5rem", padding: "0.75rem" }}
               disabled={loading}
             >
+              <HiOutlineArrowRightCircle className="size-5" aria-hidden />
               {loading ? "Entrando…" : "Entrar al sistema"}
-            </button>
-          </form>
+            </button>          </form>
         </div>
       </div>
     </div>

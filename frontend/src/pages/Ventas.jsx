@@ -23,6 +23,14 @@ import {
 } from "../services/clientesService";
 import { useAuthStore } from "../store/authStore";
 import PageHeader from "../components/PageHeader";
+import SearchField from "../components/SearchField";
+import {
+  HiOutlineShoppingCart,
+  HiOutlineCheckBadge,
+  HiOutlineBanknotes,
+  HiOutlineShoppingBag,
+  HiOutlineTableCells,
+} from "react-icons/hi2";
 
 const NUM_MESAS = 20;
 const MESA_PARA_LLEVAR = 99;
@@ -495,7 +503,10 @@ export default function Ventas({ modoParaLlevar = false }) {
 
       {!modoParaLlevar && (
         <section className="ventas-mesas-bar">
-          <span className="ventas-mesas-bar__label">Mesa</span>
+          <span className="ventas-mesas-bar__label inline-flex items-center gap-1.5">
+            <HiOutlineTableCells className="size-4 text-coffee" aria-hidden />
+            Mesa
+          </span>
           <div className="ventas-mesas-bar__grid">
             {Array.from({ length: NUM_MESAS }, (_, i) => i + 1).map((n) => {
               const activa = mesasActivas[n];
@@ -530,12 +541,10 @@ export default function Ventas({ modoParaLlevar = false }) {
             )}
           </div>
           <div className="ventas-catalogo">
-            <input
-              type="text"
-              className="input"
-              placeholder="Buscar producto por nombre..."
+            <SearchField
               value={busquedaProducto}
               onChange={(e) => setBusquedaProducto(e.target.value)}
+              placeholder="Buscar producto por nombre..."
               disabled={!ventasHabilitadas}
             />
 
@@ -586,7 +595,12 @@ export default function Ventas({ modoParaLlevar = false }) {
         </section>
 
         <aside className="cart-panel">
-          <h2>
+          <h2 className="flex items-center gap-2">
+            {modoParaLlevar ? (
+              <HiOutlineShoppingBag className="size-5 text-coffee shrink-0" aria-hidden />
+            ) : (
+              <HiOutlineShoppingCart className="size-5 text-coffee shrink-0" aria-hidden />
+            )}
             {modoParaLlevar
               ? "Pedido para llevar"
               : `Pedido ${numeroMesa ? `(Mesa ${numeroMesa})` : ""}`}
@@ -667,8 +681,8 @@ export default function Ventas({ modoParaLlevar = false }) {
           {!modoParaLlevar && (
             <button
               type="button"
-              className="btn btn--accent"
-              style={{ width: "100%", marginTop: "0.75rem", padding: "0.75rem" }}
+              className="btn btn--accent inline-flex w-full items-center justify-center gap-2"
+              style={{ marginTop: "0.75rem", padding: "0.75rem" }}
               onClick={confirmarPedidoComanda}
               disabled={
                 loading ||
@@ -677,16 +691,18 @@ export default function Ventas({ modoParaLlevar = false }) {
                 lineasPendientesConfirmar.length === 0
               }
             >
+              <HiOutlineCheckBadge className="size-5 shrink-0" aria-hidden />
               Confirmar pedido ({lineasPendientesConfirmar.length})
             </button>
           )}
           <button
             type="button"
-            className="btn btn--success"
-            style={{ width: "100%", marginTop: "0.75rem", padding: "0.75rem" }}
+            className="btn btn--success inline-flex w-full items-center justify-center gap-2"
+            style={{ marginTop: "0.75rem", padding: "0.75rem" }}
             onClick={abrirCobroModal}
             disabled={loading || carrito.length === 0 || !numeroMesa}
           >
+            <HiOutlineBanknotes className="size-5 shrink-0" aria-hidden />
             {modoParaLlevar ? "Cobrar para llevar" : "Cerrar cuenta / Cobrar"}
           </button>
           </div>

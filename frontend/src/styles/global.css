@@ -1,5 +1,20 @@
-/* ─── POS Cafetería — tema cálido ─── */
 @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap");
+
+/* Tailwind utilities (sin preflight para no chocar con estilos existentes) */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme" layer(theme);
+@import "tailwindcss/utilities" layer(utilities);
+
+@theme {
+  --color-espresso: #2c1810;
+  --color-coffee: #4a3228;
+  --color-mocha: #6b4f3a;
+  --color-cream: #f7f2eb;
+  --color-sage: #5a7d5c;
+  --color-caramel: #c9a227;
+}
+
+/* ─── POS Cafetería — tema cálido ─── */
 
 :root {
   --font-display: "Fraunces", Georgia, serif;
@@ -147,9 +162,11 @@ body {
 }
 
 .sidebar__icon {
-  font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 1.35rem;
-  text-align: center;
+  margin-right: 0.65rem;
   opacity: 0.9;
 }
 
