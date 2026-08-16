@@ -35,6 +35,8 @@ export default function ExtrasVenta() {
   const [tipo, setTipo] = useState("OTRO");
   const [activo, setActivo] = useState(true);
   const [insumoSel, setInsumoSel] = useState("");
+  const [insumosImportSel, setInsumosImportSel] = useState(() => new Set());
+  const [busquedaImport, setBusquedaImport] = useState("");
   const [cantidadInsumo, setCantidadInsumo] = useState("");
 
   const precioPreview = useMemo(() => {
@@ -42,6 +44,13 @@ export default function ExtrasVenta() {
     const p = parseFloat(precioExtra);
     return isNaN(p) ? 0 : p;
   }, [tieneCosto, precioExtra]);
+
+  const insumosImportFiltrados = useMemo(() => {
+    const q = busquedaImport.trim().toLowerCase();
+    return insumosImportables.filter(
+      (i) => !q || i.nombre.toLowerCase().includes(q)
+    );
+  }, [insumosImportables, busquedaImport]);
 
   const loadExtras = async () => {
     const data = await getExtrasCatalogo();
@@ -100,6 +109,8 @@ export default function ExtrasVenta() {
     setTipo("OTRO");
     setActivo(true);
     setInsumoSel("");
+    setInsumosImportSel(new Set());
+    setBusquedaImport("");
     setCantidadInsumo("");
     setEditing(null);
     setModoModal("manual");
@@ -152,15 +163,24 @@ export default function ExtrasVenta() {
     }
   };
 
-  const onInsumoSelect = (id) => {
-    setInsumoSel(id);
-    const ins = insumosImportables.find((i) => String(i.id_insumo) === String(id));
-    if (ins) {
-      setNombre(ins.nombre);
-      setUnidad(ins.unidad);
-      setTieneCosto(false);
-      setPrecioExtra("");
-    }
+  const toggleInsumoImport = (idInsumo) => {
+    setInsumosImportSel((prev) => {
+      const next = new Set(prev);
+      const id = Number(idInsumo);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const marcarInsumosImportVisibles = () => {
+    setInsumosImportSel(
+      new Set(insumosImportFiltrados.map((i) => Number(i.id_insumo)))
+    );
+  };
+
+  const desmarcarInsumosImport = () => {
+    setInsumosImportSel(new Set());
   };
 
   const buildPayloadPrecio = () => {
@@ -196,56 +216,99 @@ export default function ExtrasVenta() {
     if (!precioData) return;
 
     if (modoModal === "insumo") {
-      if (!insumoSel) {
-        alert("Selecciona un insumo para importar");
+      if (insumosImportSel.size === 0) {
+        alert("Selecciona al menos un insumo para importar");
         return;
       }
+      const ids = [...insumosImportSel];
+      let importados = 0;
+      const errores = [];
+      for (const id of ids) {
+        try {
+          await createExtraDesdeInsumo(id, {
+            ...precioData,
+            tipo,
+            activo,
+          });
+          importados += 1;
+        } catch (err) {
+          const d = err.response?.data?.detail;
+          const msg = Array.isArray(d) ? d.map((x) => x.msg).join(", ") : d || "Error";
+          const nombre =
+            insumosImportables.find((i) => Number(i.id_insumo) === id)?.nombre || `#${id}`;
+          errores.push(`${nombre}: ${msg}`);
+        }
+      }
+      if (importados > 0) await loadExtras();
+      setShowModal(false);
+      resetForm();
+      if (errores.length > 0) {
+        alert(
+          `Se importaron ${importados} de ${ids.length} insumo(s).\n\nNo importados:\n${errores.join("\n")}`
+        );
+      } else {
+        alert(`Se importaron ${importados} extra(s) al catálogo.`);
+      }
+      return;
+    }
+
+    if (modoModal === "edit") {
+      if (!nombre.trim()) {
+        alert("El nombre es obligatorio");
+        return;
+      }
+      if (!insumoSel) {
+        alert("Selecciona el insumo del que se descontará inventario");
+        return;
+      }
+      const payload = {
+        nombre: nombre.trim(),
+        unidad: unidad.trim() || null,
+        id_insumo_origen: Number(insumoSel),
+        ...precioData,
+        tipo,
+        activo,
+      };
       try {
-        await createExtraDesdeInsumo(Number(insumoSel), {
-          ...precioData,
-          tipo,
-          activo,
-        });
+        await updateExtra(editing.id_extra, payload);
         setShowModal(false);
         resetForm();
         await loadExtras();
       } catch (err) {
         const d = err.response?.data?.detail;
-        alert(Array.isArray(d) ? d.map((x) => x.msg).join(", ") : d || "Error al importar");
+        alert(Array.isArray(d) ? d.map((x) => x.msg).join(", ") : d || "Error al guardar");
       }
       return;
     }
 
-    if (!nombre.trim()) {
-      alert("El nombre es obligatorio");
-      return;
-    }
-    if (!insumoSel) {
-      alert("Selecciona el insumo del que se descontará inventario");
-      return;
-    }
+    if (modoModal === "manual") {
+      if (!nombre.trim()) {
+        alert("El nombre es obligatorio");
+        return;
+      }
+      if (!insumoSel) {
+        alert("Selecciona el insumo del que se descontará inventario");
+        return;
+      }
 
-    const payload = {
-      nombre: nombre.trim(),
-      unidad: unidad.trim() || null,
-      id_insumo_origen: Number(insumoSel),
-      ...precioData,
-      tipo,
-      activo,
-    };
+      const payload = {
+        nombre: nombre.trim(),
+        unidad: unidad.trim() || null,
+        id_insumo_origen: Number(insumoSel),
+        ...precioData,
+        tipo,
+        activo,
+      };
 
-    try {
-      if (editing) {
-        await updateExtra(editing.id_extra, payload);
-      } else {
+      try {
         await createExtra(payload);
+        setShowModal(false);
+        resetForm();
+        await loadExtras();
+      } catch (err) {
+        const d = err.response?.data?.detail;
+        alert(Array.isArray(d) ? d.map((x) => x.msg).join(", ") : d || "Error al guardar");
       }
-      setShowModal(false);
-      resetForm();
-      await loadExtras();
-    } catch (err) {
-      const d = err.response?.data?.detail;
-      alert(Array.isArray(d) ? d.map((x) => x.msg).join(", ") : d || "Error al guardar");
     }
   };
 
@@ -624,20 +687,73 @@ export default function ExtrasVenta() {
             <form onSubmit={handleSave}>
               {modoModal === "insumo" && (
                 <div className="form-row">
-                  <label>Insumo (copia al catálogo)</label>
-                  <select
-                    className="select"
-                    value={insumoSel}
-                    onChange={(e) => onInsumoSelect(e.target.value)}
-                    required
+                  <label>Insumos a importar</label>
+                  <p className="hint" style={{ marginTop: 0 }}>
+                    {insumosImportSel.size} seleccionado(s). Misma cantidad, precio y tipo para todos.
+                  </p>
+                  <div className="btn-group" style={{ marginBottom: "0.5rem" }}>
+                    <button
+                      type="button"
+                      className="btn btn--secondary btn--sm"
+                      onClick={marcarInsumosImportVisibles}
+                    >
+                      Marcar visibles
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--secondary btn--sm"
+                      onClick={desmarcarInsumosImport}
+                    >
+                      Quitar todos
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Buscar insumo…"
+                    value={busquedaImport}
+                    onChange={(e) => setBusquedaImport(e.target.value)}
+                    style={{ marginBottom: "0.5rem" }}
+                  />
+                  <div
+                    className="panel-muted"
+                    style={{
+                      maxHeight: 220,
+                      overflowY: "auto",
+                      padding: "0.5rem",
+                    }}
                   >
-                    <option value="">Seleccione…</option>
-                    {insumosImportables.map((i) => (
-                      <option key={i.id_insumo} value={i.id_insumo}>
-                        {i.nombre} — ${Number(i.costo_unitario).toFixed(2)}/{i.unidad}
-                      </option>
-                    ))}
-                  </select>
+                    {insumosImportFiltrados.length === 0 ? (
+                      <p className="hint" style={{ margin: 0 }}>
+                        No hay insumos que coincidan
+                      </p>
+                    ) : (
+                      insumosImportFiltrados.map((i) => (
+                        <label
+                          key={i.id_insumo}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                            padding: "0.35rem 0",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={insumosImportSel.has(Number(i.id_insumo))}
+                            onChange={() => toggleInsumoImport(i.id_insumo)}
+                          />
+                          <span>
+                            {i.nombre}{" "}
+                            <span className="hint">
+                              — ${Number(i.costo_unitario).toFixed(2)}/{i.unidad}
+                            </span>
+                          </span>
+                        </label>
+                      ))
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -680,11 +796,6 @@ export default function ExtrasVenta() {
                 </>
               )}
 
-              {modoModal === "insumo" && insumoSel && (
-                <p className="hint">
-                  <strong>{nombre}</strong> ({unidad})
-                </p>
-              )}
 
               {camposPrecio}
 
@@ -733,7 +844,13 @@ export default function ExtrasVenta() {
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn--primary">
-                  {modoModal === "insumo" ? "Importar" : editing ? "Actualizar" : "Guardar"}
+                  {modoModal === "insumo"
+                    ? insumosImportSel.size > 0
+                      ? `Importar (${insumosImportSel.size})`
+                      : "Importar"
+                    : editing
+                      ? "Actualizar"
+                      : "Guardar"}
                 </button>
               </div>
             </form>
