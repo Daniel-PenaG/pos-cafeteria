@@ -6,6 +6,11 @@ import {
   deleteInsumo,
 } from "../services/insumosService";
 import PageHeader from "../components/PageHeader";
+import {
+  displayNumberInput,
+  numberInputFromApi,
+  parseNumberField,
+} from "../utils/numberInput";
 
 const UNIDADES_GRUPOS = [
   {
@@ -67,9 +72,9 @@ export default function Insumos() {
   const [unidad, setUnidad] = useState("g");
   const [unidadOtra, setUnidadOtra] = useState("");
   const [usarUnidadOtra, setUsarUnidadOtra] = useState(false);
-  const [stockActual, setStockActual] = useState("0");
-  const [stockMinimo, setStockMinimo] = useState("0");
-  const [costoUnitario, setCostoUnitario] = useState("0");
+  const [stockActual, setStockActual] = useState("");
+  const [stockMinimo, setStockMinimo] = useState("");
+  const [costoUnitario, setCostoUnitario] = useState("");
   const [precioTotal, setPrecioTotal] = useState("");
   const [cantidadCompra, setCantidadCompra] = useState("");
   const costoCalculado = calcularCostoDesdeCompra(precioTotal, cantidadCompra);
@@ -83,9 +88,9 @@ export default function Insumos() {
     setUnidad("g");
     setUnidadOtra("");
     setUsarUnidadOtra(false);
-    setStockActual("0");
-    setStockMinimo("0");
-    setCostoUnitario("0");
+    setStockActual("");
+    setStockMinimo("");
+    setCostoUnitario("");
     setPrecioTotal("");
     setCantidadCompra("");
     setEditing(null);
@@ -109,9 +114,9 @@ export default function Insumos() {
       setUsarUnidadOtra(true);
       setUnidadOtra(u);
     }
-    setStockActual(String(insumo.stock_actual ?? 0));
-    setStockMinimo(String(insumo.stock_minimo ?? 0));
-    setCostoUnitario(String(insumo.costo_unitario ?? 0));
+    setStockActual(numberInputFromApi(insumo.stock_actual));
+    setStockMinimo(numberInputFromApi(insumo.stock_minimo));
+    setCostoUnitario(numberInputFromApi(insumo.costo_unitario));
     setShowModal(true);
   };
 
@@ -140,8 +145,8 @@ export default function Insumos() {
       return;
     }
 
-    const stock = parseFloat(stockActual);
-    const minimo = parseFloat(stockMinimo);
+    const stock = parseNumberField(stockActual, 0);
+    const minimo = parseNumberField(stockMinimo, 0);
 
     let costo;
     if (precioTotal.trim() !== "" || cantidadCompra.trim() !== "") {
@@ -156,17 +161,17 @@ export default function Insumos() {
       costo = calcularCostoDesdeCompra(precioTotal, cantidadCompra);
     } else {
       costo = parseFloat(costoUnitario);
-      if (isNaN(costo) || costo < 0) {
+      if (costoUnitario === "" || isNaN(costo) || costo < 0) {
         alert("Ingresa precio total y cantidad, o un costo unitario válido");
         return;
       }
     }
 
-    if (isNaN(stock) || stock < 0) {
+    if (stock < 0) {
       alert("El stock actual debe ser un número mayor o igual a 0");
       return;
     }
-    if (isNaN(minimo) || minimo < 0) {
+    if (minimo < 0) {
       alert("El stock mínimo debe ser un número mayor o igual a 0");
       return;
     }
@@ -395,6 +400,7 @@ export default function Insumos() {
                     step="0.001"
                     value={stockActual}
                     onChange={(e) => setStockActual(e.target.value)}
+                    placeholder="Ej. 100"
                   />
                 </div>
                 <div>
@@ -407,6 +413,7 @@ export default function Insumos() {
                     step="0.001"
                     value={stockMinimo}
                     onChange={(e) => setStockMinimo(e.target.value)}
+                    placeholder="Ej. 10"
                   />
                 </div>
               </div>
@@ -491,6 +498,7 @@ export default function Insumos() {
                   value={costoUnitario}
                   onChange={(e) => setCostoUnitario(e.target.value)}
                   disabled={precioTotal !== "" || cantidadCompra !== ""}
+                  placeholder="Ej. 0.55"
                 />
               </div>
 

@@ -4,6 +4,7 @@ import { getConfiguracion, updateConfiguracion } from "../services/configuracion
 import PageHeader from "../components/PageHeader";
 import { useAuthStore } from "../store/authStore";
 import { isAdmin } from "../config/permissions";
+import { numberInputFromApi } from "../utils/numberInput";
 
 function fechaLocalISO() {
   const d = new Date();
@@ -49,8 +50,8 @@ export default function Dashboard() {
       if (admin) {
         const configData = await getConfiguracion();
         setConfig(configData);
-        setMargenEditado(configData.margen_ganancia);
-        setGastosEditados(configData.gastos_fijos);
+        setMargenEditado(numberInputFromApi(configData.margen_ganancia));
+        setGastosEditados(numberInputFromApi(configData.gastos_fijos));
       }
     } catch (err) {
       console.error(err);
@@ -82,19 +83,21 @@ export default function Dashboard() {
   }, [admin, fechaConsulta]);
 
   const handleGuardarConfiguracion = async () => {
-    if (margenEditado < 0 || margenEditado > 100) {
+    const margen = parseFloat(margenEditado);
+    const gastos = parseFloat(gastosEditados);
+    if (margenEditado === "" || isNaN(margen) || margen < 0 || margen > 100) {
       alert("El margen debe estar entre 0 y 100");
       return;
     }
-    if (gastosEditados < 0) {
+    if (gastosEditados === "" || isNaN(gastos) || gastos < 0) {
       alert("Los gastos fijos no pueden ser negativos");
       return;
     }
 
     try {
       const updated = await updateConfiguracion({
-        margen_ganancia: parseFloat(margenEditado),
-        gastos_fijos: parseFloat(gastosEditados),
+        margen_ganancia: margen,
+        gastos_fijos: gastos,
       });
       setConfig(updated);
       setEditing(false);
@@ -276,8 +279,8 @@ export default function Dashboard() {
                 className="btn btn--secondary"
                 onClick={() => {
                   setEditing(false);
-                  setMargenEditado(config.margen_ganancia);
-                  setGastosEditados(config.gastos_fijos);
+                  setMargenEditado(numberInputFromApi(config.margen_ganancia));
+                  setGastosEditados(numberInputFromApi(config.gastos_fijos));
                 }}
               >
                 Cancelar

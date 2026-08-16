@@ -9,6 +9,7 @@ import {
 import { getInsumos } from "../services/insumosService";
 import { getProductos } from "../services/productosService";
 import PageHeader from "../components/PageHeader";
+import { numberInputFromApi, parseNumberField } from "../utils/numberInput";
 
 export default function Recetas() {
   const [recetas, setRecetas] = useState([]);
@@ -115,7 +116,7 @@ export default function Recetas() {
       setListaInsumos(
         (data.insumos || []).map((i) => ({
           id_insumo: Number(i.id_insumo),
-          cantidad: Number(i.cantidad),
+          cantidad: numberInputFromApi(i.cantidad),
         }))
       );
 
@@ -139,7 +140,7 @@ export default function Recetas() {
       return;
     }
 
-    setListaInsumos([...listaInsumos, { id_insumo: id, cantidad: 1 }]);
+    setListaInsumos([...listaInsumos, { id_insumo: id, cantidad: "" }]);
     setBusquedaInsumo("");
   };
 
@@ -435,7 +436,7 @@ export default function Recetas() {
                         step="0.001"
                         value={item.cantidad}
                         onChange={(e) =>
-                          updateInsumo(index, "cantidad", Number(e.target.value))
+                          updateInsumo(index, "cantidad", e.target.value)
                         }
                         style={{ ...inputStyle, width: 120 }}
                         placeholder="Cantidad"

@@ -9,6 +9,7 @@ import {
 } from "../services/productosService";
 import { createCategoria } from "../services/categoriasService";
 import PageHeader from "../components/PageHeader";
+import { numberInputFromApi } from "../utils/numberInput";
 
 export default function Productos() {
   const [productos, setProductos] = useState([]);
@@ -44,7 +45,11 @@ export default function Productos() {
     setEditing(producto);
     setNombre(producto.nombre);
     setIdCategoria(producto.id_categoria);
-    setPrecioVenta(producto.precio_venta);
+    setPrecioVenta(
+      producto.precio_venta != null && Number(producto.precio_venta) !== 0
+        ? String(producto.precio_venta)
+        : ""
+    );
     setActivo(producto.activo);
     setShowModal(true);
   };
@@ -288,6 +293,7 @@ export default function Productos() {
                   value={precioVenta}
                   onChange={(e) => setPrecioVenta(e.target.value)}
                   required
+                  placeholder="Ej. 45.00"
                 />
                 <p className="hint" style={{ marginTop: "0.35rem" }}>
                   Con receta activa, el precio se recalcula automáticamente.

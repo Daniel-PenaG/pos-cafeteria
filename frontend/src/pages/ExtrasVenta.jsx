@@ -35,7 +35,7 @@ export default function ExtrasVenta() {
   const [tipo, setTipo] = useState("OTRO");
   const [activo, setActivo] = useState(true);
   const [insumoSel, setInsumoSel] = useState("");
-  const [cantidadInsumo, setCantidadInsumo] = useState("1");
+  const [cantidadInsumo, setCantidadInsumo] = useState("");
 
   const precioPreview = useMemo(() => {
     if (!tieneCosto) return 0;
@@ -100,7 +100,7 @@ export default function ExtrasVenta() {
     setTipo("OTRO");
     setActivo(true);
     setInsumoSel("");
-    setCantidadInsumo("1");
+    setCantidadInsumo("");
     setEditing(null);
     setModoModal("manual");
   };
@@ -140,7 +140,9 @@ export default function ExtrasVenta() {
     setTipo(e.tipo || "OTRO");
     setActivo(e.activo !== false);
     setInsumoSel(e.id_insumo_origen ? String(e.id_insumo_origen) : "");
-    setCantidadInsumo(String(e.cantidad ?? 1));
+    setCantidadInsumo(
+      e.cantidad != null && Number(e.cantidad) !== 0 ? String(e.cantidad) : ""
+    );
     try {
       const lista = await getInsumosImportables();
       setInsumosImportables(lista);

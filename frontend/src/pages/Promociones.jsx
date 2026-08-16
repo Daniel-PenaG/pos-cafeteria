@@ -9,6 +9,7 @@ import {
 import { getProductos } from "../services/productosService";
 import { getCategorias } from "../services/categoriasService";
 import PageHeader from "../components/PageHeader";
+import { numberInputFromApi } from "../utils/numberInput";
 
 const TIPOS = [
   { value: "PORCENTAJE", label: "% Descuento" },
@@ -141,7 +142,7 @@ export default function Promociones() {
     setNombre(p.nombre);
     setDescripcion(p.descripcion || "");
     setTipo(p.tipo);
-    setValor(String(p.valor));
+    setValor(numberInputFromApi(p.valor) || String(p.valor));
     setActiva(p.activa !== false);
     setTodaTienda(!!p.aplica_toda_tienda);
     setFechaInicio(toLocalDatetime(p.fecha_inicio));
@@ -152,7 +153,9 @@ export default function Promociones() {
     setUsarDiasSemana(!!p.dias_semana);
     setUsarHorario(!!(p.hora_inicio || p.hora_fin));
     setUsarVigenciaFechas(!!(p.fecha_inicio || p.fecha_fin));
-    setMargenMinimo(p.margen_minimo != null ? String(p.margen_minimo) : "");
+    setMargenMinimo(
+      p.margen_minimo != null ? numberInputFromApi(p.margen_minimo) || String(p.margen_minimo) : ""
+    );
     setIdsProductos(p.ids_productos || []);
     setIdsCategorias(p.ids_categorias || []);
     setShowModal(true);

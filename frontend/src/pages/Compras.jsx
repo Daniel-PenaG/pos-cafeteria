@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getInsumos } from "../services/insumosService";
 import { crearCompra } from "../services/comprasService";
 import PageHeader from "../components/PageHeader";
+import { displayNumberInput } from "../utils/numberInput";
 
 export default function Compras() {
   const [insumos, setInsumos] = useState([]);
@@ -22,8 +23,8 @@ export default function Compras() {
       {
         id_insumo: insumo.id_insumo,
         nombre: insumo.nombre,
-        cantidad: 1,
-        costo_unitario: 1,
+        cantidad: "",
+        costo_unitario: "",
       },
     ]);
   };
@@ -32,12 +33,26 @@ export default function Compras() {
     if (!proveedor) return alert("Ingresa proveedor");
     if (carrito.length === 0) return alert("Agrega insumos");
 
+    for (let i = 0; i < carrito.length; i++) {
+      const item = carrito[i];
+      const cant = Number(item.cantidad);
+      const costo = Number(item.costo_unitario);
+      if (!item.cantidad || isNaN(cant) || cant <= 0) {
+        alert(`${item.nombre}: indica una cantidad mayor a 0`);
+        return;
+      }
+      if (!item.costo_unitario || isNaN(costo) || costo <= 0) {
+        alert(`${item.nombre}: indica un costo unitario mayor a 0`);
+        return;
+      }
+    }
+
     const payload = {
       proveedor,
       detalles: carrito.map((i) => ({
         id_insumo: i.id_insumo,
-        cantidad: i.cantidad,
-        costo_unitario: i.costo_unitario,
+        cantidad: Number(i.cantidad),
+        costo_unitario: Number(i.costo_unitario),
       })),
     };
 
@@ -113,11 +128,11 @@ export default function Compras() {
                       <input
                         type="number"
                         min="1"
-                        value={i.cantidad}
+                        value={displayNumberInput(i.cantidad)}
                         onChange={(e) =>
                           setCarrito((prev) =>
                             prev.map((x, j) =>
-                              j === idx ? { ...x, cantidad: Number(e.target.value) } : x
+                              j === idx ? { ...x, cantidad: e.target.value } : x
                             )
                           )
                         }
@@ -129,12 +144,12 @@ export default function Compras() {
                         type="number"
                         min="0.01"
                         step="0.01"
-                        value={i.costo_unitario}
+                        value={displayNumberInput(i.costo_unitario)}
                         onChange={(e) =>
                           setCarrito((prev) =>
                             prev.map((x, j) =>
                               j === idx
-                                ? { ...x, costo_unitario: Number(e.target.value) }
+                                ? { ...x, costo_unitario: e.target.value }
                                 : x
                             )
                           )

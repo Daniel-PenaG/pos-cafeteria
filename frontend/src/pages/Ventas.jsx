@@ -24,12 +24,17 @@ import {
 import { useAuthStore } from "../store/authStore";
 import PageHeader from "../components/PageHeader";
 import SearchField from "../components/SearchField";
+import PrinterSettings from "../components/PrinterSettings";
+import { canUseBluetoothPrinter, printTicketSafely } from "../services/printerService";
+import { buildCobroTicket } from "../services/escposTickets";
+import { getSavedPrinter } from "../services/printerStorage";
 import {
   HiOutlineShoppingCart,
   HiOutlineCheckBadge,
   HiOutlineBanknotes,
   HiOutlineShoppingBag,
   HiOutlineTableCells,
+  HiOutlinePrinter,
 } from "react-icons/hi2";
 
 const NUM_MESAS = 20;
@@ -57,7 +62,7 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [promosDisponibles, setPromosDisponibles] = useState([]);
   const [promoSeleccionada, setPromoSeleccionada] = useState(null);
   const [calculoPromo, setCalculoPromo] = useState(null);
-  const [cantidadModal, setCantidadModal] = useState(1);
+  const [cantidadModal, setCantidadModal] = useState("");
   const [comentarioModal, setComentarioModal] = useState("");
   const [tiposPosLabels, setTiposPosLabels] = useState({});
 
@@ -71,6 +76,7 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [nuevoTelefono, setNuevoTelefono] = useState("");
   const [puntosPreviewCobro, setPuntosPreviewCobro] = useState(0);
   const [qrCobro, setQrCobro] = useState("");
+  const [showPrinterSettings, setShowPrinterSettings] = useState(false);
 
   const usuario = useAuthStore((s) => s.user);
 
@@ -293,11 +299,16 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const recalcularPromoModal = async (producto, idPromo, extras, cantidad) => {
     if (!producto) return;
+    const cant = Number(cantidad);
+    if (!cantidad || isNaN(cant) || cant < 1) {
+      setCalculoPromo(null);
+      return;
+    }
     try {
       const calc = await calcularPromocion({
         id_producto: producto.id_producto,
         id_promocion: idPromo || null,
-        cantidad,
+        cantidad: cant,
         precio_extras: sumExtras(extras),
       });
       setCalculoPromo(calc);
@@ -328,7 +339,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     setPromosDisponibles([]);
     setPromoSeleccionada(null);
     setCalculoPromo(null);
-    setCantidadModal(1);
+    setCantidadModal("");
     setComentarioModal("");
     try {
       setCargandoExtras(true);
@@ -371,6 +382,11 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const confirmarAgregarAlCarrito = async () => {
     if (!productoModal || !calculoPromo || !numeroMesa || !usuario?.id_usuario) return;
+    const cant = parseInt(cantidadModal, 10);
+    if (!cantidadModal || isNaN(cant) || cant < 1) {
+      alert("Indica una cantidad mayor a 0");
+      return;
+    }
     if (!calculoPromo.margen_ok) {
       alert(calculoPromo.mensaje || "La promoción no cumple el margen mínimo");
       return;
@@ -380,7 +396,7 @@ export default function Ventas({ modoParaLlevar = false }) {
       setLoading(true);
       await agregarLineaPedido(numeroMesa, usuario.id_usuario, {
         id_producto: productoModal.id_producto,
-        cantidad: cantidadModal,
+        cantidad: cant,
         precio_unitario: Number(calculoPromo.precio_unitario),
         precio_original: Number(calculoPromo.precio_original_unitario),
         id_promocion: calculoPromo.id_promocion,
@@ -402,7 +418,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     setPromosDisponibles([]);
     setPromoSeleccionada(null);
     setCalculoPromo(null);
-    setCantidadModal(1);
+    setCantidadModal("");
     setComentarioModal("");
   };
 
@@ -450,11 +466,20 @@ export default function Ventas({ modoParaLlevar = false }) {
 
     try {
       setLoading(true);
+      const pedidoParaTicket = pedido;
       const res = await cobrarPedido(pedido.id_pedido, {
         id_usuario: usuario.id_usuario,
         forma_pago: formaPago,
         id_cliente: conCliente && clienteCobro ? clienteCobro.id_cliente : null,
       });
+
+      const printResult = await printTicketSafely(buildCobroTicket, {
+        venta: res,
+        pedido: pedidoParaTicket,
+        usuario,
+        clienteNombre: conCliente && clienteCobro ? clienteCobro.nombre : null,
+      });
+
       let msg = modoParaLlevar
         ? `Venta para llevar — Folio: ${res.id_venta}\nTotal: $${Number(res.total).toFixed(2)}`
         : `Cuenta cerrada. Mesa ${res.numero_mesa} — Folio: ${res.id_venta}\nTotal: $${Number(res.total).toFixed(2)}`;
@@ -463,6 +488,11 @@ export default function Ventas({ modoParaLlevar = false }) {
       }
       if (res.puntos_generados > 0) {
         msg += `\n\n+${res.puntos_generados} pts → ${res.cliente_nombre}\nNuevo saldo: ${res.cliente_puntos_saldo} pts`;
+      }
+      if (!printResult.skipped && !printResult.ok) {
+        msg += `\n\n⚠ Impresión: ${printResult.message}`;
+      } else if (!printResult.skipped && printResult.ok) {
+        msg += "\n\nTicket impreso.";
       }
       alert(msg);
       cerrarCobroModal();
@@ -501,6 +531,29 @@ export default function Ventas({ modoParaLlevar = false }) {
             ? "Mismo catálogo que ventas en mesa — al cobrar se descuenta inventario"
             : "Pedidos por mesa — al cobrar puedes asignar cliente y puntos"
         }
+      />
+
+      {canUseBluetoothPrinter() && (
+        <div style={{ marginBottom: "1rem" }}>
+          <button
+            type="button"
+            className="btn btn--secondary inline-flex items-center gap-2"
+            onClick={() => setShowPrinterSettings(true)}
+          >
+            <HiOutlinePrinter className="size-5" aria-hidden />
+            Impresora
+            {getSavedPrinter()?.name ? (
+              <span className="hint">({getSavedPrinter().name})</span>
+            ) : (
+              <span className="hint">(sin configurar)</span>
+            )}
+          </button>
+        </div>
+      )}
+
+      <PrinterSettings
+        open={showPrinterSettings}
+        onClose={() => setShowPrinterSettings(false)}
       />
 
       {!modoParaLlevar && (
@@ -758,9 +811,10 @@ export default function Ventas({ modoParaLlevar = false }) {
                 type="number"
                 min="1"
                 value={cantidadModal}
-                onChange={(e) => setCantidadModal(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                onChange={(e) => setCantidadModal(e.target.value)}
                 className="input"
                 style={{ width: 80 }}
+                placeholder="Cant."
               />
             </div>
 

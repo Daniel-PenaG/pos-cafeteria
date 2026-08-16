@@ -11,6 +11,7 @@ import {
 } from "../services/clientesService";
 import { useAuthStore } from "../store/authStore";
 import PageHeader from "../components/PageHeader";
+import { numberInputFromApi, parseNumberField } from "../utils/numberInput";
 
 export default function Clientes() {
   const usuario = useAuthStore((s) => s.user);
@@ -24,7 +25,7 @@ export default function Clientes() {
   const [nombre, setNombre] = useState("");
   const [telefono, setTelefono] = useState("");
   const [pesosPorPunto, setPesosPorPunto] = useState("10");
-  const [minimoCompra, setMinimoCompra] = useState("0");
+  const [minimoCompra, setMinimoCompra] = useState("");
   const [ajustePuntos, setAjustePuntos] = useState("");
   const [ajusteNotas, setAjusteNotas] = useState("");
 
@@ -35,7 +36,7 @@ export default function Clientes() {
       setClientes(c);
       setConfig(cfg);
       setPesosPorPunto(String(cfg.pesos_por_punto));
-      setMinimoCompra(String(cfg.minimo_compra_acumular));
+      setMinimoCompra(numberInputFromApi(cfg.minimo_compra_acumular));
     } catch (err) {
       console.error(err);
       alert("Error al cargar clientes");
@@ -91,7 +92,7 @@ export default function Clientes() {
     try {
       await updateFidelidadConfig({
         pesos_por_punto: Number(pesosPorPunto),
-        minimo_compra_acumular: Number(minimoCompra),
+        minimo_compra_acumular: parseNumberField(minimoCompra, 0),
       });
       alert("Configuración de fidelidad actualizada");
       load();

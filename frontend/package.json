@@ -6,15 +6,23 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:android": "vite build --mode capacitor && npx cap sync android",
+    "cap:sync": "npx cap sync android",
+    "cap:open": "npx cap open android",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@fedejm/capacitor-esc-pos-printer": "^0.2.4",
     "axios": "^1.15.2",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-icons": "^5.7.0",
     "react-router-dom": "^7.14.2",
+    "thermal-printer-encoder": "^3.0.0",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
