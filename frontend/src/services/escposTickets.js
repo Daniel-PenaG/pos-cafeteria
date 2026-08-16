@@ -109,6 +109,8 @@ export function buildCobroTicket({
   pedido,
   usuario,
   clienteNombre,
+  montoRecibido,
+  cambio,
 }) {
   const enc = encoder();
   const mesa = venta?.numero_mesa ?? pedido?.numero_mesa;
@@ -153,6 +155,16 @@ export function buildCobroTicket({
   enc.line("-".repeat(WIDTH));
   enc.bold(true).line(`TOTAL: $${Number(venta?.total ?? 0).toFixed(2)}`).bold(false);
   enc.line(`Pago: ${formatFormaPago(venta?.forma_pago)}`);
+  if (
+    venta?.forma_pago === "EFECTIVO" &&
+    montoRecibido != null &&
+    !isNaN(Number(montoRecibido))
+  ) {
+    enc.line(`Recibido: $${Number(montoRecibido).toFixed(2)}`);
+    if (cambio != null && !isNaN(Number(cambio))) {
+      enc.bold(true).line(`Cambio: $${Number(cambio).toFixed(2)}`).bold(false);
+    }
+  }
 
   if (usuario?.nombre) {
     enc.line(`Cajero: ${usuario.nombre}`);

@@ -55,6 +55,7 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [mesasActivas, setMesasActivas] = useState({});
   const [numeroMesa, setNumeroMesa] = useState(null);
   const [formaPago, setFormaPago] = useState("EFECTIVO");
+  const [montoRecibido, setMontoRecibido] = useState("");
   const [loading, setLoading] = useState(false);
 
   const [productoModal, setProductoModal] = useState(null);
@@ -86,6 +87,21 @@ export default function Ventas({ modoParaLlevar = false }) {
     () => carrito.reduce((acc, item) => acc + item.cantidad * item.precio_unitario, 0),
     [carrito]
   );
+
+  const cobroEfectivo = formaPago === "EFECTIVO";
+  const montoRecibidoNum = parseFloat(montoRecibido);
+  const cambioCobro = useMemo(() => {
+    if (!cobroEfectivo || montoRecibido === "" || isNaN(montoRecibidoNum)) return null;
+    return Math.round((montoRecibidoNum - total) * 100) / 100;
+  }, [cobroEfectivo, montoRecibido, montoRecibidoNum, total]);
+  const montoRecibidoInsuficiente =
+    cobroEfectivo &&
+    montoRecibido !== "" &&
+    !isNaN(montoRecibidoNum) &&
+    montoRecibidoNum < total;
+  const cobroEfectivoInvalido =
+    cobroEfectivo &&
+    (montoRecibido === "" || isNaN(montoRecibidoNum) || montoRecibidoNum < total);
 
   const lineasPendientesConfirmar = useMemo(
     () => carrito.filter((item) => !item.en_comanda),
@@ -191,7 +207,10 @@ export default function Ventas({ modoParaLlevar = false }) {
   }, [productos, categorias, busquedaProducto]);
 
   useEffect(() => {
-    if (!busquedaProducto.trim()) return;
+    if (!busquedaProducto.trim()) {
+      setCategoriasAbiertas({});
+      return;
+    }
     const abiertas = {};
     productosPorCategoria.forEach((g) => {
       abiertas[g.id] = true;
@@ -276,6 +295,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     setBusquedaCobro("");
     setResultadosCobro([]);
     setQrCobro("");
+    setMontoRecibido("");
     setShowCobroModal(true);
   };
 
@@ -285,6 +305,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     setBusquedaCobro("");
     setResultadosCobro([]);
     setQrCobro("");
+    setMontoRecibido("");
   };
 
   const extrasPorTipo = useMemo(() => {
@@ -464,6 +485,14 @@ export default function Ventas({ modoParaLlevar = false }) {
   const ejecutarCobro = async (conCliente) => {
     if (!usuario?.id_usuario || !pedido?.id_pedido) return;
 
+    if (cobroEfectivoInvalido) {
+      alert(`Indica cuánto paga el cliente (mínimo $${total.toFixed(2)})`);
+      return;
+    }
+
+    const pagaCon = cobroEfectivo ? montoRecibidoNum : null;
+    const cambio = cobroEfectivo ? cambioCobro : null;
+
     try {
       setLoading(true);
       const pedidoParaTicket = pedido;
@@ -478,11 +507,16 @@ export default function Ventas({ modoParaLlevar = false }) {
         pedido: pedidoParaTicket,
         usuario,
         clienteNombre: conCliente && clienteCobro ? clienteCobro.nombre : null,
+        montoRecibido: pagaCon,
+        cambio,
       });
 
       let msg = modoParaLlevar
         ? `Venta para llevar — Folio: ${res.id_venta}\nTotal: $${Number(res.total).toFixed(2)}`
         : `Cuenta cerrada. Mesa ${res.numero_mesa} — Folio: ${res.id_venta}\nTotal: $${Number(res.total).toFixed(2)}`;
+      if (cobroEfectivo && pagaCon != null && cambio != null) {
+        msg += `\n\nPaga con: $${pagaCon.toFixed(2)}\nCambio: $${cambio.toFixed(2)}`;
+      }
       if (res.advertencias_stock?.length) {
         msg += `\n\n⚠ Avisos de inventario (la venta se completó):\n${res.advertencias_stock.join("\n")}`;
       }
@@ -619,7 +653,7 @@ export default function Ventas({ modoParaLlevar = false }) {
             ) : (
               <div className="ventas-categorias-list">
                 {productosPorCategoria.map((grupo) => {
-                  const abierta = categoriasAbiertas[grupo.id] ?? true;
+                  const abierta = categoriasAbiertas[grupo.id] === true;
                   return (
                     <div key={grupo.id} className="ventas-categoria">
                       <button
@@ -929,13 +963,59 @@ export default function Ventas({ modoParaLlevar = false }) {
               <select
                 className="select"
                 value={formaPago}
-                onChange={(e) => setFormaPago(e.target.value)}
+                onChange={(e) => {
+                  setFormaPago(e.target.value);
+                  if (e.target.value !== "EFECTIVO") setMontoRecibido("");
+                }}
               >
                 <option value="EFECTIVO">Efectivo</option>
                 <option value="TARJETA">Tarjeta</option>
                 <option value="TRANSFERENCIA">Transferencia</option>
               </select>
             </div>
+
+            {cobroEfectivo && (
+              <>
+                <div className="form-row">
+                  <label htmlFor="monto-recibido">Paga con</label>
+                  <input
+                    id="monto-recibido"
+                    type="number"
+                    className="input"
+                    min="0"
+                    step="0.01"
+                    value={montoRecibido}
+                    onChange={(e) => setMontoRecibido(e.target.value)}
+                    placeholder={`Mín. $${total.toFixed(2)}`}
+                    autoFocus
+                  />
+                </div>
+                {montoRecibido !== "" && !isNaN(montoRecibidoNum) && (
+                  <div
+                    className="panel-muted"
+                    style={{
+                      marginBottom: "1rem",
+                      borderColor: montoRecibidoInsuficiente
+                        ? "var(--berry)"
+                        : "var(--olive-pale)",
+                    }}
+                  >
+                    {montoRecibidoInsuficiente ? (
+                      <p style={{ margin: 0, color: "var(--berry)" }}>
+                        Falta ${(total - montoRecibidoNum).toFixed(2)} para cubrir el total
+                      </p>
+                    ) : (
+                      <p style={{ margin: 0 }}>
+                        Cambio:{" "}
+                        <strong style={{ fontSize: "1.25rem", color: "var(--olive)" }}>
+                          ${cambioCobro.toFixed(2)}
+                        </strong>
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
 
             <hr style={{ border: "none", borderTop: "1px solid var(--cream-dark)", margin: "1.25rem 0" }} />
 
@@ -971,7 +1051,7 @@ export default function Ventas({ modoParaLlevar = false }) {
                     placeholder="Teléfono o nombre…"
                     value={busquedaCobro}
                     onChange={(e) => setBusquedaCobro(e.target.value)}
-                    autoFocus
+                    autoFocus={!cobroEfectivo}
                   />
                   <input
                     className="input cliente-qr-input"
@@ -1023,7 +1103,7 @@ export default function Ventas({ modoParaLlevar = false }) {
                 type="button"
                 className="btn btn--secondary"
                 onClick={() => ejecutarCobro(false)}
-                disabled={loading}
+                disabled={loading || cobroEfectivoInvalido}
               >
                 Cobrar sin cliente
               </button>
@@ -1031,7 +1111,7 @@ export default function Ventas({ modoParaLlevar = false }) {
                 type="button"
                 className="btn btn--success"
                 onClick={() => ejecutarCobro(true)}
-                disabled={loading || !clienteCobro}
+                disabled={loading || !clienteCobro || cobroEfectivoInvalido}
               >
                 {loading
                   ? "Procesando…"
