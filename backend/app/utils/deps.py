@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
-from app.constants.roles import ADMIN, normalizar_rol
+from app.constants.roles import ADMIN, CAJERO, COCINA, normalizar_rol
 from app.database import get_db
 from app.models.models import UsuarioModel
 from app.utils.security import ALGORITHM, SECRET_KEY
@@ -47,3 +47,5 @@ def require_roles(*roles: str):
 
 
 require_admin = require_roles(ADMIN)
+require_pos = require_roles(ADMIN, CAJERO)
+require_kitchen = require_roles(ADMIN, CAJERO, COCINA)

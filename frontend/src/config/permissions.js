@@ -24,6 +24,7 @@ const ALL_ROUTES = [
   "/para-llevar",
   "/ventas-para-llevar",
   "/compras",
+  "/gastos",
   "/reportes",
   "/cuentas-cajero",
   "/usuarios",

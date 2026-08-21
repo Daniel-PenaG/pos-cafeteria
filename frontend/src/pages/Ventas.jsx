@@ -5,6 +5,9 @@ import { getExtraTiposPos } from "../services/extrasVentaService";
 import {
   getPedidosActivos,
   getPedidoMesa,
+  getMesasConfig,
+  agregarMesa,
+  quitarMesa,
   agregarLineaPedido,
   actualizarLineaPedido,
   eliminarLineaPedido,
@@ -22,6 +25,7 @@ import {
   previewPuntos,
 } from "../services/clientesService";
 import { useAuthStore } from "../store/authStore";
+import { isAdmin } from "../config/permissions";
 import PageHeader from "../components/PageHeader";
 import SearchField from "../components/SearchField";
 import PrinterSettings from "../components/PrinterSettings";
@@ -35,9 +39,10 @@ import {
   HiOutlineShoppingBag,
   HiOutlineTableCells,
   HiOutlinePrinter,
+  HiOutlinePlus,
+  HiOutlineXMark,
 } from "react-icons/hi2";
 
-const NUM_MESAS = 20;
 const MESA_PARA_LLEVAR = 99;
 
 function sumExtras(extras) {
@@ -53,6 +58,9 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [cargandoExtras, setCargandoExtras] = useState(false);
   const [pedido, setPedido] = useState(null);
   const [mesasActivas, setMesasActivas] = useState({});
+  const [mesasLista, setMesasLista] = useState([]);
+  const [editandoMesas, setEditandoMesas] = useState(false);
+  const [gestionMesasLoading, setGestionMesasLoading] = useState(false);
   const [numeroMesa, setNumeroMesa] = useState(null);
   const [formaPago, setFormaPago] = useState("EFECTIVO");
   const [montoRecibido, setMontoRecibido] = useState("");
@@ -78,8 +86,11 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [puntosPreviewCobro, setPuntosPreviewCobro] = useState(0);
   const [qrCobro, setQrCobro] = useState("");
   const [showPrinterSettings, setShowPrinterSettings] = useState(false);
+  /** Cantidades en edición (id detalle → texto) antes de guardar en servidor */
+  const [cantidadEdit, setCantidadEdit] = useState({});
 
   const usuario = useAuthStore((s) => s.user);
+  const admin = isAdmin(usuario?.rol);
 
   const carrito = pedido?.lineas ?? [];
 
@@ -121,11 +132,59 @@ export default function Ventas({ modoParaLlevar = false }) {
     }
   };
 
+  const cargarMesasConfig = async () => {
+    try {
+      const data = await getMesasConfig();
+      setMesasLista(Array.isArray(data.mesas) ? data.mesas : []);
+    } catch (err) {
+      console.error(err);
+      setMesasLista([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    }
+  };
+
+  const handleAgregarMesa = async () => {
+    try {
+      setGestionMesasLoading(true);
+      const data = await agregarMesa();
+      setMesasLista(data.mesas);
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      alert(typeof detail === "string" ? detail : "No se pudo agregar la mesa");
+    } finally {
+      setGestionMesasLoading(false);
+    }
+  };
+
+  const handleQuitarMesa = async (n, e) => {
+    e?.stopPropagation();
+    const activa = mesasActivas[n];
+    if (activa?.num_lineas > 0) {
+      alert(`La mesa ${n} tiene un pedido abierto. Ciérrala antes de quitarla.`);
+      return;
+    }
+    if (!window.confirm(`¿Quitar la mesa ${n}?`)) return;
+    try {
+      setGestionMesasLoading(true);
+      const data = await quitarMesa(n);
+      setMesasLista(data.mesas);
+      if (numeroMesa === n) {
+        setNumeroMesa(null);
+        setPedido(null);
+      }
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      alert(typeof detail === "string" ? detail : "No se pudo quitar la mesa");
+    } finally {
+      setGestionMesasLoading(false);
+    }
+  };
+
   const cargarPedidoMesa = async (mesa, paraLlevar = modoParaLlevar) => {
     if (!usuario?.id_usuario) return;
     try {
       const p = await getPedidoMesa(mesa, usuario.id_usuario, paraLlevar);
       setPedido(p);
+      setCantidadEdit({});
       if (!paraLlevar) {
         await refrescarMesasActivas();
       }
@@ -162,11 +221,8 @@ export default function Ventas({ modoParaLlevar = false }) {
       }
     };
     load();
-    if (modoParaLlevar) {
-      refrescarMesasActivas();
-    } else {
-      refrescarMesasActivas();
-    }
+    cargarMesasConfig();
+    refrescarMesasActivas();
   }, [modoParaLlevar]);
 
   useEffect(() => {
@@ -444,14 +500,48 @@ export default function Ventas({ modoParaLlevar = false }) {
   };
 
   const cambiarCantidad = async (idDetalle, value) => {
-    const cant = parseInt(value, 10);
-    if (isNaN(cant) || cant < 1 || !numeroMesa) return;
+    const cant = parseInt(String(value).trim(), 10);
+    if (isNaN(cant) || cant < 1 || !numeroMesa) return false;
+
+    const linea = carrito.find((item) => item.id_detalle_pedido === idDetalle);
+    if (linea && linea.cantidad === cant) return true;
+
     try {
       await actualizarLineaPedido(idDetalle, { cantidad: cant });
       await cargarPedidoMesa(numeroMesa, modoParaLlevar);
+      return true;
     } catch (err) {
       alert(err.response?.data?.detail || "Error al actualizar cantidad");
+      return false;
     }
+  };
+
+  const limpiarCantidadEdit = (idDetalle) => {
+    setCantidadEdit((prev) => {
+      if (!(idDetalle in prev)) return prev;
+      const next = { ...prev };
+      delete next[idDetalle];
+      return next;
+    });
+  };
+
+  const onCantidadLineaChange = (idDetalle, value) => {
+    setCantidadEdit((prev) => ({ ...prev, [idDetalle]: value }));
+  };
+
+  const confirmarCantidadLinea = async (idDetalle) => {
+    const raw = cantidadEdit[idDetalle];
+    limpiarCantidadEdit(idDetalle);
+
+    if (raw === undefined || raw === "") return;
+
+    const cant = parseInt(String(raw).trim(), 10);
+    if (isNaN(cant) || cant < 1) {
+      alert("La cantidad debe ser un número mayor a 0");
+      return;
+    }
+
+    await cambiarCantidad(idDetalle, cant);
   };
 
   const eliminarDelCarrito = async (idDetalle) => {
@@ -597,31 +687,72 @@ export default function Ventas({ modoParaLlevar = false }) {
               <HiOutlineTableCells className="size-5 text-olive" aria-hidden />
               Selecciona mesa
             </span>
-            {numeroMesa && (
-              <span className="ventas-mesas-bar__actual">Mesa {numeroMesa} activa</span>
-            )}
+            <div className="ventas-mesas-bar__actions">
+              {numeroMesa && (
+                <span className="ventas-mesas-bar__actual">Mesa {numeroMesa} activa</span>
+              )}
+              {admin && (
+                <button
+                  type="button"
+                  className={`btn btn--ghost btn--sm ${editandoMesas ? "btn--active" : ""}`}
+                  onClick={() => setEditandoMesas((v) => !v)}
+                  disabled={gestionMesasLoading}
+                >
+                  {editandoMesas ? "Listo" : "Gestionar mesas"}
+                </button>
+              )}
+            </div>
           </div>
           <div className="ventas-mesas-grid">
-            {Array.from({ length: NUM_MESAS }, (_, i) => i + 1).map((n) => {
+            {mesasLista.map((n) => {
               const activa = mesasActivas[n];
               const ocupada = activa && activa.num_lineas > 0;
               return (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => seleccionarMesa(n)}
-                  className={`mesa-card ${numeroMesa === n ? "mesa-card--active" : ""} ${ocupada ? "mesa-card--ocupada" : ""}`}
-                >
-                  <HiOutlineTableCells className="mesa-card__icon" aria-hidden />
-                  <span className="mesa-card__num">{n}</span>
-                  <span className="mesa-card__text">Mesa</span>
-                  {ocupada && (
-                    <span className="mesa-card__badge">{activa.num_lineas}</span>
+                <div key={n} className="mesa-card-wrap">
+                  <button
+                    type="button"
+                    onClick={() => !editandoMesas && seleccionarMesa(n)}
+                    disabled={editandoMesas && gestionMesasLoading}
+                    className={`mesa-card ${numeroMesa === n ? "mesa-card--active" : ""} ${ocupada ? "mesa-card--ocupada" : ""} ${editandoMesas ? "mesa-card--edit" : ""}`}
+                  >
+                    <HiOutlineTableCells className="mesa-card__icon" aria-hidden />
+                    <span className="mesa-card__num">{n}</span>
+                    <span className="mesa-card__text">Mesa</span>
+                    {ocupada && !editandoMesas && (
+                      <span className="mesa-card__badge">{activa.num_lineas}</span>
+                    )}
+                  </button>
+                  {editandoMesas && admin && (
+                    <button
+                      type="button"
+                      className="mesa-card__remove"
+                      title={`Quitar mesa ${n}`}
+                      disabled={gestionMesasLoading || mesasLista.length <= 1}
+                      onClick={(e) => handleQuitarMesa(n, e)}
+                    >
+                      <HiOutlineXMark className="size-4" aria-hidden />
+                    </button>
                   )}
-                </button>
+                </div>
               );
             })}
+            {editandoMesas && admin && (
+              <button
+                type="button"
+                className="mesa-card mesa-card--add"
+                onClick={handleAgregarMesa}
+                disabled={gestionMesasLoading}
+              >
+                <HiOutlinePlus className="mesa-card__icon" aria-hidden />
+                <span className="mesa-card__text">Agregar</span>
+              </button>
+            )}
           </div>
+          {editandoMesas && admin && (
+            <p className="hint ventas-mesas-bar__hint">
+              Agrega o quita mesas. No puedes quitar una mesa con pedido abierto.
+            </p>
+          )}
         </section>
       )}
 
@@ -757,8 +888,17 @@ export default function Ventas({ modoParaLlevar = false }) {
                   <input
                     type="number"
                     min="1"
-                    value={item.cantidad}
-                    onChange={(e) => cambiarCantidad(item.id_detalle_pedido, e.target.value)}
+                    value={
+                      cantidadEdit[item.id_detalle_pedido] ?? item.cantidad
+                    }
+                    onChange={(e) =>
+                      onCantidadLineaChange(item.id_detalle_pedido, e.target.value)
+                    }
+                    onFocus={(e) => e.target.select()}
+                    onBlur={() => confirmarCantidadLinea(item.id_detalle_pedido)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
+                    }}
                     style={{ width: 56 }}
                     className="input"
                   />

@@ -2,20 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { HiOutlineArrowPath, HiOutlineUserCircle } from "react-icons/hi2";
 import PageHeader from "../components/PageHeader";
 import { getCuentasPorCajero } from "../services/reportesService";
-
-function fechaLocalISO() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+import { fechaMexicoISO, formatearHoraMexico } from "../utils/datetimeMx";
 
 function formatearHora(iso) {
-  return new Date(iso).toLocaleTimeString("es-MX", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatearHoraMexico(iso);
 }
 
 function formatearFormaPago(forma) {
@@ -28,7 +18,7 @@ function formatearFormaPago(forma) {
 }
 
 export default function CuentasCajero() {
-  const hoy = fechaLocalISO();
+  const hoy = fechaMexicoISO();
   const [fecha, setFecha] = useState(hoy);
   const [reporte, setReporte] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -58,7 +48,7 @@ export default function CuentasCajero() {
     if (!esHoy) return;
 
     const interval = setInterval(() => {
-      const diaActual = fechaLocalISO();
+      const diaActual = fechaMexicoISO();
       if (diaActual !== fecha) {
         setFecha(diaActual);
         return;
@@ -68,7 +58,7 @@ export default function CuentasCajero() {
 
     const onVisible = () => {
       if (document.visibilityState === "visible") {
-        const diaActual = fechaLocalISO();
+        const diaActual = fechaMexicoISO();
         if (diaActual !== fecha) {
           setFecha(diaActual);
         } else {

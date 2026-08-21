@@ -25,8 +25,13 @@ from app.services.fidelidad_service import (
     ajustar_puntos,
 )
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException, RecursoYaExisteException
+from app.utils.deps import require_admin, require_pos
 
-router = APIRouter(prefix="/clientes", tags=["Clientes / Fidelidad"])
+router = APIRouter(
+    prefix="/clientes",
+    tags=["Clientes / Fidelidad"],
+    dependencies=[Depends(require_pos)],
+)
 
 
 def _cliente_a_dict(c: ClienteModel) -> dict:
@@ -54,7 +59,7 @@ def get_fidelidad_config(db: Session = Depends(get_db)):
     }
 
 
-@router.put("/fidelidad/config", response_model=FidelidadConfig)
+@router.put("/fidelidad/config", response_model=FidelidadConfig, dependencies=[Depends(require_admin)])
 def update_fidelidad_config(data: FidelidadConfigUpdate, db: Session = Depends(get_db)):
     config = obtener_config(db)
     config.pesos_por_punto = data.pesos_por_punto
@@ -229,7 +234,7 @@ def actualizar_cliente(id_cliente: int, data: ClienteUpdate, db: Session = Depen
     return _cliente_a_dict(cliente)
 
 
-@router.post("/{id_cliente}/ajustar-puntos", response_model=FidelidadMovimiento)
+@router.post("/{id_cliente}/ajustar-puntos", response_model=FidelidadMovimiento, dependencies=[Depends(require_admin)])
 def ajustar_puntos_cliente(
     id_cliente: int,
     data: AjustePuntosRequest,

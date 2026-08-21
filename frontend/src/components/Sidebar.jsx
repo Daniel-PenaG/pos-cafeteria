@@ -29,6 +29,7 @@ const NAV = [
       { to: "/extras-venta", label: "Extras de venta", roles: ["ADMIN"] },
       { to: "/para-llevar", label: "Productos para llevar", roles: ["ADMIN"] },
       { to: "/compras", label: "Compras", roles: ["ADMIN"] },
+      { to: "/gastos", label: "Gastos", roles: ["ADMIN"] },
     ],
   },
   {

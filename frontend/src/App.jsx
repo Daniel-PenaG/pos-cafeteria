@@ -8,6 +8,7 @@ import Ventas from "./pages/Ventas";
 import VentasParaLlevar from "./pages/VentasParaLlevar";
 import ParaLlevar from "./pages/ParaLlevar";
 import Compras from "./pages/Compras";
+import Gastos from "./pages/Gastos";
 import Insumos from "./pages/Insumos";
 import ExtrasVenta from "./pages/ExtrasVenta";
 import Promociones from "./pages/Promociones";
@@ -63,6 +64,7 @@ export default function App() {
           <Route path="promociones" element={withRole("/promociones", <Promociones />)} />
           <Route path="clientes" element={withRole("/clientes", <Clientes />)} />
           <Route path="compras" element={withRole("/compras", <Compras />)} />
+          <Route path="gastos" element={withRole("/gastos", <Gastos />)} />
           <Route path="reportes" element={withRole("/reportes", <Reportes />)} />
           <Route path="cuentas-cajero" element={withRole("/cuentas-cajero", <CuentasCajero />)} />
           <Route path="usuarios" element={withRole("/usuarios", <Usuarios />)} />

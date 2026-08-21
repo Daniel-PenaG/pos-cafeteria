@@ -727,6 +727,64 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
+.ventas-mesas-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ventas-mesas-bar__hint {
+  margin: 0;
+}
+
+.mesa-card-wrap {
+  position: relative;
+}
+
+.mesa-card--edit {
+  cursor: default;
+  opacity: 0.92;
+}
+
+.mesa-card--edit:hover {
+  transform: none;
+}
+
+.mesa-card--add {
+  border-style: dashed;
+  background: var(--olive-pale);
+  color: var(--olive);
+}
+
+.mesa-card--add:hover {
+  background: #eef2e4;
+  border-color: var(--olive);
+}
+
+.mesa-card__remove {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 2;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 2px solid var(--paper);
+  background: var(--berry);
+  color: white;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+.mesa-card__remove:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .ventas-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;

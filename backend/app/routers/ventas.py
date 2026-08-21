@@ -8,8 +8,13 @@ from app.schemas.ventas import VentaCreate, VentaResponse, ExtraVenta
 from app.services.extras_venta_service import extras_para_producto, extras_para_categoria
 from app.services.venta_service import registrar_venta
 from app.exceptions import DatosInvalidosException
+from app.utils.deps import require_pos
 
-router = APIRouter(prefix="/ventas", tags=["Ventas"])
+router = APIRouter(
+    prefix="/ventas",
+    tags=["Ventas"],
+    dependencies=[Depends(require_pos)],
+)
 
 
 @router.get("/extras", response_model=List[ExtraVenta])

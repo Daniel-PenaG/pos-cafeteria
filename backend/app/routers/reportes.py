@@ -14,6 +14,7 @@ from app.models.models import (
     RecetaInsumoModel,
     InsumoModel,
     DetallePedidoModel,
+    GastoModel,
     PedidoModel,
     UsuarioModel,
     ClienteModel,
@@ -21,13 +22,24 @@ from app.models.models import (
 from app.services.comanda_tiempo_service import formatear_duracion, segundos_entre
 from app.utils.deps import get_current_user, require_admin
 from app.constants.roles import ADMIN, normalizar_rol
+from app.utils.timezone_mx import today_mx, bounds_utc_naive_for_mx_date
 
-router = APIRouter(prefix="/reportes", tags=["Reportes"])
+router = APIRouter(
+    prefix="/reportes",
+    tags=["Reportes"],
+    dependencies=[Depends(get_current_user)],
+)
 
 MESES = [
     "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ]
+
+
+def _filtro_fecha_hora_mx(column, d: date):
+    """Registros cuyo timestamp cae en el día calendario de México."""
+    inicio, fin = bounds_utc_naive_for_mx_date(d)
+    return column >= inicio, column <= fin
 
 
 def _productos_vendidos(db: Session, venta_ids: list[int]):
@@ -612,18 +624,19 @@ def resumen_dashboard(
     db: Session = Depends(get_db),
     current: UsuarioModel = Depends(get_current_user),
 ):
-    hoy = fecha or date.today()
+    hoy = fecha or today_mx()
     es_admin = normalizar_rol(current.rol) == ADMIN
+    filtro_dia = _filtro_fecha_hora_mx(VentaModel.fecha_hora, hoy)
 
     total_hoy = (
         db.query(func.coalesce(func.sum(VentaModel.total), 0))
-        .filter(func.date(VentaModel.fecha_hora) == hoy)
+        .filter(*filtro_dia)
         .scalar()
     )
 
     num_ventas_hoy = (
         db.query(func.count(VentaModel.id_venta))
-        .filter(func.date(VentaModel.fecha_hora) == hoy)
+        .filter(*filtro_dia)
         .scalar()
     )
 
@@ -631,7 +644,7 @@ def resumen_dashboard(
         total_hoy = (
             db.query(func.coalesce(func.sum(VentaModel.total), 0))
             .filter(
-                func.date(VentaModel.fecha_hora) == hoy,
+                *filtro_dia,
                 VentaModel.id_usuario == current.id_usuario,
             )
             .scalar()
@@ -639,7 +652,7 @@ def resumen_dashboard(
         num_ventas_hoy = (
             db.query(func.count(VentaModel.id_venta))
             .filter(
-                func.date(VentaModel.fecha_hora) == hoy,
+                *filtro_dia,
                 VentaModel.id_usuario == current.id_usuario,
             )
             .scalar()
@@ -654,7 +667,7 @@ def resumen_dashboard(
         db.query(VentaModel, UsuarioModel, ClienteModel)
         .join(UsuarioModel, UsuarioModel.id_usuario == VentaModel.id_usuario)
         .outerjoin(ClienteModel, ClienteModel.id_cliente == VentaModel.id_cliente)
-        .filter(func.date(VentaModel.fecha_hora) == hoy)
+        .filter(*_filtro_fecha_hora_mx(VentaModel.fecha_hora, hoy))
         .order_by(VentaModel.fecha_hora.desc())
     )
     if not es_admin:
@@ -728,6 +741,36 @@ def resumen_dashboard(
             "subtotal": float(p.subtotal),
         })
 
+    filtro_gastos = _filtro_fecha_hora_mx(GastoModel.fecha_hora, hoy)
+    total_gastos_hoy = (
+        db.query(func.coalesce(func.sum(GastoModel.monto), 0))
+        .filter(*filtro_gastos)
+        .scalar()
+    )
+    num_gastos_hoy = (
+        db.query(func.count(GastoModel.id_gasto))
+        .filter(*filtro_gastos)
+        .scalar()
+    )
+    gastos_hoy_rows = (
+        db.query(GastoModel, UsuarioModel)
+        .join(UsuarioModel, UsuarioModel.id_usuario == GastoModel.id_usuario)
+        .filter(*filtro_gastos)
+        .order_by(GastoModel.fecha_hora.desc())
+        .all()
+    )
+    gastos_hoy = [
+        {
+            "id_gasto": g.id_gasto,
+            "descripcion": g.descripcion,
+            "monto": float(g.monto),
+            "fecha_hora": g.fecha_hora.isoformat(),
+            "usuario_nombre": u.nombre,
+        }
+        for g, u in gastos_hoy_rows
+    ]
+    capital_neto_hoy = float(total_hoy) - float(total_gastos_hoy)
+
     return {
         "hoy": str(hoy),
         "total_hoy": float(total_hoy),
@@ -738,4 +781,8 @@ def resumen_dashboard(
         "comanda_promedio_segundos": comanda_promedio_segundos,
         "comanda_promedio_texto": formatear_duracion(comanda_promedio_segundos),
         "comanda_completadas_hoy": len(segundos_comanda),
+        "total_gastos_hoy": float(total_gastos_hoy),
+        "num_gastos_hoy": int(num_gastos_hoy),
+        "capital_neto_hoy": capital_neto_hoy,
+        "gastos_hoy": gastos_hoy,
     }

@@ -110,6 +110,7 @@ class UsuarioModel(Base):
     rol = Column(String(30), nullable=False)
 
     ventas = relationship("VentaModel", back_populates="usuario")
+    gastos = relationship("GastoModel", back_populates="usuario")
 
 
 # ============================
@@ -300,6 +301,21 @@ class DetalleCompraModel(Base):
 
 
 # ============================
+# GASTOS DEL DÍA
+# ============================
+class GastoModel(Base):
+    __tablename__ = "gastos"
+
+    id_gasto = Column(Integer, primary_key=True, index=True)
+    descripcion = Column(String(300), nullable=False)
+    monto = Column(Numeric(10, 2), nullable=False)
+    fecha_hora = Column(DateTime, nullable=False, default=datetime.utcnow)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+
+    usuario = relationship("UsuarioModel", back_populates="gastos")
+
+
+# ============================
 # CONFIGURACIÓN
 # ============================
 class ConfiguracionModel(Base):
@@ -308,6 +324,7 @@ class ConfiguracionModel(Base):
     id_configuracion = Column(Integer, primary_key=True, index=True)
     margen_ganancia = Column(Numeric(5, 2), default=15.0)  # Porcentaje de margen
     gastos_fijos = Column(Numeric(12, 2), default=1000.0)  # Gastos fijos mensuales
+    mesas_json = Column(String(500))  # JSON: [1, 2, 3, ...] mesas de servicio
     fecha_actualizacion = Column(DateTime, default=datetime.utcnow)
 
     def __repr__(self):

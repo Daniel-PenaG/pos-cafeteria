@@ -15,8 +15,13 @@ from app.schemas.receta import (
     RecetaResponse,
 )
 from app.services import RecetaService
+from app.utils.deps import require_admin
 
-router = APIRouter(prefix="/recetas", tags=["Recetas"])
+router = APIRouter(
+    prefix="/recetas",
+    tags=["Recetas"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 # ============================

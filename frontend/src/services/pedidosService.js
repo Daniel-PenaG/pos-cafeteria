@@ -11,6 +11,22 @@ export async function getPedidosActivos() {
   return res.data;
 }
 
+export async function getMesasConfig() {
+  const res = await api.get("/pedidos/mesas", { headers: getAuthHeader() });
+  return res.data;
+}
+
+export async function agregarMesa(numero = null) {
+  const body = numero != null ? { numero } : {};
+  const res = await api.post("/pedidos/mesas", body, { headers: getAuthHeader() });
+  return res.data;
+}
+
+export async function quitarMesa(numero) {
+  const res = await api.delete(`/pedidos/mesas/${numero}`, { headers: getAuthHeader() });
+  return res.data;
+}
+
 export async function getPedidoMesa(numeroMesa, idUsuario, paraLlevar = false) {
   const res = await api.get(`/pedidos/mesa/${numeroMesa}`, {
     params: { id_usuario: idUsuario, para_llevar: paraLlevar },

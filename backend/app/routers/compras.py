@@ -10,8 +10,13 @@ from app.models.models import (
     MovimientoInventarioModel
 )
 from app.schemas.compra import CompraCreate, CompraResponse
+from app.utils.deps import require_admin
 
-router = APIRouter(prefix="/compras", tags=["Compras"])
+router = APIRouter(
+    prefix="/compras",
+    tags=["Compras"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 @router.post("/", response_model=CompraResponse)

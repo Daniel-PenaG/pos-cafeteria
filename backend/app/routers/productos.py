@@ -14,13 +14,18 @@ from app.exceptions import (
     RecursoYaExisteException,
     DatosInvalidosException,
 )
+from app.utils.deps import require_admin, require_pos
 
-router = APIRouter(prefix="/catalogo", tags=["Catálogo"])
+router = APIRouter(
+    prefix="/catalogo",
+    tags=["Catálogo"],
+    dependencies=[Depends(require_pos)],
+)
 
 # ============================
 # CATEGORÍAS
 # ============================
-@router.post("/categorias", response_model=Categoria)
+@router.post("/categorias", response_model=Categoria, dependencies=[Depends(require_admin)])
 def crear_categoria(data: CategoriaCreate, db: Session = Depends(get_db)):
     if not data.nombre or data.nombre.strip() == "":
         raise DatosInvalidosException("El nombre de la categoría es requerido")
@@ -42,7 +47,7 @@ def obtener_categoria(id_categoria: int, db: Session = Depends(get_db)):
         raise RecursoNoEncontradoException("Categoría no encontrada")
     return categoria
 
-@router.put("/categorias/{id_categoria}", response_model=Categoria)
+@router.put("/categorias/{id_categoria}", response_model=Categoria, dependencies=[Depends(require_admin)])
 def actualizar_categoria(id_categoria: int, data: CategoriaUpdate, db: Session = Depends(get_db)):
     if not data.nombre or data.nombre.strip() == "":
         raise DatosInvalidosException("El nombre de la categoría es requerido")
@@ -56,7 +61,7 @@ def actualizar_categoria(id_categoria: int, data: CategoriaUpdate, db: Session =
     db.refresh(categoria)
     return categoria
 
-@router.delete("/categorias/{id_categoria}")
+@router.delete("/categorias/{id_categoria}", dependencies=[Depends(require_admin)])
 def eliminar_categoria(id_categoria: int, db: Session = Depends(get_db)):
     categoria = db.query(CategoriaModel).filter(CategoriaModel.id_categoria == id_categoria).first()
     if not categoria:
@@ -70,7 +75,7 @@ def eliminar_categoria(id_categoria: int, db: Session = Depends(get_db)):
 # ============================
 # PRODUCTOS
 # ============================
-@router.post("/productos", response_model=Producto)
+@router.post("/productos", response_model=Producto, dependencies=[Depends(require_admin)])
 def crear_producto(data: ProductoCreate, db: Session = Depends(get_db)):
     if not data.nombre or data.nombre.strip() == "":
         raise DatosInvalidosException("El nombre del producto es requerido")
@@ -109,7 +114,7 @@ def listar_productos_para_llevar(db: Session = Depends(get_db)):
     )
 
 
-@router.put("/productos/para-llevar/config")
+@router.put("/productos/para-llevar/config", dependencies=[Depends(require_admin)])
 def guardar_config_para_llevar(data: ParaLlevarConfigUpdate, db: Session = Depends(get_db)):
     ids = set(data.ids_productos or [])
     productos = db.query(ProductoModel).all()
@@ -126,7 +131,7 @@ def obtener_producto(id_producto: int, db: Session = Depends(get_db)):
         raise RecursoNoEncontradoException("Producto no encontrado")
     return producto
 
-@router.put("/productos/{id_producto}", response_model=Producto)
+@router.put("/productos/{id_producto}", response_model=Producto, dependencies=[Depends(require_admin)])
 def actualizar_producto(id_producto: int, data: ProductoUpdate, db: Session = Depends(get_db)):
     if not data.nombre or data.nombre.strip() == "":
         raise DatosInvalidosException("El nombre del producto es requerido")
@@ -151,7 +156,7 @@ def actualizar_producto(id_producto: int, data: ProductoUpdate, db: Session = De
     db.refresh(producto)
     return producto
 
-@router.delete("/productos/{id_producto}")
+@router.delete("/productos/{id_producto}", dependencies=[Depends(require_admin)])
 def eliminar_producto(id_producto: int, db: Session = Depends(get_db)):
     producto = db.query(ProductoModel).filter(ProductoModel.id_producto == id_producto).first()
     if not producto:
@@ -165,7 +170,7 @@ def eliminar_producto(id_producto: int, db: Session = Depends(get_db)):
 # ============================
 # INSUMOS
 # ============================
-@router.post("/insumos", response_model=Insumo)
+@router.post("/insumos", response_model=Insumo, dependencies=[Depends(require_admin)])
 def crear_insumo(data: InsumoCreate, db: Session = Depends(get_db)):
     if not data.nombre or data.nombre.strip() == "":
         raise DatosInvalidosException("El nombre del insumo es requerido")
@@ -199,7 +204,7 @@ def obtener_insumo(id_insumo: int, db: Session = Depends(get_db)):
         raise RecursoNoEncontradoException("Insumo no encontrado")
     return insumo
 
-@router.put("/insumos/{id_insumo}", response_model=InsumoActualizado)
+@router.put("/insumos/{id_insumo}", response_model=InsumoActualizado, dependencies=[Depends(require_admin)])
 def actualizar_insumo(id_insumo: int, data: InsumoUpdate, db: Session = Depends(get_db)):
     if not data.nombre or data.nombre.strip() == "":
         raise DatosInvalidosException("El nombre del insumo es requerido")
@@ -241,7 +246,7 @@ def actualizar_insumo(id_insumo: int, data: InsumoUpdate, db: Session = Depends(
         productos_precio_actualizados=productos_actualizados,
     )
 
-@router.delete("/insumos/{id_insumo}")
+@router.delete("/insumos/{id_insumo}", dependencies=[Depends(require_admin)])
 def eliminar_insumo(id_insumo: int, db: Session = Depends(get_db)):
     insumo = db.query(InsumoModel).filter(InsumoModel.id_insumo == id_insumo).first()
     if not insumo:

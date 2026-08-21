@@ -8,8 +8,13 @@ from app.models.models import DetallePedidoModel, PedidoModel
 from app.schemas.pedido import ComandaLinea, ComandaMarcarListo, _segundos_transcurridos
 from app.services.pedido_service import _parse_extras
 from app.exceptions import RecursoNoEncontradoException, DatosInvalidosException
+from app.utils.deps import require_kitchen
 
-router = APIRouter(prefix="/comandera", tags=["Comandera"])
+router = APIRouter(
+    prefix="/comandera",
+    tags=["Comandera"],
+    dependencies=[Depends(require_kitchen)],
+)
 
 
 @router.get("/pendientes", response_model=List[ComandaLinea])

@@ -10,8 +10,13 @@ from app.schemas.configuracion import (
     ConfiguracionActualizada,
 )
 from app.services import RecetaService
+from app.utils.deps import require_admin
 
-router = APIRouter(prefix="/configuracion", tags=["Configuración"])
+router = APIRouter(
+    prefix="/configuracion",
+    tags=["Configuración"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 # ============================

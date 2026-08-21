@@ -20,8 +20,13 @@ from app.schemas.extras import (
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 from app.services.extras_precio import extra_a_catalogo, sincronizar_precio_guardado
 from app.services.extras_tipo_service import listar_tipos, crear_tipo, validar_tipo_codigo
+from app.utils.deps import require_admin, require_pos
 
-router = APIRouter(prefix="/extras-venta", tags=["Extras de venta"])
+router = APIRouter(
+    prefix="/extras-venta",
+    tags=["Extras de venta"],
+    dependencies=[Depends(require_pos)],
+)
 
 
 def _validar_tipo(db: Session, tipo: str) -> str:
@@ -43,7 +48,7 @@ def listar_tipos_pos(db: Session = Depends(get_db)):
     return listar_tipos(db)
 
 
-@router.post("/tipos", response_model=ExtraTipoPos, status_code=201)
+@router.post("/tipos", response_model=ExtraTipoPos, status_code=201, dependencies=[Depends(require_admin)])
 def crear_tipo_pos(data: ExtraTipoPosCreate, db: Session = Depends(get_db)):
     return crear_tipo(db, data.etiqueta)
 
@@ -72,7 +77,7 @@ def listar_insumos_para_importar(db: Session = Depends(get_db)):
     ]
 
 
-@router.post("/", response_model=ExtraVentaCatalogo, status_code=201)
+@router.post("/", response_model=ExtraVentaCatalogo, status_code=201, dependencies=[Depends(require_admin)])
 def crear_extra_manual(data: ExtraVentaCatalogoCreate, db: Session = Depends(get_db)):
     if not data.nombre.strip():
         raise DatosInvalidosException("El nombre es obligatorio")
@@ -102,7 +107,7 @@ def crear_extra_manual(data: ExtraVentaCatalogoCreate, db: Session = Depends(get
     return extra_a_catalogo(extra)
 
 
-@router.post("/desde-insumo/{id_insumo}", response_model=ExtraVentaCatalogo, status_code=201)
+@router.post("/desde-insumo/{id_insumo}", response_model=ExtraVentaCatalogo, status_code=201, dependencies=[Depends(require_admin)])
 def crear_extra_desde_insumo(
     id_insumo: int,
     data: ExtraVentaDesdeInsumo,
@@ -135,7 +140,7 @@ def crear_extra_desde_insumo(
     return extra_a_catalogo(extra)
 
 
-@router.put("/{id_extra}", response_model=ExtraVentaCatalogo)
+@router.put("/{id_extra}", response_model=ExtraVentaCatalogo, dependencies=[Depends(require_admin)])
 def actualizar_extra(
     id_extra: int, data: ExtraVentaCatalogoUpdate, db: Session = Depends(get_db)
 ):
@@ -162,7 +167,7 @@ def actualizar_extra(
     return extra_a_catalogo(extra)
 
 
-@router.delete("/{id_extra}")
+@router.delete("/{id_extra}", dependencies=[Depends(require_admin)])
 def eliminar_extra(id_extra: int, db: Session = Depends(get_db)):
     extra = db.query(ExtraVentaModel).filter(ExtraVentaModel.id_extra == id_extra).first()
     if not extra:
@@ -204,7 +209,7 @@ def obtener_config_categoria(id_categoria: int, db: Session = Depends(get_db)):
     )
 
 
-@router.put("/categorias/{id_categoria}/config", response_model=CategoriaExtrasConfigResponse)
+@router.put("/categorias/{id_categoria}/config", response_model=CategoriaExtrasConfigResponse, dependencies=[Depends(require_admin)])
 def guardar_config_categoria(
     id_categoria: int, data: CategoriaExtrasConfig, db: Session = Depends(get_db)
 ):
@@ -263,7 +268,7 @@ def obtener_config_producto(id_producto: int, db: Session = Depends(get_db)):
     )
 
 
-@router.put("/productos/{id_producto}/config", response_model=ProductoExtrasConfigResponse)
+@router.put("/productos/{id_producto}/config", response_model=ProductoExtrasConfigResponse, dependencies=[Depends(require_admin)])
 def guardar_config_producto(
     id_producto: int, data: ProductoExtrasConfig, db: Session = Depends(get_db)
 ):

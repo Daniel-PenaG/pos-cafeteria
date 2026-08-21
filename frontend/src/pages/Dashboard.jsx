@@ -1,24 +1,15 @@
 import { useEffect, useState } from "react";
 import { getResumenDashboard } from "../services/dashboardService";
 import { getConfiguracion, updateConfiguracion } from "../services/configuracionService";
+import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import { useAuthStore } from "../store/authStore";
 import { isAdmin } from "../config/permissions";
 import { numberInputFromApi } from "../utils/numberInput";
-
-function fechaLocalISO() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+import { fechaMexicoISO, formatearHoraMexico } from "../utils/datetimeMx";
 
 function formatearHora(iso) {
-  return new Date(iso).toLocaleTimeString("es-MX", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatearHoraMexico(iso);
 }
 
 function formatearFormaPago(forma) {
@@ -38,10 +29,10 @@ export default function Dashboard() {
   const [editing, setEditing] = useState(false);
   const [margenEditado, setMargenEditado] = useState("");
   const [gastosEditados, setGastosEditados] = useState("");
-  const [fechaConsulta, setFechaConsulta] = useState(fechaLocalISO());
+  const [fechaConsulta, setFechaConsulta] = useState(fechaMexicoISO());
 
   const cargarDashboard = async () => {
-    const hoy = fechaLocalISO();
+    const hoy = fechaMexicoISO();
     try {
       const resumenData = await getResumenDashboard(hoy);
       setData(resumenData);
@@ -63,7 +54,7 @@ export default function Dashboard() {
     cargarDashboard();
 
     const interval = setInterval(() => {
-      const hoy = fechaLocalISO();
+      const hoy = fechaMexicoISO();
       if (hoy !== fechaConsulta) {
         cargarDashboard();
       }
@@ -121,7 +112,7 @@ export default function Dashboard() {
     <div className="page">
       <PageHeader
         title="Dashboard"
-        subtitle={`Resumen del ${fechaConsulta} — ventas de hoy y del día`}
+        subtitle={`Resumen del ${fechaConsulta} (hora México) — ventas, gastos y capital neto`}
       />
 
       <div className="stat-grid">
@@ -129,6 +120,22 @@ export default function Dashboard() {
           <div className="stat-card__label">Ventas hoy ($)</div>
           <div className="stat-card__value">${data.total_hoy.toFixed(2)}</div>
         </div>
+        {admin && (
+          <>
+            <div className="stat-card">
+              <div className="stat-card__label">Gastos hoy ($)</div>
+              <div className="stat-card__value" style={{ color: "var(--berry)" }}>
+                −${(data.total_gastos_hoy ?? 0).toFixed(2)}
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-card__label">Capital neto hoy</div>
+              <div className="stat-card__value" style={{ color: "var(--olive)" }}>
+                ${(data.capital_neto_hoy ?? data.total_hoy).toFixed(2)}
+              </div>
+            </div>
+          </>
+        )}
         <div className="stat-card">
           <div className="stat-card__label">Cuentas de hoy</div>
           <div className="stat-card__value">{data.num_ventas_hoy}</div>
@@ -137,11 +144,50 @@ export default function Dashboard() {
           <div className="stat-card__label">Tiempo prom. comanda</div>
           <div className="stat-card__value">{data.comanda_promedio_texto || "0s"}</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-card__label">Acumulado</div>
-          <div className="stat-card__value">${data.total_general.toFixed(2)}</div>
-        </div>
+        {admin && (
+          <div className="stat-card">
+            <div className="stat-card__label">Acumulado ventas</div>
+            <div className="stat-card__value">${data.total_general.toFixed(2)}</div>
+          </div>
+        )}
       </div>
+
+      {admin && (data.gastos_hoy?.length > 0 || (data.total_gastos_hoy ?? 0) > 0) && (
+        <section className="card" style={{ marginBottom: "1.5rem" }}>
+          <div className="table-toolbar">
+            <h2 style={{ margin: 0 }}>Gastos de hoy</h2>
+            <Link to="/gastos" className="btn btn--secondary btn--sm">
+              Ver módulo Gastos
+            </Link>
+          </div>
+          {!data.gastos_hoy?.length ? (
+            <p className="empty-state">Sin gastos registrados hoy.</p>
+          ) : (
+            <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Hora</th>
+                    <th>Concepto</th>
+                    <th>Registró</th>
+                    <th>Monto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.gastos_hoy.map((g) => (
+                    <tr key={g.id_gasto}>
+                      <td>{formatearHora(g.fecha_hora)}</td>
+                      <td>{g.descripcion}</td>
+                      <td>{g.usuario_nombre}</td>
+                      <td>${Number(g.monto).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="card" style={{ marginBottom: "1.5rem" }}>
         <h2>Cuentas de hoy</h2>

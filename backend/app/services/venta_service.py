@@ -4,6 +4,8 @@ from typing import List
 
 from sqlalchemy.orm import Session
 
+from app.utils.timezone_mx import now_utc_naive
+
 from app.models import (
     ProductoModel,
     RecetaModel,
@@ -45,7 +47,7 @@ def _resolver_extra_insumo(
     return None, 0.0
 
 
-def _revisar_stock_receta_para_llevar(db: Session, detalles, advertencias: List[str]) -> None:
+def _revisar_stock_receta(db: Session, detalles, advertencias: List[str]) -> None:
     for item in detalles:
         receta = (
             db.query(RecetaModel)
@@ -90,7 +92,7 @@ def _revisar_stock_extras(db: Session, detalles, advertencias: List[str]) -> Non
                 )
 
 
-def _descontar_stock_receta_para_llevar(db: Session, venta_id: int, detalles) -> None:
+def _descontar_stock_receta(db: Session, venta_id: int, detalles) -> None:
     for item in detalles:
         receta = (
             db.query(RecetaModel)
@@ -116,7 +118,7 @@ def _descontar_stock_receta_para_llevar(db: Session, venta_id: int, detalles) ->
                 cantidad=cantidad_total,
                 motivo="VENTA",
                 referencia=f"VENTA {venta_id}",
-                fecha_hora=datetime.now(),
+                fecha_hora=now_utc_naive(),
             )
             db.add(mov)
 
@@ -138,7 +140,7 @@ def _descontar_stock_extras(db: Session, venta_id: int, detalles) -> None:
                 cantidad=cantidad_total,
                 motivo="VENTA_EXTRA",
                 referencia=f"VENTA {venta_id}",
-                fecha_hora=datetime.now(),
+                fecha_hora=now_utc_naive(),
             )
             db.add(mov)
 
@@ -211,12 +213,11 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
         puntos_generados = calcular_puntos_ganados(total_calculado, config_fid)
 
     advertencias_stock: List[str] = []
-    if para_llevar:
-        _revisar_stock_receta_para_llevar(db, data.detalles, advertencias_stock)
+    _revisar_stock_receta(db, data.detalles, advertencias_stock)
     _revisar_stock_extras(db, data.detalles, advertencias_stock)
 
     venta = VentaModel(
-        fecha_hora=datetime.now(),
+        fecha_hora=now_utc_naive(),
         id_usuario=data.id_usuario,
         numero_mesa=data.numero_mesa,
         para_llevar=para_llevar,
@@ -253,8 +254,7 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
         )
         db.add(detalle)
 
-    if para_llevar:
-        _descontar_stock_receta_para_llevar(db, venta.id_venta, data.detalles)
+    _descontar_stock_receta(db, venta.id_venta, data.detalles)
     _descontar_stock_extras(db, venta.id_venta, data.detalles)
 
     if cliente and puntos_generados > 0:

@@ -26,8 +26,15 @@ from app.services.venta_service import MESA_PARA_LLEVAR
 from app.services.promocion_service import calcular_linea
 from app.models import ProductoModel
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
+from app.utils.deps import require_admin, require_pos
+from app.services.mesas_service import obtener_mesas, agregar_mesa, quitar_mesa, validar_mesa_operacion
+from app.schemas.mesas import MesasConfigResponse, MesaAgregarRequest
 
-router = APIRouter(prefix="/pedidos", tags=["Pedidos"])
+router = APIRouter(
+    prefix="/pedidos",
+    tags=["Pedidos"],
+    dependencies=[Depends(require_pos)],
+)
 
 
 @router.get("/activos", response_model=List[PedidoResumen])
@@ -61,6 +68,23 @@ def listar_pedidos_activos(db: Session = Depends(get_db)):
     return res
 
 
+@router.get("/mesas", response_model=MesasConfigResponse)
+def listar_mesas_configuradas(db: Session = Depends(get_db)):
+    return {"mesas": obtener_mesas(db)}
+
+
+@router.post("/mesas", response_model=MesasConfigResponse, dependencies=[Depends(require_admin)])
+def agregar_mesa_config(data: MesaAgregarRequest, db: Session = Depends(get_db)):
+    mesas = agregar_mesa(db, data.numero)
+    return {"mesas": mesas}
+
+
+@router.delete("/mesas/{numero_mesa}", response_model=MesasConfigResponse, dependencies=[Depends(require_admin)])
+def quitar_mesa_config(numero_mesa: int, db: Session = Depends(get_db)):
+    mesas = quitar_mesa(db, numero_mesa)
+    return {"mesas": mesas}
+
+
 @router.get("/mesa/{numero_mesa}", response_model=Pedido)
 def obtener_pedido_mesa(
     numero_mesa: int,
@@ -71,8 +95,8 @@ def obtener_pedido_mesa(
     if para_llevar:
         if numero_mesa != MESA_PARA_LLEVAR:
             raise DatosInvalidosException("Mesa inválida para venta para llevar")
-    elif numero_mesa < 1:
-        raise DatosInvalidosException("Mesa inválida")
+    else:
+        validar_mesa_operacion(db, numero_mesa, para_llevar=False)
     pedido = obtener_pedido_abierto_mesa(db, numero_mesa, id_usuario, para_llevar=para_llevar)
     pedido = (
         db.query(PedidoModel)
@@ -94,8 +118,8 @@ def agregar_linea(
     if para_llevar:
         if numero_mesa != MESA_PARA_LLEVAR:
             raise DatosInvalidosException("Mesa inválida para venta para llevar")
-    elif numero_mesa < 1:
-        raise DatosInvalidosException("Mesa inválida")
+    else:
+        validar_mesa_operacion(db, numero_mesa, para_llevar=False)
     pedido = obtener_pedido_abierto_mesa(db, numero_mesa, id_usuario, para_llevar=para_llevar)
     detalle = agregar_linea_pedido(db, pedido, data)
     return _detalle_a_dict(detalle)

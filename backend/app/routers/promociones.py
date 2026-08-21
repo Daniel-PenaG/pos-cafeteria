@@ -22,8 +22,13 @@ from app.schemas.promocion import (
 )
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 from app.services.promocion_service import calcular_linea, listar_aplicables
+from app.utils.deps import require_admin, require_pos
 
-router = APIRouter(prefix="/promociones", tags=["Promociones"])
+router = APIRouter(
+    prefix="/promociones",
+    tags=["Promociones"],
+    dependencies=[Depends(require_pos)],
+)
 
 
 def _promo_a_dict(p: PromocionModel) -> dict:
@@ -126,7 +131,7 @@ def calcular_precio_promo(data: PromocionCalcularRequest, db: Session = Depends(
     )
 
 
-@router.post("/", response_model=Promocion, status_code=201)
+@router.post("/", response_model=Promocion, status_code=201, dependencies=[Depends(require_admin)])
 def crear_promocion(data: PromocionCreate, db: Session = Depends(get_db)):
     promo = PromocionModel(
         nombre=data.nombre.strip(),
@@ -150,7 +155,7 @@ def crear_promocion(data: PromocionCreate, db: Session = Depends(get_db)):
     return _promo_a_dict(promo)
 
 
-@router.put("/{id_promocion}", response_model=Promocion)
+@router.put("/{id_promocion}", response_model=Promocion, dependencies=[Depends(require_admin)])
 def actualizar_promocion(
     id_promocion: int, data: PromocionUpdate, db: Session = Depends(get_db)
 ):
@@ -175,7 +180,7 @@ def actualizar_promocion(
     return _promo_a_dict(promo)
 
 
-@router.delete("/{id_promocion}")
+@router.delete("/{id_promocion}", dependencies=[Depends(require_admin)])
 def eliminar_promocion(id_promocion: int, db: Session = Depends(get_db)):
     promo = db.query(PromocionModel).filter(PromocionModel.id_promocion == id_promocion).first()
     if not promo:
