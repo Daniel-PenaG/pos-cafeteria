@@ -33,7 +33,7 @@ Dashboard: [render.com](https://dashboard.render.com) → servicio **pos-cafeter
 | `DATABASE_URL` | *(ya configurada — PostgreSQL de Render)* |
 | `ENVIRONMENT` | `production` |
 | `SECRET_KEY` | Clave aleatoria ≥ 32 caracteres (ver abajo) |
-| `CORS_ORIGINS` | `https://pos-cafeteria-brown.vercel.app` |
+| `CORS_ORIGINS` | `https://pos-cafeteria-brown.vercel.app,https://localhost,http://localhost,capacitor://localhost` |
 
 ### Generar SECRET_KEY (en tu PC, una sola vez)
 

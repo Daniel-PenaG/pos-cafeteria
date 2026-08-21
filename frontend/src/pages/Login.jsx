@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { HiOutlineUser, HiOutlineLockClosed, HiOutlineArrowRightCircle } from "react-icons/hi2";
-import api from "../api/axios";import { useAuthStore } from "../store/authStore";
+import api from "../api/axios";
+import { useAuthStore } from "../store/authStore";
 import { useNavigate } from "react-router-dom";
 import { getDefaultRoute } from "../config/permissions";
-
+import { isNativeApp } from "../services/platformService";
 export default function Login() {
   const [usuario_login, setUsuario] = useState("");
   const [password, setPassword] = useState("");
@@ -23,10 +24,17 @@ export default function Login() {
     } catch (err) {
       let msg;
       if (!err.response) {
-        msg =
-          "No se pudo conectar con el servidor. Inicia el backend en local: cd backend; .\\run-dev.ps1 (API en http://127.0.0.1:8000)";
-      } else {
-        const detail = err.response?.data?.detail;
+        if (isNativeApp()) {
+          msg =
+            "No se pudo conectar con el servidor. Revisa que la tablet tenga internet y que la API en Render esté activa (pos-cafeteria-api.onrender.com).";
+        } else if (import.meta.env.PROD) {
+          msg =
+            "No se pudo conectar con el servidor. Intenta de nuevo en unos segundos o contacta al administrador.";
+        } else {
+          msg =
+            "No se pudo conectar con el servidor. Inicia el backend en local: cd backend; .\\run-dev.ps1 (API en http://127.0.0.1:8000)";
+        }
+      } else {        const detail = err.response?.data?.detail;
         msg =
           typeof detail === "string"
             ? detail

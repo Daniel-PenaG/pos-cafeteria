@@ -1,8 +1,12 @@
 import axios from "axios";
 import { useAuthStore } from "../store/authStore";
 
+const PRODUCTION_API = "https://pos-cafeteria-api.onrender.com";
+const LOCAL_API = "http://127.0.0.1:8000";
+
 const baseURL =
-  import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000";
+  import.meta.env.VITE_API_URL?.replace(/\/$/, "") ||
+  (import.meta.env.MODE === "capacitor" ? PRODUCTION_API : LOCAL_API);
 
 const api = axios.create({
   baseURL,
