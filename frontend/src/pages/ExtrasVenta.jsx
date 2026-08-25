@@ -337,6 +337,14 @@ export default function ExtrasVenta() {
     });
   };
 
+  const handleTapExtra = (idExtra) => {
+    if (!productoSel) {
+      alert("Primero selecciona un producto en el panel de la derecha");
+      return;
+    }
+    agregarEnlace(idExtra);
+  };
+
   const onDragStartExtra = (ev, idExtra) => {
     ev.dataTransfer.setData("text/extra-id", String(idExtra));
     ev.dataTransfer.effectAllowed = "copy";
@@ -505,7 +513,7 @@ export default function ExtrasVenta() {
             {productoSel && (
               <>
                 {" "}
-                Arrastra un extra hacia el panel de la derecha para asignarlo a{" "}
+                Arrastra un extra hacia el panel de la derecha (PC) o tócalo (tablet) para asignarlo a{" "}
                 <strong>{productoNombre}</strong>.
               </>
             )}
@@ -513,16 +521,25 @@ export default function ExtrasVenta() {
           {productoSel && extrasDisponibles.length > 0 && (
             <div className="extras-drag-source">
               <p className="hint" style={{ marginBottom: "0.5rem" }}>
-                Catálogo disponible (arrastra →)
+                Catálogo disponible (toca o arrastra →)
               </p>
               <div className="extras-drag-list">
                 {extrasDisponibles.map((e) => (
                   <div
                     key={e.id_extra}
                     className="extra-drag-chip"
+                    role="button"
+                    tabIndex={0}
                     draggable
+                    onClick={() => handleTapExtra(e.id_extra)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === "Enter" || ev.key === " ") {
+                        ev.preventDefault();
+                        handleTapExtra(e.id_extra);
+                      }
+                    }}
                     onDragStart={(ev) => onDragStartExtra(ev, e.id_extra)}
-                    title="Arrastra al producto"
+                    title="Toca para asignar o arrastra al producto"
                   >
                     {e.nombre}
                     {Number(e.precio) > 0 && (
@@ -625,7 +642,7 @@ export default function ExtrasVenta() {
           {productoSel ? (
             <>
               <p className="hint">
-                Arrastra extras desde el catálogo (izquierda) o suelta aquí:
+                Toca extras en el catálogo (izquierda) o arrastra desde PC. También puedes soltar aquí:
               </p>
               <div
                 className="extras-drop-zone"
@@ -634,7 +651,7 @@ export default function ExtrasVenta() {
               >
                 {extrasAsignados.length === 0 ? (
                   <p className="empty-state extras-drop-zone__empty">
-                    Sin extras — arrastra desde el catálogo
+                    Sin extras — toca uno en el catálogo o arrastra desde PC
                   </p>
                 ) : (
                   <ul className="extras-asignados-list">

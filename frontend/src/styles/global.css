@@ -1327,18 +1327,28 @@ body {
 }
 
 .extra-drag-chip {
-  padding: 0.4rem 0.65rem;
+  padding: 0.5rem 0.75rem;
   background: var(--paper);
   border: 1px solid var(--latte);
   border-radius: 999px;
   font-size: 0.85rem;
-  cursor: grab;
+  cursor: pointer;
   user-select: none;
+  touch-action: manipulation;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .extra-drag-chip {
+    cursor: grab;
+  }
 }
 
 .extra-drag-chip:active {
-  cursor: grabbing;
   opacity: 0.85;
+  transform: scale(0.98);
 }
 
 .extras-drop-zone {
