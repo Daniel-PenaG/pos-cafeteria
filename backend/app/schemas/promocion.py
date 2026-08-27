@@ -3,7 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 
 
-TIPOS_PROMO = {"PORCENTAJE", "PRECIO_FIJO", "DOS_X_UNO"}
+TIPOS_PROMO = {"PORCENTAJE", "PRECIO_FIJO", "DOS_X_UNO", "COMBO"}
 
 
 class PromocionBase(BaseModel):
@@ -30,6 +30,8 @@ class PromocionBase(BaseModel):
         self.tipo = t
         if self.tipo == "PORCENTAJE" and self.valor > 100:
             raise ValueError("El porcentaje no puede ser mayor a 100")
+        if self.tipo == "COMBO" and len(self.ids_productos) < 2:
+            raise ValueError("Un combo debe incluir al menos 2 productos")
         if not self.aplica_toda_tienda and not self.ids_productos and not self.ids_categorias:
             raise ValueError("Indica productos, categorías o marca 'toda la tienda'")
         return self
@@ -72,6 +74,38 @@ class PromocionCalcularRequest(BaseModel):
     cantidad: float = Field(1, gt=0)
     precio_extras: float = Field(0, ge=0)
     sin_promocion: bool = False
+
+
+class ComboCalcularRequest(BaseModel):
+    id_promocion: int
+    cantidad: float = Field(1, gt=0)
+
+
+class ComboItemCalculado(BaseModel):
+    id_producto: int
+    nombre: str
+    cantidad: float
+    precio_unitario: float
+    precio_original: float
+    descuento_unitario: float
+    id_promocion: int
+
+
+class ComboCalculado(BaseModel):
+    id_promocion: int
+    nombre_promocion: str
+    precio_paquete: float
+    items: List[ComboItemCalculado]
+
+
+class ComboPromo(BaseModel):
+    id_promocion: int
+    nombre: str
+    tipo: str
+    valor: float
+    descripcion: Optional[str] = None
+    ids_productos: List[int] = []
+    productos: List[dict] = []
 
 
 class PromocionResumen(BaseModel):

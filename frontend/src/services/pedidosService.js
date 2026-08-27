@@ -43,6 +43,14 @@ export async function agregarLineaPedido(numeroMesa, idUsuario, data, paraLlevar
   return res.data;
 }
 
+export async function agregarComboPedido(numeroMesa, idUsuario, data, paraLlevar = false) {
+  const res = await api.post(`/pedidos/mesa/${numeroMesa}/combo`, data, {
+    params: { id_usuario: idUsuario, para_llevar: paraLlevar },
+    headers: getAuthHeader(),
+  });
+  return res.data;
+}
+
 export async function actualizarLineaPedido(idDetalle, data) {
   const res = await api.patch(`/pedidos/lineas/${idDetalle}`, data, {
     headers: getAuthHeader(),

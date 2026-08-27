@@ -12,11 +12,20 @@ function fmt(n) {
 export default function MesasActivas() {
   const [pedidos, setPedidos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [seleccionado, setSeleccionado] = useState(null);
 
   const cargar = useCallback(async () => {
     try {
       const data = await getPedidosActivos();
-      setPedidos(data.sort((a, b) => a.numero_mesa - b.numero_mesa));
+      const ordenados = data.sort((a, b) => a.numero_mesa - b.numero_mesa);
+      setPedidos(ordenados);
+      setSeleccionado((prev) => {
+        if (!ordenados.length) return null;
+        if (prev && ordenados.some((p) => p.id_pedido === prev.id_pedido)) {
+          return ordenados.find((p) => p.id_pedido === prev.id_pedido);
+        }
+        return ordenados[0];
+      });
     } catch (err) {
       console.error(err);
     } finally {
@@ -32,11 +41,15 @@ export default function MesasActivas() {
 
   if (loading) return <div className="loading-state">Cargando mesas…</div>;
 
+  const ventasUrl = seleccionado?.para_llevar
+    ? "/ventas-para-llevar"
+    : `/ventas?mesa=${seleccionado?.numero_mesa ?? ""}`;
+
   return (
     <div>
       <PageHeader
         title="Mesas activas"
-        subtitle="Pedidos abiertos con tiempo en mesa y estado de comanda"
+        subtitle="Selecciona una mesa para ver el tiempo en uso y abrir ventas"
       />
 
       <div style={{ marginBottom: "1rem" }}>
@@ -48,37 +61,97 @@ export default function MesasActivas() {
       {pedidos.length === 0 ? (
         <p className="empty-state">No hay mesas con pedido activo en este momento.</p>
       ) : (
-        <div className="grid-stats" style={{ alignItems: "stretch" }}>
-          {pedidos.map((p) => (
-            <div key={p.id_pedido} className="card" style={{ margin: 0 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(200px, 280px) 1fr",
+            gap: "1rem",
+            alignItems: "start",
+          }}
+        >
+          <div className="card" style={{ margin: 0, padding: "0.5rem" }}>
+            <p className="hint" style={{ margin: "0.25rem 0.5rem 0.75rem" }}>
+              Mesas en uso
+            </p>
+            <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+              {pedidos.map((p) => {
+                const activa = seleccionado?.id_pedido === p.id_pedido;
+                return (
+                  <li key={p.id_pedido}>
+                    <button
+                      type="button"
+                      onClick={() => setSeleccionado(p)}
+                      className="btn btn--ghost"
+                      style={{
+                        width: "100%",
+                        justifyContent: "space-between",
+                        marginBottom: "0.35rem",
+                        fontWeight: activa ? 600 : 400,
+                        background: activa ? "var(--surface-2, #f0f4f8)" : undefined,
+                      }}
+                    >
+                      <span>
+                        {p.para_llevar ? "Para llevar" : `Mesa ${p.numero_mesa}`}
+                      </span>
+                      <span>{fmt(p.total)}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          {seleccionado && (
+            <div className="card" style={{ margin: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
                 <h3 style={{ margin: 0 }}>
-                  {p.para_llevar ? "Para llevar" : `Mesa ${p.numero_mesa}`}
+                  {seleccionado.para_llevar
+                    ? "Para llevar"
+                    : `Mesa ${seleccionado.numero_mesa}`}
                 </h3>
-                <strong>{fmt(p.total)}</strong>
+                <strong>{fmt(seleccionado.total)}</strong>
               </div>
-              <p className="hint" style={{ margin: "0.35rem 0 0.75rem" }}>
-                Pedido #{p.id_pedido}
-                {p.cliente_nombre && <> · {p.cliente_nombre}</>}
+
+              <div
+                style={{
+                  margin: "1rem 0",
+                  padding: "1rem",
+                  textAlign: "center",
+                  borderRadius: "8px",
+                  background: "var(--surface-2, #f0f4f8)",
+                }}
+              >
+                <p className="hint" style={{ margin: "0 0 0.35rem" }}>
+                  Tiempo en mesa
+                </p>
+                <p style={{ margin: 0, fontSize: "1.75rem", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                  {seleccionado.fecha_apertura ? (
+                    <ElapsedTimer since={seleccionado.fecha_apertura} />
+                  ) : (
+                    formatDuration(seleccionado.segundos_activa || 0)
+                  )}
+                </p>
+              </div>
+
+              <p className="hint" style={{ margin: "0 0 0.75rem" }}>
+                Pedido #{seleccionado.id_pedido}
+                {seleccionado.cliente_nombre && <> · {seleccionado.cliente_nombre}</>}
                 {" · "}
-                {p.num_lineas} línea(s)
-                {p.pendientes_comanda > 0 && (
-                  <> · {p.pendientes_comanda} en cocina</>
-                )}
-              </p>
-              <p className="hint" style={{ marginBottom: "0.75rem" }}>
-                Tiempo en mesa:{" "}
-                {p.fecha_apertura ? (
-                  <ElapsedTimer since={p.fecha_apertura} />
-                ) : (
-                  formatDuration(p.segundos_activa || 0)
+                {seleccionado.num_lineas} línea(s)
+                {seleccionado.pendientes_comanda > 0 && (
+                  <> · {seleccionado.pendientes_comanda} en cocina</>
                 )}
               </p>
 
               <ul style={{ margin: 0, paddingLeft: "1.1rem", fontSize: "0.9rem" }}>
-                {p.lineas?.map((l) => (
+                {seleccionado.lineas?.map((l) => (
                   <li key={l.id_detalle_pedido} style={{ marginBottom: "0.35rem" }}>
                     {l.nombre_producto} × {l.cantidad}
+                    {l.nombre_promocion && (
+                      <span className="badge badge--ok" style={{ marginLeft: "0.35rem" }}>
+                        {l.nombre_promocion}
+                      </span>
+                    )}
                     {!l.en_comanda && (
                       <span className="badge badge--pending" style={{ marginLeft: "0.35rem" }}>
                         sin confirmar
@@ -98,16 +171,13 @@ export default function MesasActivas() {
                 ))}
               </ul>
 
-              <div style={{ marginTop: "0.75rem" }}>
-                <Link
-                  to={p.para_llevar ? "/ventas-para-llevar" : "/ventas"}
-                  className="btn btn--ghost btn--sm"
-                >
-                  Ir a ventas
+              <div style={{ marginTop: "1rem" }}>
+                <Link to={ventasUrl} className="btn btn--primary btn--sm">
+                  Abrir ventas de esta mesa
                 </Link>
               </div>
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>

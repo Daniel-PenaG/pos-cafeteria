@@ -16,7 +16,7 @@ from app.services.extras_validacion_service import (
     parsear_extras_json,
     extras_linea_desde_json,
 )
-from app.services.promocion_service import calcular_linea
+from app.services.promocion_service import calcular_linea, calcular_combo
 from app.services.venta_service import registrar_venta, MESA_PARA_LLEVAR
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 
@@ -198,6 +198,103 @@ def agregar_linea_pedido(
     db.commit()
     db.refresh(detalle)
     return detalle
+
+
+def agregar_linea_combo(
+    db: Session,
+    pedido: PedidoModel,
+    data: PedidoLineaCreate,
+    nombre_promocion: str,
+    precio_original: float,
+    descuento_unitario: float,
+) -> DetallePedidoModel:
+    if pedido.estado != "ABIERTO":
+        raise DatosInvalidosException("El pedido ya está cerrado")
+
+    producto = db.query(ProductoModel).filter(ProductoModel.id_producto == data.id_producto).first()
+    if not producto:
+        raise RecursoNoEncontradoException("Producto no encontrado")
+    if not producto.activo:
+        raise DatosInvalidosException(f"Producto {producto.nombre} no está activo")
+
+    extras_normalizados = validar_extras_producto(db, data.id_producto, data.extras)
+    comentario = (data.comentario or "").strip() or None
+    key = _line_key(data.id_producto, data.extras, data.id_promocion, comentario)
+    extras_json = extras_json_desde_normalizados(extras_normalizados)
+    ahora = now_utc_naive()
+
+    existente = (
+        db.query(DetallePedidoModel)
+        .filter(DetallePedidoModel.id_pedido == pedido.id_pedido, DetallePedidoModel.line_key == key)
+        .first()
+    )
+    if existente and existente.en_comanda and not data.enviar_comanda:
+        existente = None
+        key = f"{key}-n{int(ahora.timestamp() * 1000)}"[:120]
+    elif existente:
+        existente.cantidad = float(existente.cantidad) + float(data.cantidad)
+        if data.enviar_comanda:
+            existente.en_comanda = True
+            existente.fecha_envio_comanda = ahora
+            if float(existente.cantidad_lista or 0) < float(existente.cantidad):
+                existente.fecha_listo_comanda = None
+        db.commit()
+        db.refresh(existente)
+        return existente
+
+    detalle = DetallePedidoModel(
+        id_pedido=pedido.id_pedido,
+        id_producto=data.id_producto,
+        nombre_producto=producto.nombre,
+        cantidad=data.cantidad,
+        cantidad_lista=0,
+        precio_unitario=float(data.precio_unitario),
+        precio_original=precio_original,
+        descuento_unitario=descuento_unitario,
+        id_promocion=data.id_promocion,
+        nombre_promocion=nombre_promocion,
+        extras_json=extras_json,
+        en_comanda=data.enviar_comanda,
+        fecha_envio_comanda=ahora if data.enviar_comanda else None,
+        line_key=key,
+        comentario=comentario,
+    )
+    db.add(detalle)
+    db.commit()
+    db.refresh(detalle)
+    return detalle
+
+
+def agregar_combo_pedido(
+    db: Session,
+    pedido: PedidoModel,
+    id_promocion: int,
+    cantidad: float = 1,
+    enviar_comanda: bool = False,
+) -> list:
+    combo = calcular_combo(db, id_promocion, cantidad)
+    detalles = []
+    for item in combo["items"]:
+        data = PedidoLineaCreate(
+            id_producto=item["id_producto"],
+            cantidad=item["cantidad"],
+            precio_unitario=item["precio_unitario"],
+            precio_original=item["precio_original"],
+            id_promocion=id_promocion,
+            extras=[],
+            enviar_comanda=enviar_comanda,
+        )
+        detalles.append(
+            agregar_linea_combo(
+                db,
+                pedido,
+                data,
+                combo["nombre_promocion"],
+                item["precio_original"],
+                item["descuento_unitario"],
+            )
+        )
+    return detalles
 
 
 def confirmar_comanda_pedido(db: Session, pedido: PedidoModel) -> int:

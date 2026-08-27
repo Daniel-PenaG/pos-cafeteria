@@ -18,11 +18,17 @@ from app.schemas.promocion import (
     PromocionCalculada,
     PromocionCalcularRequest,
     PromocionResumen,
+    ComboCalculado,
+    ComboCalcularRequest,
+    ComboPromo,
 )
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 from app.services.promocion_service import (
     calcular_linea,
+    calcular_combo,
     listar_aplicables,
+    listar_combos_producto,
+    combo_a_dict,
     resumen_promociones_ventas,
 )
 from app.utils.deps import require_admin, require_pos
@@ -97,6 +103,19 @@ def promociones_aplicables(id_producto: int, db: Session = Depends(get_db)):
     if not producto:
         raise RecursoNoEncontradoException("Producto no encontrado")
     return [_promo_a_dict(p) for p in listar_aplicables(db, producto)]
+
+
+@router.get("/combos/{id_producto}", response_model=List[ComboPromo])
+def combos_producto(id_producto: int, db: Session = Depends(get_db)):
+    producto = db.query(ProductoModel).filter(ProductoModel.id_producto == id_producto).first()
+    if not producto:
+        raise RecursoNoEncontradoException("Producto no encontrado")
+    return [combo_a_dict(p, db) for p in listar_combos_producto(db, id_producto)]
+
+
+@router.post("/calcular-combo", response_model=ComboCalculado)
+def calcular_precio_combo(data: ComboCalcularRequest, db: Session = Depends(get_db)):
+    return calcular_combo(db, data.id_promocion, data.cantidad)
 
 
 @router.post("/calcular", response_model=PromocionCalculada)

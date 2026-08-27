@@ -24,6 +24,20 @@ export async function getPromocionesResumen({ periodo, fecha, anio, mes } = {}) 
   return res.data;
 }
 
+export async function getCombosProducto(idProducto) {
+  const res = await api.get(`/promociones/combos/${idProducto}`, {
+    headers: getAuthHeader(),
+  });
+  return res.data;
+}
+
+export async function calcularCombo(data) {
+  const res = await api.post("/promociones/calcular-combo", data, {
+    headers: getAuthHeader(),
+  });
+  return res.data;
+}
+
 export async function getPromocionesAplicables(idProducto) {
   const res = await api.get(`/promociones/aplicables/${idProducto}`, {
     headers: getAuthHeader(),

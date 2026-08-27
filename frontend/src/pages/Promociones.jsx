@@ -15,6 +15,7 @@ const TIPOS = [
   { value: "PORCENTAJE", label: "% Descuento" },
   { value: "PRECIO_FIJO", label: "Precio fijo" },
   { value: "DOS_X_UNO", label: "2×1" },
+  { value: "COMBO", label: "Paquete / Combo" },
 ];
 
 const DIAS = [
@@ -184,6 +185,10 @@ export default function Promociones() {
       alert("El porcentaje no puede ser mayor a 100");
       return null;
     }
+    if (tipo === "COMBO" && idsProductos.length < 2) {
+      alert("Un combo debe incluir al menos 2 productos");
+      return null;
+    }
     if (!todaTienda && idsProductos.length === 0 && idsCategorias.length === 0) {
       alert("Selecciona productos, categorías o marca toda la tienda");
       return null;
@@ -311,7 +316,9 @@ export default function Promociones() {
                         ? `${p.valor}%`
                         : p.tipo === "PRECIO_FIJO"
                           ? `$${Number(p.valor).toFixed(2)}`
-                          : "2×1"}
+                          : p.tipo === "COMBO"
+                            ? `$${Number(p.valor).toFixed(2)} (paquete)`
+                            : "2×1"}
                     </td>
                     <td>
                       {p.aplica_toda_tienda
@@ -376,7 +383,9 @@ export default function Promociones() {
                   </select>
                 </div>
                 <div className="form-row">
-                  <label>Valor *</label>
+                  <label>
+                    {tipo === "COMBO" ? "Precio del paquete *" : "Valor *"}
+                  </label>
                   <input
                     type="number"
                     min="0.01"
@@ -386,6 +395,11 @@ export default function Promociones() {
                     required
                     disabled={tipo === "DOS_X_UNO"}
                   />
+                  {tipo === "COMBO" && (
+                    <p className="hint" style={{ marginTop: "0.25rem" }}>
+                      Selecciona los productos del combo abajo (mínimo 2).
+                    </p>
+                  )}
                 </div>
               </div>
               <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>

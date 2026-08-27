@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { getProductos, getCategorias } from "../services/productosService";
 import { getExtrasVenta } from "../services/ventasService";
 import { getExtraTiposPos } from "../services/extrasVentaService";
@@ -9,6 +10,7 @@ import {
   agregarMesa,
   quitarMesa,
   agregarLineaPedido,
+  agregarComboPedido,
   actualizarLineaPedido,
   eliminarLineaPedido,
   cobrarPedido,
@@ -17,6 +19,7 @@ import {
 import {
   calcularPromocion,
   getPromocionesAplicables,
+  getCombosProducto,
 } from "../services/promocionesService";
 import {
   buscarClientes,
@@ -33,6 +36,7 @@ import PrinterSettings from "../components/PrinterSettings";
 import { canUseBluetoothPrinter, printTicketSafely } from "../services/printerService";
 import { buildCobroTicket } from "../services/escposTickets";
 import { getSavedPrinter } from "../services/printerStorage";
+import { formatDuration } from "../utils/formatDuration";
 import {
   HiOutlineShoppingCart,
   HiOutlineCheckBadge,
@@ -94,6 +98,7 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const usuario = useAuthStore((s) => s.user);
   const admin = isAdmin(usuario?.rol);
+  const [searchParams] = useSearchParams();
 
   const carrito = pedido?.lineas ?? [];
 
@@ -233,6 +238,16 @@ export default function Ventas({ modoParaLlevar = false }) {
     setNumeroMesa(MESA_PARA_LLEVAR);
     cargarPedidoMesa(MESA_PARA_LLEVAR, true);
   }, [modoParaLlevar, usuario?.id_usuario]);
+
+  useEffect(() => {
+    if (modoParaLlevar || !usuario?.id_usuario) return;
+    const m = searchParams.get("mesa");
+    if (!m) return;
+    const n = parseInt(m, 10);
+    if (!isNaN(n) && n > 0) {
+      seleccionarMesa(n);
+    }
+  }, [searchParams, usuario?.id_usuario, modoParaLlevar]);
 
   const productosPorCategoria = useMemo(() => {
     const q = busquedaProducto.trim().toLowerCase();
@@ -413,7 +428,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     );
   }, [productoModal, promoModo, extrasSeleccionados, cantidadModal]);
 
-  const abrirModalProducto = async (producto) => {
+  const abrirModalProducto = async (producto, opts = {}) => {
     if (!numeroMesa) {
       alert(modoParaLlevar ? "Espera a que cargue el pedido" : "Primero selecciona el número de mesa");
       return;
@@ -422,7 +437,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     setExtrasSeleccionados([]);
     setExtrasModal([]);
     setPromosDisponibles([]);
-    setPromoModo("auto");
+    setPromoModo(opts.promoModo ?? "auto");
     setMostrarOpcionesPromo(false);
     setCalculoPromo(null);
     setCantidadModal("1");
@@ -441,6 +456,66 @@ export default function Ventas({ modoParaLlevar = false }) {
       return;
     } finally {
       setCargandoExtras(false);
+    }
+  };
+
+  const handleProductoClick = async (producto) => {
+    if (!numeroMesa) {
+      alert(modoParaLlevar ? "Espera a que cargue el pedido" : "Primero selecciona el número de mesa");
+      return;
+    }
+    if (!usuario?.id_usuario) return;
+
+    try {
+      const [combos, promos] = await Promise.all([
+        getCombosProducto(producto.id_producto),
+        getPromocionesAplicables(producto.id_producto),
+      ]);
+
+      if (combos.length > 0) {
+        const combo = combos[0];
+        const nombres = (combo.productos || [])
+          .map((p) => p.nombre)
+          .join(" + ");
+        const aplicar = window.confirm(
+          `¿Aplicar promoción "${combo.nombre}"?\n\n${nombres}\nPrecio del paquete: $${Number(combo.valor).toFixed(2)}\n\nAceptar = agregar el combo completo\nCancelar = solo ${producto.nombre} a precio normal`
+        );
+        if (aplicar) {
+          setGuardandoLinea(true);
+          setLoading(true);
+          try {
+            await agregarComboPedido(
+              numeroMesa,
+              usuario.id_usuario,
+              { id_promocion: combo.id_promocion, cantidad: 1, enviar_comanda: false },
+              modoParaLlevar
+            );
+            await cargarPedidoMesa(numeroMesa, modoParaLlevar);
+          } catch (err) {
+            alert(err.response?.data?.detail || "Error al agregar combo");
+          } finally {
+            setLoading(false);
+            setGuardandoLinea(false);
+          }
+          return;
+        }
+        abrirModalProducto(producto, { promoModo: "none" });
+        return;
+      }
+
+      if (promos.length > 0) {
+        const promo = promos[0];
+        const aplicar = window.confirm(
+          `¿Aplicar promoción "${promo.nombre}" a ${producto.nombre}?\n\nAceptar = con promoción\nCancelar = precio normal`
+        );
+        abrirModalProducto(producto, { promoModo: aplicar ? "auto" : "none" });
+        return;
+      }
+
+      abrirModalProducto(producto);
+    } catch (err) {
+      console.error(err);
+      abrirModalProducto(producto);
     }
   };
 
@@ -614,6 +689,14 @@ export default function Ventas({ modoParaLlevar = false }) {
       let msg = modoParaLlevar
         ? `Venta para llevar — Folio: ${res.id_venta}\nTotal: $${Number(res.total).toFixed(2)}`
         : `Cuenta cerrada. Mesa ${res.numero_mesa} — Folio: ${res.id_venta}\nTotal: $${Number(res.total).toFixed(2)}`;
+      if (!modoParaLlevar && pedidoParaTicket?.fecha_apertura) {
+        const segundos = Math.floor(
+          (Date.now() - new Date(pedidoParaTicket.fecha_apertura).getTime()) / 1000
+        );
+        if (segundos >= 0) {
+          msg += `\n\nTiempo en mesa: ${formatDuration(segundos)}`;
+        }
+      }
       if (cobroEfectivo && pagaCon != null && cambio != null) {
         msg += `\n\nPaga con: $${pagaCon.toFixed(2)}\nCambio: $${cambio.toFixed(2)}`;
       }
@@ -815,7 +898,7 @@ export default function Ventas({ modoParaLlevar = false }) {
                               key={p.id_producto}
                               type="button"
                               className="ventas-producto-item"
-                              onClick={() => abrirModalProducto(p)}
+                              onClick={() => handleProductoClick(p)}
                               disabled={!ventasHabilitadas}
                             >
                               <span className="ventas-producto-item__main">

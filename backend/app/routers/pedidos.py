@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List
 
 from app.database import get_db
-from app.models.models import PedidoModel, DetallePedidoModel, ClienteModel
+from app.models.models import PedidoModel, DetallePedidoModel, ClienteModel, PromocionModel
 from app.schemas.pedido import (
     Pedido,
     PedidoResumen,
@@ -11,12 +11,14 @@ from app.schemas.pedido import (
     PedidoLineaUpdate,
     PedidoClienteUpdate,
     PedidoCobrar,
+    ComboPedidoCreate,
     DetallePedidoLinea,
 )
 from app.schemas.ventas import VentaResponse
 from app.services.pedido_service import (
     obtener_pedido_abierto_mesa,
     agregar_linea_pedido,
+    agregar_combo_pedido,
     cobrar_pedido,
     confirmar_comanda_pedido,
     listar_pedidos_activos_resumen,
@@ -100,6 +102,26 @@ def agregar_linea(
     return _detalle_a_dict(detalle)
 
 
+@router.post("/mesa/{numero_mesa}/combo", response_model=List[DetallePedidoLinea])
+def agregar_combo(
+    numero_mesa: int,
+    data: ComboPedidoCreate,
+    id_usuario: int,
+    para_llevar: bool = False,
+    db: Session = Depends(get_db),
+):
+    if para_llevar:
+        if numero_mesa != MESA_PARA_LLEVAR:
+            raise DatosInvalidosException("Mesa inválida para venta para llevar")
+    else:
+        validar_mesa_operacion(db, numero_mesa, para_llevar=False)
+    pedido = obtener_pedido_abierto_mesa(db, numero_mesa, id_usuario, para_llevar=para_llevar)
+    detalles = agregar_combo_pedido(
+        db, pedido, data.id_promocion, data.cantidad, data.enviar_comanda
+    )
+    return [_detalle_a_dict(d) for d in detalles]
+
+
 @router.patch("/lineas/{id_detalle_pedido}", response_model=DetallePedidoLinea)
 def actualizar_linea(id_detalle_pedido: int, data: PedidoLineaUpdate, db: Session = Depends(get_db)):
     detalle = db.query(DetallePedidoModel).filter(DetallePedidoModel.id_detalle_pedido == id_detalle_pedido).first()
@@ -113,6 +135,15 @@ def actualizar_linea(id_detalle_pedido: int, data: PedidoLineaUpdate, db: Sessio
         raise DatosInvalidosException("Cantidad inválida")
 
     if detalle.id_promocion:
+        promo = (
+            db.query(PromocionModel)
+            .filter(PromocionModel.id_promocion == detalle.id_promocion)
+            .first()
+        )
+        if promo and promo.tipo == "COMBO":
+            raise DatosInvalidosException(
+                "No se puede cambiar la cantidad de una línea de combo; agrega otro paquete"
+            )
         producto = db.query(ProductoModel).filter(ProductoModel.id_producto == detalle.id_producto).first()
         import json
         extras = json.loads(detalle.extras_json) if detalle.extras_json else []

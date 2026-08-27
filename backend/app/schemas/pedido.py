@@ -92,6 +92,12 @@ class PedidoCobrar(BaseModel):
     id_cliente: Optional[int] = None
 
 
+class ComboPedidoCreate(BaseModel):
+    id_promocion: int
+    cantidad: float = Field(1, gt=0)
+    enviar_comanda: bool = False
+
+
 class ComandaLinea(BaseModel):
     id_detalle_pedido: int
     id_pedido: int
