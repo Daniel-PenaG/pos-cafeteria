@@ -24,6 +24,7 @@ from .models import (
     FidelidadConfigModel,
     PedidoModel,
     DetallePedidoModel,
+    CierreCajaModel,
 )
 
 __all__ = [
@@ -52,4 +53,5 @@ __all__ = [
     "FidelidadConfigModel",
     "PedidoModel",
     "DetallePedidoModel",
+    "CierreCajaModel",
 ]

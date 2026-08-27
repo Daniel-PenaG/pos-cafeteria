@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.utils.config import get_cors_origins
-from app.database import Base, engine, aplicar_migraciones_sqlite, crear_admin_inicial_si_vacio, crear_catalogo_demo_si_vacio
+from app.database import Base, engine, aplicar_migraciones_sqlite, ensure_cierres_caja_table, crear_admin_inicial_si_vacio, crear_catalogo_demo_si_vacio
 from app.models import models
 from app.routers import auth, productos, recetas, ventas, reportes, compras, configuracion, extras_venta, promociones, clientes, pedidos, comandera, usuarios, gastos, cierres
 
@@ -21,6 +21,7 @@ app.add_middleware(
 
 Base.metadata.create_all(bind=engine)
 aplicar_migraciones_sqlite()
+ensure_cierres_caja_table()
 crear_admin_inicial_si_vacio()
 crear_catalogo_demo_si_vacio()
 

@@ -22,7 +22,7 @@ class CierreCajaOut(BaseModel):
     efectivo_contado: float
     diferencia: float
     notas: Optional[str] = None
-    fecha_hora_registro: datetime
+    fecha_hora_registro: Optional[datetime] = None
 
 
 class CierreCajaDetalle(CierreCajaOut):

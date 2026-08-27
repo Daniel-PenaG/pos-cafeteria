@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import date
 from typing import Optional
@@ -18,7 +18,7 @@ from app.exceptions import DatosInvalidosException
 router = APIRouter(prefix="/cierres", tags=["Cierre de caja"])
 
 
-@router.get("/resumen", response_model=ResumenCierreUsuario)
+@router.get("/resumen", response_model=ResumenCierreUsuario, dependencies=[Depends(require_pos)])
 def obtener_resumen_cierre(
     fecha: Optional[date] = None,
     id_usuario: Optional[int] = None,
@@ -29,7 +29,15 @@ def obtener_resumen_cierre(
     uid = id_usuario if es_admin and id_usuario else current.id_usuario
     if not es_admin and id_usuario and id_usuario != current.id_usuario:
         raise DatosInvalidosException("No puedes ver el cierre de otro usuario")
-    return resumen_ventas_usuario(db, uid, fecha)
+    try:
+        return resumen_ventas_usuario(db, uid, fecha)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"No se pudo cargar el resumen de cierre: {exc}",
+        ) from exc
 
 
 @router.post("/", dependencies=[Depends(require_pos)])

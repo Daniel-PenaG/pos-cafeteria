@@ -459,12 +459,20 @@ def aplicar_migraciones_sqlite():
             with engine.begin() as conn:
                 conn.execute(text(sql))
         except Exception as exc:
-            # Algunas ALTER fallan si la columna ya existe (SQLite); las de recetas sí hay que verlas.
+            # Algunas ALTER fallan si la columna ya existe (SQLite).
             snippet = " ".join(sql.split())[:80]
-            if "receta" in sql.lower():
-                print(f"[WARN] Migración recetas falló: {snippet}... → {exc}")
+            lower = sql.lower()
+            if any(k in lower for k in ("receta", "cierres", "modulos_json")):
+                print(f"[WARN] Migracion fallo: {snippet}... -> {exc}")
 
     normalizar_roles_usuarios()
+
+
+def ensure_cierres_caja_table():
+    """Garantiza tabla cierres_caja en BD existentes (Render / SQLite)."""
+    from app.models.models import CierreCajaModel
+
+    CierreCajaModel.__table__.create(bind=engine, checkfirst=True)
 
 
 def normalizar_roles_usuarios():

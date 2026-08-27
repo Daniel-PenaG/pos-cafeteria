@@ -13,6 +13,17 @@ def _filtro_dia_mx(fecha: date):
     return VentaModel.fecha_hora >= inicio, VentaModel.fecha_hora < fin
 
 
+def _venta_resumen_item(v: VentaModel) -> dict:
+    return {
+        "id_venta": v.id_venta,
+        "fecha_hora": v.fecha_hora.isoformat() if v.fecha_hora else None,
+        "total": float(v.total or 0),
+        "forma_pago": (v.forma_pago or "EFECTIVO").upper(),
+        "numero_mesa": int(v.numero_mesa) if v.numero_mesa is not None else 0,
+        "para_llevar": bool(v.para_llevar),
+    }
+
+
 def resumen_ventas_usuario(
     db: Session, id_usuario: int, fecha: Optional[date] = None
 ) -> dict:
@@ -63,34 +74,24 @@ def resumen_ventas_usuario(
         "total_transferencia": round(totales["TRANSFERENCIA"], 2),
         "ya_cerrado": cierre_existente is not None,
         "cierre": _cierre_a_dict(cierre_existente) if cierre_existente else None,
-        "ventas": [
-            {
-                "id_venta": v.id_venta,
-                "fecha_hora": v.fecha_hora.isoformat(),
-                "total": float(v.total),
-                "forma_pago": v.forma_pago,
-                "numero_mesa": int(v.numero_mesa),
-                "para_llevar": bool(v.para_llevar),
-            }
-            for v in ventas
-        ],
+        "ventas": [_venta_resumen_item(v) for v in ventas],
     }
 
 
 def _cierre_a_dict(c: CierreCajaModel) -> dict:
     return {
         "id_cierre": c.id_cierre,
-        "fecha": c.fecha.isoformat() if c.fecha else None,
+        "fecha": c.fecha,
         "id_usuario": c.id_usuario,
-        "num_ventas": int(c.num_ventas),
-        "total_ventas": float(c.total_ventas),
-        "total_efectivo": float(c.total_efectivo),
-        "total_tarjeta": float(c.total_tarjeta),
-        "total_transferencia": float(c.total_transferencia),
-        "efectivo_contado": float(c.efectivo_contado),
-        "diferencia": float(c.diferencia),
+        "num_ventas": int(c.num_ventas or 0),
+        "total_ventas": float(c.total_ventas or 0),
+        "total_efectivo": float(c.total_efectivo or 0),
+        "total_tarjeta": float(c.total_tarjeta or 0),
+        "total_transferencia": float(c.total_transferencia or 0),
+        "efectivo_contado": float(c.efectivo_contado or 0),
+        "diferencia": float(c.diferencia or 0),
         "notas": c.notas,
-        "fecha_hora_registro": c.fecha_hora_registro.isoformat() if c.fecha_hora_registro else None,
+        "fecha_hora_registro": c.fecha_hora_registro,
     }
 
 
