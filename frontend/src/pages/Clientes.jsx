@@ -7,10 +7,10 @@ import {
   ajustarPuntos,
   getFidelidadConfig,
   updateFidelidadConfig,
-  qrUrl,
 } from "../services/clientesService";
 import { useAuthStore } from "../store/authStore";
 import PageHeader from "../components/PageHeader";
+import QrCodeDisplay from "../components/QrCodeDisplay";
 import { numberInputFromApi, parseNumberField } from "../utils/numberInput";
 
 export default function Clientes() {
@@ -28,6 +28,7 @@ export default function Clientes() {
   const [minimoCompra, setMinimoCompra] = useState("");
   const [ajustePuntos, setAjustePuntos] = useState("");
   const [ajusteNotas, setAjusteNotas] = useState("");
+  const [clienteRecienCreado, setClienteRecienCreado] = useState(null);
 
   const load = async () => {
     try {
@@ -78,10 +79,12 @@ export default function Clientes() {
     try {
       if (editing) {
         await updateCliente(editing.id_cliente, { nombre, telefono });
+        setShowModal(false);
       } else {
-        await createCliente({ nombre, telefono });
+        const nuevo = await createCliente({ nombre, telefono });
+        setShowModal(false);
+        setClienteRecienCreado(nuevo);
       }
-      setShowModal(false);
       load();
     } catch (err) {
       alert(err.response?.data?.detail || "Error al guardar");
@@ -282,15 +285,7 @@ export default function Clientes() {
               Tel: {showDetalle.telefono} · <strong>{showDetalle.puntos_saldo} pts</strong>
             </p>
             <div style={{ textAlign: "center", margin: "1rem 0" }}>
-              <img
-                src={qrUrl(showDetalle.codigo_fidelidad)}
-                alt={`QR ${showDetalle.codigo_fidelidad}`}
-                width={200}
-                height={200}
-              />
-              <p>
-                <code>{showDetalle.codigo_fidelidad}</code>
-              </p>
+              <QrCodeDisplay codigo={showDetalle.codigo_fidelidad} />
             </div>
 
             <h3>Ajuste manual de puntos</h3>
@@ -338,6 +333,36 @@ export default function Clientes() {
 
             <div className="modal-footer">
               <button type="button" className="btn btn--primary" onClick={() => setShowDetalle(null)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {clienteRecienCreado && (
+        <div className="modal-overlay" onClick={() => setClienteRecienCreado(null)}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <h2>Cliente registrado</h2>
+            <p>
+              <strong>{clienteRecienCreado.nombre}</strong> · {clienteRecienCreado.telefono}
+            </p>
+            <p className="hint">
+              Entrega este código QR al cliente. Al cobrar, escanéalo para sumar puntos automáticamente.
+            </p>
+            <QrCodeDisplay codigo={clienteRecienCreado.codigo_fidelidad} size={240} />
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => {
+                  abrirDetalle(clienteRecienCreado.id_cliente);
+                  setClienteRecienCreado(null);
+                }}
+              >
+                Ver ficha completa
+              </button>
+              <button type="button" className="btn btn--secondary" onClick={() => setClienteRecienCreado(null)}>
                 Cerrar
               </button>
             </div>

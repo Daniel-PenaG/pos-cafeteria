@@ -30,6 +30,9 @@ import {
 import { useAuthStore } from "../store/authStore";
 import { isAdmin } from "../config/permissions";
 import PageHeader from "../components/PageHeader";
+import QrCodeDisplay from "../components/QrCodeDisplay";
+import QrScannerModal from "../components/QrScannerModal";
+import { parseCodigoFidelidad } from "../utils/fidelidadQr";
 import SearchField from "../components/SearchField";
 import ElapsedTimer from "../components/ElapsedTimer";
 import PrinterSettings from "../components/PrinterSettings";
@@ -46,6 +49,7 @@ import {
   HiOutlinePrinter,
   HiOutlinePlus,
   HiOutlineXMark,
+  HiOutlineQrCode,
 } from "react-icons/hi2";
 
 const MESA_PARA_LLEVAR = 99;
@@ -92,6 +96,8 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [nuevoTelefono, setNuevoTelefono] = useState("");
   const [puntosPreviewCobro, setPuntosPreviewCobro] = useState(0);
   const [qrCobro, setQrCobro] = useState("");
+  const [showQrScanner, setShowQrScanner] = useState(false);
+  const [clienteQrRecienCreado, setClienteQrRecienCreado] = useState(null);
   const [showPrinterSettings, setShowPrinterSettings] = useState(false);
   /** Cantidades en edición (id detalle → texto) antes de guardar en servidor */
   const [cantidadEdit, setCantidadEdit] = useState({});
@@ -340,15 +346,19 @@ export default function Ventas({ modoParaLlevar = false }) {
     setResultadosCobro([]);
   };
 
-  const resolverQrCobro = async (codigo) => {
-    const c = codigo.trim().toUpperCase();
-    if (!c.startsWith("CAFE-")) return;
+  const resolverQrCobro = async (codigoRaw) => {
+    const c = parseCodigoFidelidad(codigoRaw);
+    if (!c) {
+      alert("Código QR no válido. Debe ser CAFE- seguido de 6 caracteres.");
+      return;
+    }
     try {
       const cliente = await getClientePorCodigo(c);
       seleccionarClienteCobro(cliente);
       setQrCobro("");
+      setShowQrScanner(false);
     } catch (err) {
-      alert(err.response?.data?.detail || "Código no encontrado");
+      alert(err.response?.data?.detail || "Cliente no encontrado");
       setQrCobro("");
     }
   };
@@ -360,6 +370,7 @@ export default function Ventas({ modoParaLlevar = false }) {
       setShowNuevoCliente(false);
       setNuevoNombre("");
       setNuevoTelefono("");
+      setClienteQrRecienCreado(c);
     } catch (err) {
       alert(err.response?.data?.detail || "Error al registrar cliente");
     }
@@ -1404,21 +1415,31 @@ export default function Ventas({ modoParaLlevar = false }) {
                     onChange={(e) => setBusquedaCobro(e.target.value)}
                     autoFocus={!cobroEfectivo}
                   />
-                  <input
-                    className="input cliente-qr-input"
-                    placeholder="QR CAFE-…"
-                    value={qrCobro}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setQrCobro(v);
-                      if (v.toUpperCase().startsWith("CAFE-") && v.length >= 10) {
-                        resolverQrCobro(v);
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") resolverQrCobro(qrCobro);
-                    }}
-                  />
+                  <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+                    <input
+                      className="input cliente-qr-input"
+                      placeholder="Código CAFE-…"
+                      value={qrCobro}
+                      style={{ flex: 1, minWidth: "8rem" }}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setQrCobro(v);
+                        const codigo = parseCodigoFidelidad(v);
+                        if (codigo) resolverQrCobro(v);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") resolverQrCobro(qrCobro);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn--primary btn--sm inline-flex items-center gap-1"
+                      onClick={() => setShowQrScanner(true)}
+                    >
+                      <HiOutlineQrCode className="size-5 shrink-0" aria-hidden />
+                      Escanear QR
+                    </button>
+                  </div>
                   <button
                     type="button"
                     className="btn btn--secondary btn--sm"
@@ -1471,6 +1492,37 @@ export default function Ventas({ modoParaLlevar = false }) {
                       ? `Cobrar y sumar ${puntosPreviewCobro} pts`
                       : "Cobrar con cliente"
                     : "Selecciona un cliente"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showQrScanner && (
+        <QrScannerModal
+          open={showQrScanner}
+          onClose={() => setShowQrScanner(false)}
+          onScan={resolverQrCobro}
+        />
+      )}
+
+      {clienteQrRecienCreado && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }} onClick={() => setClienteQrRecienCreado(null)}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <h2>Cliente registrado</h2>
+            <p>
+              <strong>{clienteQrRecienCreado.nombre}</strong> ya está seleccionado para este cobro.
+            </p>
+            <p className="hint">Código QR de fidelidad (para futuras visitas):</p>
+            <QrCodeDisplay codigo={clienteQrRecienCreado.codigo_fidelidad} size={200} />
+            {puntosPreviewCobro > 0 && (
+              <p className="hint" style={{ marginTop: "0.75rem" }}>
+                Esta compra sumará <strong>+{puntosPreviewCobro} pts</strong> al cobrar.
+              </p>
+            )}
+            <div className="modal-footer">
+              <button type="button" className="btn btn--primary" onClick={() => setClienteQrRecienCreado(null)}>
+                Continuar cobro
               </button>
             </div>
           </div>

@@ -71,3 +71,5 @@ export async function previewPuntos(total) {
 export function qrUrl(codigo) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(codigo)}`;
 }
+
+export { parseCodigoFidelidad, generateQrDataUrl } from "../utils/fidelidadQr";
