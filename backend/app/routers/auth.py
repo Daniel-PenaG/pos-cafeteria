@@ -6,17 +6,24 @@ from app.models.models import UsuarioModel
 from app.schemas.auth import UserCreate, UserLogin, Token
 from app.utils.deps import get_current_user, require_admin
 from app.utils.security import hash_password, verify_password, create_access_token
+from app.utils.modulos import modulos_efectivos
 
 router = APIRouter(prefix="/auth", tags=["Autenticacion"])
 
+def _user_payload(user: UsuarioModel) -> dict:
+    rol = normalizar_rol(user.rol)
+    return {
+        "id_usuario": user.id_usuario,
+        "nombre": user.nombre,
+        "usuario_login": user.usuario_login,
+        "rol": rol,
+        "modulos": modulos_efectivos(user),
+    }
+
+
 @router.get("/me")
 def get_me(current: UsuarioModel = Depends(get_current_user)):
-    return {
-        "id_usuario": current.id_usuario,
-        "nombre": current.nombre,
-        "usuario_login": current.usuario_login,
-        "rol": normalizar_rol(current.rol),
-    }
+    return _user_payload(current)
 
 
 # Registro de usuarios (solo administrador)
@@ -71,12 +78,7 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
         return {
             "access_token": token,
             "token_type": "bearer",
-            "user": {
-                "id_usuario": db_user.id_usuario,
-                "nombre": db_user.nombre,
-                "usuario_login": db_user.usuario_login,
-                "rol": rol,
-            }
+            "user": _user_payload(db_user),
         }
     except HTTPException:
         raise

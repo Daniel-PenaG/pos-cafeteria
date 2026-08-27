@@ -16,6 +16,8 @@ import Clientes from "./pages/Clientes";
 import Comandera from "./pages/Comandera";
 import Reportes from "./pages/Reportes";
 import CuentasCajero from "./pages/CuentasCajero";
+import CierreCaja from "./pages/CierreCaja";
+import CierresDia from "./pages/CierresDia";
 import Usuarios from "./pages/Usuarios";
 import MainLayout from "./layout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -25,7 +27,8 @@ import { useAuthStore } from "./store/authStore";
 
 function HomeRedirect() {
   const rol = useAuthStore((state) => state.user?.rol);
-  return <Navigate to={getDefaultRoute(rol)} replace />;
+  const modulos = useAuthStore((state) => state.user?.modulos);
+  return <Navigate to={getDefaultRoute(rol, modulos)} replace />;
 }
 
 function withRole(path, element) {
@@ -65,8 +68,10 @@ export default function App() {
           <Route path="clientes" element={withRole("/clientes", <Clientes />)} />
           <Route path="compras" element={withRole("/compras", <Compras />)} />
           <Route path="gastos" element={withRole("/gastos", <Gastos />)} />
+          <Route path="cierre-caja" element={withRole("/cierre-caja", <CierreCaja />)} />
           <Route path="reportes" element={withRole("/reportes", <Reportes />)} />
           <Route path="cuentas-cajero" element={withRole("/cuentas-cajero", <CuentasCajero />)} />
+          <Route path="cierres-dia" element={withRole("/cierres-dia", <CierresDia />)} />
           <Route path="usuarios" element={withRole("/usuarios", <Usuarios />)} />
         </Route>
 

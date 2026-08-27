@@ -407,16 +407,52 @@ def aplicar_migraciones_sqlite():
     migraciones_mesas_sqlite = [
         "ALTER TABLE configuracion ADD COLUMN mesas_json TEXT",
     ]
+    migraciones_cierres_modulos_pg = [
+        "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS modulos_json TEXT",
+        """CREATE TABLE IF NOT EXISTS cierres_caja (
+            id_cierre SERIAL PRIMARY KEY,
+            id_usuario INTEGER NOT NULL REFERENCES usuarios(id_usuario),
+            fecha DATE NOT NULL,
+            num_ventas INTEGER NOT NULL DEFAULT 0,
+            total_ventas NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            total_efectivo NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            total_tarjeta NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            total_transferencia NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            efectivo_contado NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            diferencia NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            notas VARCHAR(500),
+            fecha_hora_registro TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_cierres_usuario_fecha ON cierres_caja(id_usuario, fecha)",
+    ]
+    migraciones_cierres_modulos_sqlite = [
+        "ALTER TABLE usuarios ADD COLUMN modulos_json TEXT",
+        """CREATE TABLE IF NOT EXISTS cierres_caja (
+            id_cierre INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_usuario INTEGER NOT NULL REFERENCES usuarios(id_usuario),
+            fecha DATE NOT NULL,
+            num_ventas INTEGER NOT NULL DEFAULT 0,
+            total_ventas NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            total_efectivo NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            total_tarjeta NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            total_transferencia NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            efectivo_contado NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            diferencia NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            notas VARCHAR(500),
+            fecha_hora_registro TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_cierres_usuario_fecha ON cierres_caja(id_usuario, fecha)",
+    ]
     migraciones = (
         migraciones_postgres + migraciones_sqlite_extras + migraciones_promos
         + migraciones_fidelidad_pg + migraciones_pedidos_pg + migraciones_comanda_tiempos_pg
         + migraciones_recetas_pg + migraciones_extra_tipos_pg + migraciones_para_llevar_pg
-        + migraciones_mesas_pg
+        + migraciones_mesas_pg + migraciones_cierres_modulos_pg
         if dialect == "postgresql"
         else migraciones_sqlite + migraciones_sqlite_extras + migraciones_sqlite_promos
         + migraciones_fidelidad_sqlite + migraciones_pedidos_sqlite + migraciones_comanda_tiempos_sqlite
         + migraciones_extra_tipos_sqlite + migraciones_para_llevar_sqlite
-        + migraciones_mesas_sqlite
+        + migraciones_mesas_sqlite + migraciones_cierres_modulos_sqlite
     )
     for sql in migraciones:
         try:

@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.utils.config import get_cors_origins
 from app.database import Base, engine, aplicar_migraciones_sqlite, crear_admin_inicial_si_vacio, crear_catalogo_demo_si_vacio
 from app.models import models
-from app.routers import auth, productos, recetas, ventas, reportes, compras, configuracion, extras_venta, promociones, clientes, pedidos, comandera, usuarios, gastos
+from app.routers import auth, productos, recetas, ventas, reportes, compras, configuracion, extras_venta, promociones, clientes, pedidos, comandera, usuarios, gastos, cierres
 
 app = FastAPI(
     title="POS Cafetería",
@@ -39,6 +39,7 @@ app.include_router(pedidos.router)
 app.include_router(comandera.router)
 app.include_router(usuarios.router)
 app.include_router(gastos.router)
+app.include_router(cierres.router)
 
 
 @app.get("/")

@@ -20,7 +20,7 @@ export default function Login() {
         password,
       });
       useAuthStore.getState().login(res.data.access_token, res.data.user);
-      navigate(getDefaultRoute(res.data.user?.rol));
+      navigate(getDefaultRoute(res.data.user?.rol, res.data.user?.modulos));
     } catch (err) {
       let msg;
       if (!err.response) {

@@ -4,6 +4,7 @@ from sqlalchemy import (
     String,
     Numeric,
     DateTime,
+    Date,
     Boolean,
     ForeignKey,
 )
@@ -108,9 +109,11 @@ class UsuarioModel(Base):
     usuario_login = Column(String(50), unique=True, nullable=False)
     hash_password = Column(String(255), nullable=False)
     rol = Column(String(30), nullable=False)
+    modulos_json = Column(String(1000))  # JSON: ["/ventas", ...] null = defaults del rol
 
     ventas = relationship("VentaModel", back_populates="usuario")
     gastos = relationship("GastoModel", back_populates="usuario")
+    cierres_caja = relationship("CierreCajaModel", back_populates="usuario")
 
 
 # ============================
@@ -298,6 +301,28 @@ class DetalleCompraModel(Base):
     cantidad = Column(Numeric(10, 2))
     costo_unitario = Column(Numeric(10, 2))
     subtotal = Column(Numeric(10, 2))
+
+
+# ============================
+# CIERRE DE CAJA (por usuario / día)
+# ============================
+class CierreCajaModel(Base):
+    __tablename__ = "cierres_caja"
+
+    id_cierre = Column(Integer, primary_key=True, index=True)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False, index=True)
+    fecha = Column(Date, nullable=False, index=True)
+    num_ventas = Column(Integer, nullable=False, default=0)
+    total_ventas = Column(Numeric(12, 2), nullable=False, default=0)
+    total_efectivo = Column(Numeric(12, 2), nullable=False, default=0)
+    total_tarjeta = Column(Numeric(12, 2), nullable=False, default=0)
+    total_transferencia = Column(Numeric(12, 2), nullable=False, default=0)
+    efectivo_contado = Column(Numeric(12, 2), nullable=False, default=0)
+    diferencia = Column(Numeric(12, 2), nullable=False, default=0)
+    notas = Column(String(500))
+    fecha_hora_registro = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    usuario = relationship("UsuarioModel", back_populates="cierres_caja")
 
 
 # ============================

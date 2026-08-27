@@ -1,16 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import PageHeader from "../components/PageHeader";
 import {
   getUsuarios,
   getPerfiles,
+  getModulosCatalogo,
   createUsuario,
   updateUsuario,
   deleteUsuario,
 } from "../services/usuariosService";
+import { ROLE_ROUTES } from "../config/permissions";
 
 export default function Usuarios() {
   const [usuarios, setUsuarios] = useState([]);
   const [perfiles, setPerfiles] = useState([]);
+  const [catalogo, setCatalogo] = useState({ modulos: [], defaults_por_rol: {} });
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -19,13 +22,29 @@ export default function Usuarios() {
   const [usuarioLogin, setUsuarioLogin] = useState("");
   const [password, setPassword] = useState("");
   const [rol, setRol] = useState("CAJERO");
+  const [modulosSel, setModulosSel] = useState([]);
+  const [usarPersonalizado, setUsarPersonalizado] = useState(false);
+
+  const modulosPorGrupo = useMemo(() => {
+    const map = new Map();
+    for (const m of catalogo.modulos || []) {
+      if (!map.has(m.grupo)) map.set(m.grupo, []);
+      map.get(m.grupo).push(m);
+    }
+    return map;
+  }, [catalogo.modulos]);
 
   const cargar = async () => {
     setLoading(true);
     try {
-      const [u, p] = await Promise.all([getUsuarios(), getPerfiles()]);
+      const [u, p, cat] = await Promise.all([
+        getUsuarios(),
+        getPerfiles(),
+        getModulosCatalogo(),
+      ]);
       setUsuarios(u);
       setPerfiles(p);
+      setCatalogo(cat);
     } catch {
       alert("Error al cargar usuarios");
     } finally {
@@ -37,12 +56,17 @@ export default function Usuarios() {
     cargar();
   }, []);
 
+  const defaultsRol = (r) =>
+    catalogo.defaults_por_rol?.[r] || ROLE_ROUTES[r] || [];
+
   const abrirNuevo = () => {
     setEditing(null);
     setNombre("");
     setUsuarioLogin("");
     setPassword("");
     setRol("CAJERO");
+    setUsarPersonalizado(false);
+    setModulosSel(defaultsRol("CAJERO"));
     setShowModal(true);
   };
 
@@ -52,7 +76,25 @@ export default function Usuarios() {
     setUsuarioLogin(u.usuario_login);
     setPassword("");
     setRol(u.rol);
+    const tieneCustom = Array.isArray(u.modulos) && u.modulos.length > 0;
+    setUsarPersonalizado(tieneCustom);
+    setModulosSel(
+      tieneCustom ? u.modulos : u.modulos_efectivos || defaultsRol(u.rol)
+    );
     setShowModal(true);
+  };
+
+  const onChangeRol = (nuevoRol) => {
+    setRol(nuevoRol);
+    if (!usarPersonalizado) {
+      setModulosSel(defaultsRol(nuevoRol));
+    }
+  };
+
+  const toggleModulo = (path) => {
+    setModulosSel((prev) =>
+      prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]
+    );
   };
 
   const guardar = async () => {
@@ -64,10 +106,16 @@ export default function Usuarios() {
       alert("La contraseña es obligatoria para usuarios nuevos");
       return;
     }
+    if (usarPersonalizado && modulosSel.length === 0) {
+      alert("Selecciona al menos un módulo");
+      return;
+    }
+
+    const modulosPayload = usarPersonalizado ? modulosSel : [];
 
     try {
       if (editing) {
-        const payload = { nombre, rol };
+        const payload = { nombre, rol, modulos: modulosPayload };
         if (password) payload.password = password;
         await updateUsuario(editing.id_usuario, payload);
       } else {
@@ -76,6 +124,7 @@ export default function Usuarios() {
           usuario_login: usuarioLogin,
           password,
           rol,
+          modulos: modulosPayload,
         });
       }
       setShowModal(false);
@@ -102,7 +151,7 @@ export default function Usuarios() {
     <div>
       <PageHeader
         title="Usuarios y perfiles"
-        subtitle="Solo el administrador gestiona cuentas y roles del sistema"
+        subtitle="Gestiona cuentas, roles y módulos visibles por usuario"
       >
         <button type="button" className="btn btn--accent" onClick={abrirNuevo}>
           + Nuevo usuario
@@ -119,6 +168,7 @@ export default function Usuarios() {
                 <th>Nombre</th>
                 <th>Usuario</th>
                 <th>Perfil</th>
+                <th>Módulos</th>
                 <th style={{ width: 140 }}>Acciones</th>
               </tr>
             </thead>
@@ -129,6 +179,13 @@ export default function Usuarios() {
                   <td>{u.usuario_login}</td>
                   <td>
                     <span className="badge">{labelRol(u.rol)}</span>
+                  </td>
+                  <td>
+                    <span className="hint">
+                      {u.modulos?.length
+                        ? `${u.modulos.length} personalizados`
+                        : "Por defecto del rol"}
+                    </span>
                   </td>
                   <td>
                     <button
@@ -153,25 +210,13 @@ export default function Usuarios() {
         </div>
       )}
 
-      <div className="card" style={{ marginTop: "1.5rem" }}>
-        <h3>Perfiles disponibles</h3>
-        <ul style={{ margin: "0.5rem 0 0", paddingLeft: "1.25rem" }}>
-          <li>
-            <strong>Administrador</strong> — acceso completo: catálogo, compras,
-            reportes, promociones y configuración.
-          </li>
-          <li>
-            <strong>Cajero</strong> — ventas, comandera y clientes (fidelidad).
-          </li>
-          <li>
-            <strong>Cocina</strong> — solo pantalla de comandera.
-          </li>
-        </ul>
-      </div>
-
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal modal--wide"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 520, maxHeight: "90vh", overflowY: "auto" }}
+          >
             <h2>{editing ? "Editar usuario" : "Nuevo usuario"}</h2>
 
             <div className="form-row">
@@ -204,11 +249,12 @@ export default function Usuarios() {
             </div>
 
             <div className="form-row">
-              <label>Perfil</label>
+              <label>Perfil base</label>
               <select
                 className="input"
                 value={rol}
-                onChange={(e) => setRol(e.target.value)}
+                onChange={(e) => onChangeRol(e.target.value)}
+                disabled={editing?.rol === "ADMIN"}
               >
                 {perfiles.map((p) => (
                   <option key={p.codigo} value={p.codigo}>
@@ -216,7 +262,64 @@ export default function Usuarios() {
                   </option>
                 ))}
               </select>
+              <p className="hint" style={{ marginTop: "0.35rem" }}>
+                El perfil define permisos en la API. Los módulos controlan qué pantallas ve.
+              </p>
             </div>
+
+            {rol !== "ADMIN" && (
+              <>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    marginBottom: "0.75rem",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={usarPersonalizado}
+                    onChange={(e) => {
+                      setUsarPersonalizado(e.target.checked);
+                      if (!e.target.checked) {
+                        setModulosSel(defaultsRol(rol));
+                      }
+                    }}
+                  />
+                  Personalizar módulos visibles
+                </label>
+
+                {usarPersonalizado && (
+                  <div className="modulos-picker">
+                    {[...modulosPorGrupo.entries()].map(([grupo, items]) => (
+                      <div key={grupo} style={{ marginBottom: "0.75rem" }}>
+                        <p className="hint" style={{ fontWeight: 600, marginBottom: "0.35rem" }}>
+                          {grupo}
+                        </p>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                          {items.map((m) => (
+                            <label
+                              key={m.path}
+                              className={`extra-chip ${modulosSel.includes(m.path) ? "extra-chip--selected" : ""}`}
+                              style={{ cursor: "pointer" }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={modulosSel.includes(m.path)}
+                                onChange={() => toggleModulo(m.path)}
+                                style={{ marginRight: "0.35rem" }}
+                              />
+                              {m.label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
 
             <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
               <button type="button" className="btn btn--accent" onClick={guardar}>

@@ -16,6 +16,11 @@ export async function getPerfiles() {
   return res.data;
 }
 
+export async function getModulosCatalogo() {
+  const res = await api.get("/usuarios/modulos-catalogo", { headers: getAuthHeader() });
+  return res.data;
+}
+
 export async function createUsuario(data) {
   const res = await api.post("/usuarios/", data, { headers: getAuthHeader() });
   return res.data;

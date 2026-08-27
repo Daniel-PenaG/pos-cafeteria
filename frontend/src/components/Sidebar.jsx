@@ -30,6 +30,7 @@ const NAV = [
       { to: "/para-llevar", label: "Productos para llevar", roles: ["ADMIN"] },
       { to: "/compras", label: "Compras", roles: ["ADMIN"] },
       { to: "/gastos", label: "Gastos", roles: ["ADMIN"] },
+      { to: "/cierre-caja", label: "Cierre de caja", roles: ["ADMIN", "CAJERO"] },
     ],
   },
   {
@@ -37,6 +38,7 @@ const NAV = [
     items: [
       { to: "/reportes", label: "Reportes", roles: ["ADMIN"] },
       { to: "/cuentas-cajero", label: "Cuentas por cajero", roles: ["ADMIN"] },
+      { to: "/cierres-dia", label: "Cierres del día", roles: ["ADMIN"] },
       { to: "/usuarios", label: "Usuarios", roles: ["ADMIN"] },
     ],
   },
@@ -45,6 +47,7 @@ const NAV = [
 export default function Sidebar() {
   const location = useLocation();
   const rol = normalizeRole(useAuthStore((state) => state.user?.rol));
+  const modulos = useAuthStore((state) => state.user?.modulos);
 
   return (
     <aside className="sidebar">
@@ -62,7 +65,9 @@ export default function Sidebar() {
 
       <nav className="sidebar__nav">
         {NAV.map((section) => {
-          const items = section.items.filter((item) => canAccessRoute(rol, item.to));
+          const items = section.items.filter((item) =>
+            canAccessRoute(rol, item.to, modulos)
+          );
           if (!items.length) return null;
 
           return (

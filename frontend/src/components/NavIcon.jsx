@@ -33,8 +33,10 @@ const ICONS = {
   "/para-llevar": HiOutlineRectangleStack,
   "/compras": HiOutlineTruck,
   "/gastos": HiOutlineBanknotes,
+  "/cierre-caja": HiOutlineBanknotes,
   "/reportes": HiOutlineChartBar,
   "/cuentas-cajero": HiOutlineIdentification,
+  "/cierres-dia": HiOutlineClipboardDocumentList,
   "/usuarios": HiOutlineUsers,
 };
 
