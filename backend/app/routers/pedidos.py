@@ -19,6 +19,7 @@ from app.services.pedido_service import (
     agregar_linea_pedido,
     cobrar_pedido,
     confirmar_comanda_pedido,
+    listar_pedidos_activos_resumen,
     _pedido_a_dict,
     _detalle_a_dict,
 )
@@ -39,33 +40,7 @@ router = APIRouter(
 
 @router.get("/activos", response_model=List[PedidoResumen])
 def listar_pedidos_activos(db: Session = Depends(get_db)):
-    pedidos = (
-        db.query(PedidoModel)
-        .options(joinedload(PedidoModel.detalles))
-        .filter(PedidoModel.estado == "ABIERTO")
-        .order_by(PedidoModel.numero_mesa)
-        .all()
-    )
-    res = []
-    for p in pedidos:
-        if not p.detalles:
-            continue
-        total = sum(float(d.cantidad) * float(d.precio_unitario) for d in p.detalles)
-        pendientes = sum(
-            1
-            for d in p.detalles
-            if d.en_comanda and float(d.cantidad_lista or 0) < float(d.cantidad)
-        )
-        res.append(
-            {
-                "id_pedido": p.id_pedido,
-                "numero_mesa": p.numero_mesa,
-                "total": round(total, 2),
-                "num_lineas": len(p.detalles),
-                "pendientes_comanda": pendientes,
-            }
-        )
-    return res
+    return listar_pedidos_activos_resumen(db)
 
 
 @router.get("/mesas", response_model=MesasConfigResponse)

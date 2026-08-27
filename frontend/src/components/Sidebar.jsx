@@ -22,6 +22,7 @@ const NAV = [
     group: "Operación",
     items: [
       { to: "/ventas", label: "Ventas", roles: ["ADMIN", "CAJERO"] },
+      { to: "/mesas-activas", label: "Mesas activas", roles: ["ADMIN", "CAJERO"] },
       { to: "/ventas-para-llevar", label: "Para llevar", roles: ["ADMIN", "CAJERO"] },
       { to: "/comandera", label: "Comandera", roles: ["ADMIN", "CAJERO", "COCINA"] },
       { to: "/clientes", label: "Clientes", roles: ["ADMIN", "CAJERO"] },

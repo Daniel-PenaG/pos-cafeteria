@@ -8,11 +8,13 @@ export async function getResumenCierre(fecha = null, idUsuario = null) {
   return res.data;
 }
 
-export async function registrarCierre(efectivoContado, notas = "") {
-  const res = await api.post("/cierres/", {
+export async function registrarCierre(efectivoContado, notas = "", fecha = null) {
+  const payload = {
     efectivo_contado: efectivoContado,
     notas: notas || null,
-  });
+  };
+  if (fecha) payload.fecha = fecha;
+  const res = await api.post("/cierres/", payload);
   return res.data;
 }
 

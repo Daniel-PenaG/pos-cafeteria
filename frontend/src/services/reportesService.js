@@ -59,6 +59,18 @@ export async function getResumenDashboard() {
   return res.data;
 }
 
+export async function getPromocionesVentasReporte({ periodo, fecha, anio, mes }) {
+  const params = { periodo };
+  if (fecha) params.fecha = fecha;
+  if (anio != null) params.anio = anio;
+  if (mes != null) params.mes = mes;
+  const res = await api.get("/promociones/resumen", {
+    params,
+    headers: getAuthHeader(),
+  });
+  return res.data;
+}
+
 export async function getCuentasPorCajero(fecha) {
   const res = await api.get(`/reportes/cuentas-por-cajero?fecha=${fecha}`, {
     headers: getAuthHeader(),

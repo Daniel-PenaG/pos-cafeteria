@@ -60,11 +60,14 @@ def _normalizar_extra_model(
             f"La cantidad de inventario del extra «{model.nombre}» debe ser mayor a 0"
         )
 
+    costo_extra = round(float(model.costo_unitario or 0) * cantidad_insumo, 4)
+
     return {
         "id_extra": model.id_extra,
         "id_insumo": int(model.id_insumo_origen),
         "nombre": model.nombre,
         "precio": precio_esperado,
+        "costo": costo_extra,
         "cantidad_insumo": cantidad_insumo,
     }
 

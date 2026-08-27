@@ -1,5 +1,5 @@
-import json
-from datetime import datetime
+from app.utils.timezone_mx import now_utc_naive, isoformat_utc, segundos_desde
+
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.models import (
@@ -38,6 +38,9 @@ def _detalle_a_dict(d: DetallePedidoModel) -> dict:
     extras = _parse_extras(d.extras_json)
     cant = float(d.cantidad)
     lista = float(d.cantidad_lista or 0)
+    prep_secs = None
+    if d.en_comanda and d.fecha_envio_comanda and lista < cant:
+        prep_secs = segundos_desde(d.fecha_envio_comanda)
     return {
         "id_detalle_pedido": d.id_detalle_pedido,
         "id_producto": d.id_producto,
@@ -54,6 +57,9 @@ def _detalle_a_dict(d: DetallePedidoModel) -> dict:
         "en_comanda": bool(d.en_comanda),
         "comentario": d.comentario,
         "line_key": d.line_key,
+        "fecha_envio_comanda": isoformat_utc(d.fecha_envio_comanda),
+        "fecha_listo_comanda": isoformat_utc(d.fecha_listo_comanda),
+        "segundos_preparacion": prep_secs,
     }
 
 
@@ -69,7 +75,7 @@ def _pedido_a_dict(p: PedidoModel) -> dict:
         "id_cliente": p.id_cliente,
         "id_usuario": p.id_usuario,
         "id_venta": p.id_venta,
-        "fecha_apertura": p.fecha_apertura,
+        "fecha_apertura": isoformat_utc(p.fecha_apertura),
         "total": round(total, 2),
         "lineas": lineas,
         "cliente_nombre": cliente_nombre,
@@ -139,11 +145,28 @@ def agregar_linea_pedido(
 
     extras_json = extras_json_desde_normalizados(extras_normalizados)
 
-    ahora = datetime.now()
+    ahora = now_utc_naive()
     if existente and existente.en_comanda and not data.enviar_comanda:
         existente = None
         key = f"{key}-n{int(ahora.timestamp() * 1000)}"[:120]
     elif existente:
+        existente.cantidad = float(existente.cantidad) + float(data.cantidad)
+        if data.enviar_comanda:
+            existente.en_comanda = True
+            existente.fecha_envio_comanda = ahora
+            if float(existente.cantidad_lista or 0) < float(existente.cantidad):
+                existente.fecha_listo_comanda = None
+        db.commit()
+        db.refresh(existente)
+        return existente
+
+    # Evita duplicados por doble envío concurrente
+    existente = (
+        db.query(DetallePedidoModel)
+        .filter(DetallePedidoModel.id_pedido == pedido.id_pedido, DetallePedidoModel.line_key == key)
+        .first()
+    )
+    if existente and not (existente.en_comanda and not data.enviar_comanda):
         existente.cantidad = float(existente.cantidad) + float(data.cantidad)
         if data.enviar_comanda:
             existente.en_comanda = True
@@ -183,7 +206,7 @@ def confirmar_comanda_pedido(db: Session, pedido: PedidoModel) -> int:
     if getattr(pedido, "para_llevar", False):
         raise DatosInvalidosException("Los pedidos para llevar no usan comanda")
 
-    ahora = datetime.now()
+    ahora = now_utc_naive()
     enviadas = 0
     for detalle in pedido.detalles:
         if detalle.en_comanda:
@@ -231,6 +254,42 @@ def cobrar_pedido(db: Session, pedido: PedidoModel, id_usuario: int, forma_pago:
     resp = registrar_venta(db, venta_data)
     pedido.estado = "COBRADO"
     pedido.id_venta = resp.id_venta
-    pedido.fecha_cierre = datetime.now()
+    pedido.fecha_cierre = now_utc_naive()
     db.commit()
     return resp
+
+
+def listar_pedidos_activos_resumen(db: Session) -> list:
+    pedidos = (
+        db.query(PedidoModel)
+        .options(joinedload(PedidoModel.detalles), joinedload(PedidoModel.cliente))
+        .filter(PedidoModel.estado == "ABIERTO")
+        .order_by(PedidoModel.numero_mesa)
+        .all()
+    )
+    res = []
+    for p in pedidos:
+        if not p.detalles:
+            continue
+        lineas = [_detalle_a_dict(d) for d in p.detalles]
+        total = sum(l["cantidad"] * l["precio_unitario"] for l in lineas)
+        pendientes = sum(
+            1
+            for l in lineas
+            if l["en_comanda"] and l["cantidad_pendiente"] > 0
+        )
+        res.append(
+            {
+                "id_pedido": p.id_pedido,
+                "numero_mesa": p.numero_mesa,
+                "para_llevar": bool(getattr(p, "para_llevar", False)),
+                "total": round(total, 2),
+                "num_lineas": len(lineas),
+                "pendientes_comanda": pendientes,
+                "fecha_apertura": isoformat_utc(p.fecha_apertura),
+                "segundos_activa": segundos_desde(p.fecha_apertura) or 0,
+                "cliente_nombre": p.cliente.nombre if p.cliente else None,
+                "lineas": lineas,
+            }
+        )
+    return res

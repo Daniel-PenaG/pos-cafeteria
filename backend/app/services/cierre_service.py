@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.models import VentaModel, CierreCajaModel, UsuarioModel
-from app.utils.timezone_mx import bounds_utc_naive_for_mx_date, today_mx
+from app.utils.timezone_mx import bounds_utc_naive_for_mx_date, today_mx, isoformat_utc, filtro_dia_mx, filtro_mes_mx, filtro_anio_mx
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 
 
@@ -16,7 +16,7 @@ def _filtro_dia_mx(fecha: date):
 def _venta_resumen_item(v: VentaModel) -> dict:
     return {
         "id_venta": v.id_venta,
-        "fecha_hora": v.fecha_hora.isoformat() if v.fecha_hora else None,
+        "fecha_hora": isoformat_utc(v.fecha_hora),
         "total": float(v.total or 0),
         "forma_pago": (v.forma_pago or "EFECTIVO").upper(),
         "numero_mesa": int(v.numero_mesa) if v.numero_mesa is not None else 0,

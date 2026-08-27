@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends
+from datetime import date
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
-from typing import List
+from typing import List, Optional
 
 from app.database import get_db
 from app.models import (
@@ -10,7 +10,6 @@ from app.models import (
     PromocionCategoriaModel,
     ProductoModel,
     CategoriaModel,
-    DetalleVentaModel,
 )
 from app.schemas.promocion import (
     Promocion,
@@ -21,7 +20,11 @@ from app.schemas.promocion import (
     PromocionResumen,
 )
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
-from app.services.promocion_service import calcular_linea, listar_aplicables
+from app.services.promocion_service import (
+    calcular_linea,
+    listar_aplicables,
+    resumen_promociones_ventas,
+)
 from app.utils.deps import require_admin, require_pos
 
 router = APIRouter(
@@ -78,33 +81,14 @@ def listar_promociones(db: Session = Depends(get_db)):
 
 
 @router.get("/resumen", response_model=PromocionResumen)
-def resumen_promociones(db: Session = Depends(get_db)):
-    filas = (
-        db.query(
-            PromocionModel.id_promocion,
-            PromocionModel.nombre,
-            func.count(DetalleVentaModel.id_detalle),
-            func.coalesce(func.sum(DetalleVentaModel.descuento_unitario * DetalleVentaModel.cantidad), 0),
-        )
-        .join(DetalleVentaModel, DetalleVentaModel.id_promocion == PromocionModel.id_promocion)
-        .group_by(PromocionModel.id_promocion, PromocionModel.nombre)
-        .all()
-    )
-    total_ventas = sum(int(r[2]) for r in filas)
-    total_desc = sum(float(r[3]) for r in filas)
-    return PromocionResumen(
-        total_ventas_con_promo=total_ventas,
-        total_descuento=round(total_desc, 2),
-        promociones_usadas=[
-            {
-                "id_promocion": r[0],
-                "nombre": r[1],
-                "usos": int(r[2]),
-                "descuento_total": round(float(r[3]), 2),
-            }
-            for r in filas
-        ],
-    )
+def resumen_promociones(
+    periodo: Optional[str] = Query(None, description="dia, mes, anio o vacío (histórico)"),
+    fecha: Optional[date] = None,
+    anio: Optional[int] = None,
+    mes: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    return resumen_promociones_ventas(db, periodo, fecha, anio, mes)
 
 
 @router.get("/aplicables/{id_producto}", response_model=List[Promocion])
@@ -128,6 +112,7 @@ def calcular_precio_promo(data: PromocionCalcularRequest, db: Session = Depends(
         data.cantidad,
         data.precio_extras,
         data.id_promocion,
+        sin_promocion=data.sin_promocion,
     )
 
 

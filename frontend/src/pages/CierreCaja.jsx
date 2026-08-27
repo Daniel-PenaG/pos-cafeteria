@@ -3,6 +3,7 @@ import PageHeader from "../components/PageHeader";
 import { getResumenCierre, registrarCierre } from "../services/cierresService";
 import { fechaMexicoISO, formatearHoraMexico } from "../utils/datetimeMx";
 import { numberInputFromApi } from "../utils/numberInput";
+import { formatApiError } from "../utils/apiError";
 import { HiOutlineBanknotes } from "react-icons/hi2";
 
 function fmt(n) {
@@ -30,7 +31,7 @@ export default function CierreCaja() {
         setNotas("");
       }
     } catch (err) {
-      alert(err.response?.data?.detail || "Error al cargar resumen");
+      alert(formatApiError(err, "Error al cargar resumen"));
     } finally {
       setLoading(false);
     }
@@ -58,11 +59,11 @@ export default function CierreCaja() {
     if (!window.confirm("¿Confirmar cierre de caja del día?")) return;
     try {
       setGuardando(true);
-      await registrarCierre(contadoNum, notas);
+      await registrarCierre(contadoNum, notas, fecha);
       alert("Cierre de caja registrado correctamente");
       cargar();
     } catch (err) {
-      alert(err.response?.data?.detail || "Error al registrar cierre");
+      alert(formatApiError(err, "Error al registrar cierre"));
     } finally {
       setGuardando(false);
     }

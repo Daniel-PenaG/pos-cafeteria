@@ -7,6 +7,7 @@ MODULOS_CATALOGO = [
     {"path": "/insumos", "label": "Insumos", "grupo": "Catálogo"},
     {"path": "/recetas", "label": "Recetas", "grupo": "Catálogo"},
     {"path": "/ventas", "label": "Ventas", "grupo": "Operación"},
+    {"path": "/mesas-activas", "label": "Mesas activas", "grupo": "Operación"},
     {"path": "/ventas-para-llevar", "label": "Para llevar", "grupo": "Operación"},
     {"path": "/comandera", "label": "Comandera", "grupo": "Operación"},
     {"path": "/clientes", "label": "Clientes", "grupo": "Operación"},
@@ -29,6 +30,7 @@ ROLE_DEFAULT_MODULES = {
     "CAJERO": [
         "/dashboard",
         "/ventas",
+        "/mesas-activas",
         "/ventas-para-llevar",
         "/comandera",
         "/clientes",

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import PageHeader from "../components/PageHeader";
 import { getCierresDia } from "../services/cierresService";
 import { fechaMexicoISO, formatearHoraMexico } from "../utils/datetimeMx";
+import { formatApiError } from "../utils/apiError";
 
 function fmt(n) {
   return `$${Number(n).toFixed(2)}`;
@@ -18,7 +19,7 @@ export default function CierresDia() {
       const data = await getCierresDia(fecha);
       setCierres(data);
     } catch (err) {
-      alert(err.response?.data?.detail || "Error al cargar cierres");
+      alert(formatApiError(err, "Error al cargar cierres"));
     } finally {
       setLoading(false);
     }

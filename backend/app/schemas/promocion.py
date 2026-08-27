@@ -71,9 +71,12 @@ class PromocionCalcularRequest(BaseModel):
     id_promocion: Optional[int] = None
     cantidad: float = Field(1, gt=0)
     precio_extras: float = Field(0, ge=0)
+    sin_promocion: bool = False
 
 
 class PromocionResumen(BaseModel):
     total_ventas_con_promo: int
     total_descuento: float
+    total_ingresos_con_promo: float = 0
+    periodo_label: Optional[str] = None
     promociones_usadas: List[dict]

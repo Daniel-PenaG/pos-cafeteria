@@ -24,6 +24,7 @@ def _extras_desde_ids(db: Session, ids: List[int]) -> List[ExtraVenta]:
             id_extra=e.id_extra,
             nombre=e.nombre,
             precio=precio_desde_modelo(e),
+            costo=round(float(e.costo_unitario or 0) * float(e.cantidad or 1), 4),
             tipo=e.tipo,
             activo=e.activo,
             id_insumo=e.id_insumo_origen,

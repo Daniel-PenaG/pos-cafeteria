@@ -11,8 +11,16 @@ export async function getPromociones() {
   return res.data;
 }
 
-export async function getPromocionesResumen() {
-  const res = await api.get("/promociones/resumen", { headers: getAuthHeader() });
+export async function getPromocionesResumen({ periodo, fecha, anio, mes } = {}) {
+  const params = {};
+  if (periodo) params.periodo = periodo;
+  if (fecha) params.fecha = fecha;
+  if (anio != null) params.anio = anio;
+  if (mes != null) params.mes = mes;
+  const res = await api.get("/promociones/resumen", {
+    params,
+    headers: getAuthHeader(),
+  });
   return res.data;
 }
 

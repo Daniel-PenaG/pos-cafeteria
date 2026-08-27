@@ -22,7 +22,15 @@ from app.models.models import (
 from app.services.comanda_tiempo_service import formatear_duracion, segundos_entre
 from app.utils.deps import get_current_user, require_admin
 from app.constants.roles import ADMIN, normalizar_rol
-from app.utils.timezone_mx import today_mx, bounds_utc_naive_for_mx_date
+from app.utils.timezone_mx import (
+    today_mx,
+    bounds_utc_naive_for_mx_date,
+    filtro_dia_mx,
+    filtro_mes_mx,
+    filtro_anio_mx,
+    isoformat_utc,
+    fecha_mx_desde_utc_naive,
+)
 
 router = APIRouter(
     prefix="/reportes",
@@ -209,7 +217,7 @@ def ventas_por_dia(fecha: date, db: Session = Depends(get_db)):
 
     ventas = (
         db.query(VentaModel)
-        .filter(func.date(VentaModel.fecha_hora) == fecha)
+        .filter(*filtro_dia_mx(VentaModel.fecha_hora, fecha))
         .all()
     )
 
@@ -242,7 +250,7 @@ def cuentas_por_cajero(fecha: date, db: Session = Depends(get_db)):
         db.query(VentaModel, UsuarioModel, ClienteModel)
         .join(UsuarioModel, UsuarioModel.id_usuario == VentaModel.id_usuario)
         .outerjoin(ClienteModel, ClienteModel.id_cliente == VentaModel.id_cliente)
-        .filter(func.date(VentaModel.fecha_hora) == fecha)
+        .filter(*filtro_dia_mx(VentaModel.fecha_hora, fecha))
         .order_by(VentaModel.fecha_hora)
         .all()
     )
@@ -283,7 +291,7 @@ def cuentas_por_cajero(fecha: date, db: Session = Depends(get_db)):
 
         entry["ventas"].append({
             "id_venta": venta.id_venta,
-            "fecha_hora": venta.fecha_hora.isoformat(),
+            "fecha_hora": isoformat_utc(venta.fecha_hora),
             "numero_mesa": venta.numero_mesa,
             "mesa_label": mesa_label,
             "para_llevar": bool(venta.para_llevar),
@@ -320,30 +328,29 @@ def ventas_por_mes(anio: int, mes: int, db: Session = Depends(get_db)):
 
     ventas = (
         db.query(VentaModel)
-        .filter(
-            extract("year", VentaModel.fecha_hora) == anio,
-            extract("month", VentaModel.fecha_hora) == mes,
-        )
+        .filter(*filtro_mes_mx(VentaModel.fecha_hora, anio, mes))
         .all()
     )
 
     total_mes = sum(float(v.total) for v in ventas)
     venta_ids = [v.id_venta for v in ventas]
 
-    desglose_dias = (
-        db.query(
-            func.date(VentaModel.fecha_hora).label("fecha"),
-            func.coalesce(func.sum(VentaModel.total), 0).label("total"),
-            func.count(VentaModel.id_venta).label("numero_ventas"),
-        )
-        .filter(
-            extract("year", VentaModel.fecha_hora) == anio,
-            extract("month", VentaModel.fecha_hora) == mes,
-        )
-        .group_by(func.date(VentaModel.fecha_hora))
-        .order_by(func.date(VentaModel.fecha_hora))
-        .all()
-    )
+    from collections import defaultdict
+
+    dias_map = defaultdict(lambda: {"total": 0.0, "numero_ventas": 0})
+    for v in ventas:
+        d = fecha_mx_desde_utc_naive(v.fecha_hora)
+        dias_map[d]["total"] += float(v.total)
+        dias_map[d]["numero_ventas"] += 1
+
+    desglose_dias = [
+        {
+            "fecha": str(d),
+            "total": round(info["total"], 2),
+            "numero_ventas": info["numero_ventas"],
+        }
+        for d, info in sorted(dias_map.items())
+    ]
 
     return {
         "anio": anio,
@@ -351,14 +358,7 @@ def ventas_por_mes(anio: int, mes: int, db: Session = Depends(get_db)):
         "nombre_mes": MESES[mes],
         "total_mes": float(total_mes),
         "numero_ventas": len(ventas),
-        "desglose_dias": [
-            {
-                "fecha": str(r.fecha),
-                "total": float(r.total),
-                "numero_ventas": int(r.numero_ventas),
-            }
-            for r in desglose_dias
-        ],
+        "desglose_dias": desglose_dias,
         "productos": _productos_vendidos(db, venta_ids),
     }
 
@@ -370,38 +370,36 @@ def ventas_por_mes(anio: int, mes: int, db: Session = Depends(get_db)):
 def ventas_por_anio(anio: int, db: Session = Depends(get_db)):
     ventas = (
         db.query(VentaModel)
-        .filter(extract("year", VentaModel.fecha_hora) == anio)
+        .filter(*filtro_anio_mx(VentaModel.fecha_hora, anio))
         .all()
     )
 
     total_anio = sum(float(v.total) for v in ventas)
     venta_ids = [v.id_venta for v in ventas]
 
-    desglose_meses = (
-        db.query(
-            extract("month", VentaModel.fecha_hora).label("mes"),
-            func.coalesce(func.sum(VentaModel.total), 0).label("total"),
-            func.count(VentaModel.id_venta).label("numero_ventas"),
-        )
-        .filter(extract("year", VentaModel.fecha_hora) == anio)
-        .group_by(extract("month", VentaModel.fecha_hora))
-        .order_by(extract("month", VentaModel.fecha_hora))
-        .all()
-    )
+    from collections import defaultdict
+
+    meses_map = defaultdict(lambda: {"total": 0.0, "numero_ventas": 0})
+    for v in ventas:
+        m = fecha_mx_desde_utc_naive(v.fecha_hora).month
+        meses_map[m]["total"] += float(v.total)
+        meses_map[m]["numero_ventas"] += 1
+
+    desglose_meses = [
+        {
+            "mes": m,
+            "nombre_mes": MESES[m],
+            "total": round(info["total"], 2),
+            "numero_ventas": info["numero_ventas"],
+        }
+        for m, info in sorted(meses_map.items())
+    ]
 
     return {
         "anio": anio,
         "total_anio": float(total_anio),
         "numero_ventas": len(ventas),
-        "desglose_meses": [
-            {
-                "mes": int(r.mes),
-                "nombre_mes": MESES[int(r.mes)],
-                "total": float(r.total),
-                "numero_ventas": int(r.numero_ventas),
-            }
-            for r in desglose_meses
-        ],
+        "desglose_meses": desglose_meses,
         "productos": _productos_vendidos(db, venta_ids),
     }
 
@@ -426,22 +424,19 @@ def productos_ranking(
     if periodo == "dia":
         if not fecha:
             raise HTTPException(status_code=400, detail="Indica la fecha")
-        filtro = func.date(VentaModel.fecha_hora) == fecha
+        filtro = and_(*filtro_dia_mx(VentaModel.fecha_hora, fecha))
         periodo_label = str(fecha)
     elif periodo == "mes":
         if not anio or not mes:
             raise HTTPException(status_code=400, detail="Indica año y mes")
         if mes < 1 or mes > 12:
             raise HTTPException(status_code=400, detail="Mes inválido")
-        filtro = and_(
-            extract("year", VentaModel.fecha_hora) == anio,
-            extract("month", VentaModel.fecha_hora) == mes,
-        )
+        filtro = and_(*filtro_mes_mx(VentaModel.fecha_hora, anio, mes))
         periodo_label = f"{MESES[mes]} {anio}"
     else:
         if not anio:
             raise HTTPException(status_code=400, detail="Indica el año")
-        filtro = extract("year", VentaModel.fecha_hora) == anio
+        filtro = and_(*filtro_anio_mx(VentaModel.fecha_hora, anio))
         periodo_label = str(anio)
 
     ranking, total_cantidad, total_subtotal = _productos_ranking(db, filtro, orden)
@@ -479,7 +474,7 @@ def consumo_insumos(fecha: date, db: Session = Depends(get_db)):
             func.sum(DetalleVentaModel.cantidad).label("cantidad")
         )
         .join(VentaModel, VentaModel.id_venta == DetalleVentaModel.id_venta)
-        .filter(func.date(VentaModel.fecha_hora) == fecha)
+        .filter(*filtro_dia_mx(VentaModel.fecha_hora, fecha))
         .group_by(DetalleVentaModel.id_producto)
         .all()
     )
@@ -696,7 +691,7 @@ def resumen_dashboard(
 
         cuentas_hoy.append({
             "id_venta": venta.id_venta,
-            "fecha_hora": venta.fecha_hora.isoformat(),
+            "fecha_hora": isoformat_utc(venta.fecha_hora),
             "mesa_label": _mesa_label_venta(venta),
             "para_llevar": bool(venta.para_llevar),
             "total": float(venta.total),
@@ -764,7 +759,7 @@ def resumen_dashboard(
             "id_gasto": g.id_gasto,
             "descripcion": g.descripcion,
             "monto": float(g.monto),
-            "fecha_hora": g.fecha_hora.isoformat(),
+            "fecha_hora": isoformat_utc(g.fecha_hora),
             "usuario_nombre": u.nombre,
         }
         for g, u in gastos_hoy_rows

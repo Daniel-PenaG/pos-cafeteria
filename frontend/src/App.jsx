@@ -18,6 +18,7 @@ import Reportes from "./pages/Reportes";
 import CuentasCajero from "./pages/CuentasCajero";
 import CierreCaja from "./pages/CierreCaja";
 import CierresDia from "./pages/CierresDia";
+import MesasActivas from "./pages/MesasActivas";
 import Usuarios from "./pages/Usuarios";
 import MainLayout from "./layout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -60,6 +61,7 @@ export default function App() {
           <Route path="insumos" element={withRole("/insumos", <Insumos />)} />
           <Route path="recetas" element={withRole("/recetas", <Recetas />)} />
           <Route path="ventas" element={withRole("/ventas", <Ventas />)} />
+          <Route path="mesas-activas" element={withRole("/mesas-activas", <MesasActivas />)} />
           <Route path="ventas-para-llevar" element={withRole("/ventas-para-llevar", <VentasParaLlevar />)} />
           <Route path="para-llevar" element={withRole("/para-llevar", <ParaLlevar />)} />
           <Route path="comandera" element={withRole("/comandera", <Comandera />)} />

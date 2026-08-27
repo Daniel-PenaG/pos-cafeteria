@@ -81,6 +81,8 @@ Sin barra final. Aplica a **Production** (y Preview si quieres).
 **Deployments** → último deploy → **Redeploy**  
 (o push a `main` si hay integración Git).
 
+**Rutas directas** (`/login`, `/ventas`, etc.): el archivo `frontend/vercel.json` reescribe todo a `index.html` para que React Router funcione. Sin eso, Vercel devuelve 404 al entrar por URL.
+
 ---
 
 ## 4. APK tablet (Android)

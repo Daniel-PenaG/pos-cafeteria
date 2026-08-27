@@ -260,6 +260,15 @@ export default function Promociones() {
           <p className="hint">
             Líneas vendidas con promo: <strong>{resumen.total_ventas_con_promo}</strong> · Descuento
             total: <strong>${Number(resumen.total_descuento).toFixed(2)}</strong>
+            {resumen.total_ingresos_con_promo != null && (
+              <>
+                {" "}
+                · Ingresos: <strong>${Number(resumen.total_ingresos_con_promo).toFixed(2)}</strong>
+              </>
+            )}
+            {resumen.periodo_label && (
+              <span> · {resumen.periodo_label}</span>
+            )}
           </p>
         </section>
       )}

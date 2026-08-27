@@ -1,7 +1,9 @@
-from datetime import datetime, time
+from datetime import date, datetime, time
+from app.utils.timezone_mx import filtro_dia_mx, filtro_mes_mx, filtro_anio_mx
 import math
 from typing import List, Optional
 
+from sqlalchemy import and_, extract, func
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -10,6 +12,8 @@ from app.models import (
     PromocionProductoModel,
     PromocionCategoriaModel,
     RecetaModel,
+    DetalleVentaModel,
+    VentaModel,
 )
 from app.exceptions import DatosInvalidosException
 
@@ -110,6 +114,30 @@ def listar_aplicables(
     return resultado
 
 
+def _linea_sin_promocion(
+    precio_base: float,
+    precio_extras: float,
+    costo: float,
+    precio_original_unitario: float,
+) -> dict:
+    margen = margen_porcentaje(precio_base, costo) if costo > 0 else None
+    return {
+        "id_promocion": None,
+        "nombre_promocion": None,
+        "tipo": None,
+        "precio_base": precio_base,
+        "precio_base_promo": precio_base,
+        "precio_extras": precio_extras,
+        "precio_unitario": precio_original_unitario,
+        "precio_original_unitario": precio_original_unitario,
+        "descuento_unitario": 0,
+        "costo_unitario": costo,
+        "margen_porcentaje": margen,
+        "margen_ok": True,
+        "mensaje": None,
+    }
+
+
 def calcular_linea(
     db: Session,
     producto: ProductoModel,
@@ -117,10 +145,16 @@ def calcular_linea(
     precio_extras: float = 0,
     id_promocion: Optional[int] = None,
     ahora: Optional[datetime] = None,
+    sin_promocion: bool = False,
 ) -> dict:
     precio_base = float(producto.precio_venta)
     costo = costo_producto(db, producto.id_producto)
     precio_original_unitario = round(precio_base + precio_extras, 2)
+
+    if sin_promocion:
+        return _linea_sin_promocion(
+            precio_base, precio_extras, costo, precio_original_unitario
+        )
 
     promo = None
     if id_promocion:
@@ -177,19 +211,88 @@ def calcular_linea(
             "mensaje": mensaje,
         }
 
-    margen = margen_porcentaje(precio_base, costo) if costo > 0 else None
+    return _linea_sin_promocion(
+        precio_base, precio_extras, costo, precio_original_unitario
+    )
+
+
+MESES_ES = (
+    "",
+    "Enero",
+    "Febrero",
+    "Marzo",
+    "Abril",
+    "Mayo",
+    "Junio",
+    "Julio",
+    "Agosto",
+    "Septiembre",
+    "Octubre",
+    "Noviembre",
+    "Diciembre",
+)
+
+
+def resumen_promociones_ventas(
+    db: Session,
+    periodo: Optional[str] = None,
+    fecha: Optional[date] = None,
+    anio: Optional[int] = None,
+    mes: Optional[int] = None,
+) -> dict:
+    q = (
+        db.query(
+            PromocionModel.id_promocion,
+            PromocionModel.nombre,
+            func.coalesce(func.sum(DetalleVentaModel.cantidad), 0),
+            func.coalesce(
+                func.sum(DetalleVentaModel.descuento_unitario * DetalleVentaModel.cantidad),
+                0,
+            ),
+            func.coalesce(func.sum(DetalleVentaModel.subtotal), 0),
+        )
+        .join(
+            DetalleVentaModel,
+            DetalleVentaModel.id_promocion == PromocionModel.id_promocion,
+        )
+        .join(VentaModel, VentaModel.id_venta == DetalleVentaModel.id_venta)
+    )
+
+    periodo_label = "Histórico total"
+    if periodo == "dia" and fecha:
+        q = q.filter(*filtro_dia_mx(VentaModel.fecha_hora, fecha))
+        periodo_label = fecha.isoformat()
+    elif periodo == "mes" and anio and mes:
+        q = q.filter(*filtro_mes_mx(VentaModel.fecha_hora, anio, mes))
+        nombre_mes = MESES_ES[mes] if 1 <= mes <= 12 else str(mes)
+        periodo_label = f"{nombre_mes} {anio}"
+    elif periodo == "anio" and anio:
+        q = q.filter(*filtro_anio_mx(VentaModel.fecha_hora, anio))
+        periodo_label = str(anio)
+
+    filas = (
+        q.group_by(PromocionModel.id_promocion, PromocionModel.nombre)
+        .order_by(
+            func.sum(DetalleVentaModel.descuento_unitario * DetalleVentaModel.cantidad).desc()
+        )
+        .all()
+    )
+    total_ventas = sum(int(float(r[2])) for r in filas)
+    total_desc = sum(float(r[3]) for r in filas)
+    total_ingresos = sum(float(r[4]) for r in filas)
     return {
-        "id_promocion": None,
-        "nombre_promocion": None,
-        "tipo": None,
-        "precio_base": precio_base,
-        "precio_base_promo": precio_base,
-        "precio_extras": precio_extras,
-        "precio_unitario": precio_original_unitario,
-        "precio_original_unitario": precio_original_unitario,
-        "descuento_unitario": 0,
-        "costo_unitario": costo,
-        "margen_porcentaje": margen,
-        "margen_ok": True,
-        "mensaje": None,
+        "total_ventas_con_promo": total_ventas,
+        "total_descuento": round(total_desc, 2),
+        "total_ingresos_con_promo": round(total_ingresos, 2),
+        "periodo_label": periodo_label,
+        "promociones_usadas": [
+            {
+                "id_promocion": r[0],
+                "nombre": r[1],
+                "usos": int(float(r[2])),
+                "descuento_total": round(float(r[3]), 2),
+                "ingresos_con_promo": round(float(r[4]), 2),
+            }
+            for r in filas
+        ],
     }

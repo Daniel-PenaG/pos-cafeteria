@@ -15,6 +15,7 @@ class ExtraVenta(BaseModel):
     id_extra: int
     nombre: str
     precio: float
+    costo: float = 0
     tipo: str
     activo: bool
     id_insumo: Optional[int] = None

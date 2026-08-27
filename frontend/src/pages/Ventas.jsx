@@ -28,6 +28,7 @@ import { useAuthStore } from "../store/authStore";
 import { isAdmin } from "../config/permissions";
 import PageHeader from "../components/PageHeader";
 import SearchField from "../components/SearchField";
+import ElapsedTimer from "../components/ElapsedTimer";
 import PrinterSettings from "../components/PrinterSettings";
 import { canUseBluetoothPrinter, printTicketSafely } from "../services/printerService";
 import { buildCobroTicket } from "../services/escposTickets";
@@ -65,11 +66,13 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [formaPago, setFormaPago] = useState("EFECTIVO");
   const [montoRecibido, setMontoRecibido] = useState("");
   const [loading, setLoading] = useState(false);
+  const [guardandoLinea, setGuardandoLinea] = useState(false);
 
   const [productoModal, setProductoModal] = useState(null);
   const [extrasSeleccionados, setExtrasSeleccionados] = useState([]);
   const [promosDisponibles, setPromosDisponibles] = useState([]);
-  const [promoSeleccionada, setPromoSeleccionada] = useState(null);
+  const [promoModo, setPromoModo] = useState("auto");
+  const [mostrarOpcionesPromo, setMostrarOpcionesPromo] = useState(false);
   const [calculoPromo, setCalculoPromo] = useState(null);
   const [cantidadModal, setCantidadModal] = useState("");
   const [comentarioModal, setComentarioModal] = useState("");
@@ -374,7 +377,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     return grupos;
   }, [extrasModal]);
 
-  const recalcularPromoModal = async (producto, idPromo, extras, cantidad) => {
+  const recalcularPromoModal = async (producto, modoPromo, extras, cantidad) => {
     if (!producto) return;
     const cant = Number(cantidad);
     if (!cantidad || isNaN(cant) || cant < 1) {
@@ -382,12 +385,17 @@ export default function Ventas({ modoParaLlevar = false }) {
       return;
     }
     try {
-      const calc = await calcularPromocion({
+      const payload = {
         id_producto: producto.id_producto,
-        id_promocion: idPromo || null,
         cantidad: cant,
         precio_extras: sumExtras(extras),
-      });
+      };
+      if (modoPromo === "none") {
+        payload.sin_promocion = true;
+      } else if (typeof modoPromo === "number") {
+        payload.id_promocion = modoPromo;
+      }
+      const calc = await calcularPromocion(payload);
       setCalculoPromo(calc);
     } catch (err) {
       console.error(err);
@@ -399,11 +407,11 @@ export default function Ventas({ modoParaLlevar = false }) {
     if (!productoModal) return;
     recalcularPromoModal(
       productoModal,
-      promoSeleccionada,
+      promoModo,
       extrasSeleccionados,
       cantidadModal
     );
-  }, [productoModal, promoSeleccionada, extrasSeleccionados, cantidadModal]);
+  }, [productoModal, promoModo, extrasSeleccionados, cantidadModal]);
 
   const abrirModalProducto = async (producto) => {
     if (!numeroMesa) {
@@ -414,9 +422,10 @@ export default function Ventas({ modoParaLlevar = false }) {
     setExtrasSeleccionados([]);
     setExtrasModal([]);
     setPromosDisponibles([]);
-    setPromoSeleccionada(null);
+    setPromoModo("auto");
+    setMostrarOpcionesPromo(false);
     setCalculoPromo(null);
-    setCantidadModal("");
+    setCantidadModal("1");
     setComentarioModal("");
     try {
       setCargandoExtras(true);
@@ -426,9 +435,6 @@ export default function Ventas({ modoParaLlevar = false }) {
       ]);
       setExtrasModal(extras);
       setPromosDisponibles(promos);
-      if (promos.length > 0) {
-        setPromoSeleccionada(promos[0].id_promocion);
-      }
     } catch (err) {
       console.error(err);
       alert("Error al cargar extras del producto");
@@ -450,6 +456,7 @@ export default function Ventas({ modoParaLlevar = false }) {
           id_extra: extra.id_extra,
           nombre: extra.nombre,
           precio: Number(extra.precio),
+          costo: Number(extra.costo || 0),
           id_insumo: extra.id_insumo ?? null,
           cantidad_insumo: Number(extra.cantidad_insumo ?? 1),
         },
@@ -470,6 +477,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     }
 
     try {
+      setGuardandoLinea(true);
       setLoading(true);
       await agregarLineaPedido(numeroMesa, usuario.id_usuario, {
         id_producto: productoModal.id_producto,
@@ -487,13 +495,15 @@ export default function Ventas({ modoParaLlevar = false }) {
       return;
     } finally {
       setLoading(false);
+      setGuardandoLinea(false);
     }
 
     setProductoModal(null);
     setExtrasSeleccionados([]);
     setExtrasModal([]);
     setPromosDisponibles([]);
-    setPromoSeleccionada(null);
+    setPromoModo("auto");
+    setMostrarOpcionesPromo(false);
     setCalculoPromo(null);
     setCantidadModal("");
     setComentarioModal("");
@@ -861,12 +871,20 @@ export default function Ventas({ modoParaLlevar = false }) {
                         en comanda
                       </span>
                     )}
+                    {item.en_comanda && item.cantidad_pendiente > 0 && item.fecha_envio_comanda && (
+                      <span style={{ marginLeft: "0.35rem" }}>
+                        <ElapsedTimer since={item.fecha_envio_comanda} />
+                      </span>
+                    )}
                     {item.extras?.length > 0 && (
                       <ul className="cart-item__extras">
                         {item.extras.map((e) => (
                           <li key={e.id_extra}>
                             + {e.nombre}
                             {Number(e.precio) > 0 && ` ($${Number(e.precio).toFixed(2)})`}
+                            {admin && Number(e.costo) > 0 && (
+                              <span className="hint"> · costo ${Number(e.costo).toFixed(2)}</span>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -959,23 +977,57 @@ export default function Ventas({ modoParaLlevar = false }) {
               Precio base ${Number(productoModal.precio_venta).toFixed(2)}
               {modoParaLlevar ? " · Para llevar" : ` · Mesa ${numeroMesa}`}
             </p>
+            {!cargandoExtras && calculoPromo?.nombre_promocion && (
+              <div
+                className="badge badge--ok"
+                style={{ marginBottom: "1rem", display: "inline-block" }}
+              >
+                Promo: {calculoPromo.nombre_promocion}
+                {calculoPromo.descuento_unitario > 0 && (
+                  <> · -${Number(calculoPromo.descuento_unitario).toFixed(2)} c/u</>
+                )}
+              </div>
+            )}
+
             {!cargandoExtras && promosDisponibles.length > 0 && (
               <div style={{ marginBottom: "1rem" }}>
-                <label className="hint">Promoción</label>
-                <select
-                  className="select"
-                  value={promoSeleccionada || ""}
-                  onChange={(e) =>
-                    setPromoSeleccionada(e.target.value ? Number(e.target.value) : null)
-                  }
-                >
-                  <option value="">Sin promoción</option>
-                  {promosDisponibles.map((p) => (
-                    <option key={p.id_promocion} value={p.id_promocion}>
-                      {p.nombre} ({p.tipo === "PORCENTAJE" ? `${p.valor}%` : p.tipo})
-                    </option>
-                  ))}
-                </select>
+                {!mostrarOpcionesPromo ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => setMostrarOpcionesPromo(true)}
+                  >
+                    Cambiar promoción
+                  </button>
+                ) : (
+                  <>
+                    <label className="hint">Promoción</label>
+                    <select
+                      className="select"
+                      value={
+                        promoModo === "auto"
+                          ? "auto"
+                          : promoModo === "none"
+                            ? "none"
+                            : String(promoModo)
+                      }
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "auto") setPromoModo("auto");
+                        else if (val === "none") setPromoModo("none");
+                        else setPromoModo(Number(val));
+                      }}
+                    >
+                      <option value="auto">Automática (mejor precio)</option>
+                      <option value="none">Sin promoción</option>
+                      {promosDisponibles.map((p) => (
+                        <option key={p.id_promocion} value={p.id_promocion}>
+                          {p.nombre} ({p.tipo === "PORCENTAJE" ? `${p.valor}%` : p.tipo})
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
               </div>
             )}
 
@@ -1037,6 +1089,11 @@ export default function Ventas({ modoParaLlevar = false }) {
                               +${Number(extra.precio).toFixed(2)}
                             </span>
                           )}
+                          {admin && Number(extra.costo) > 0 && (
+                            <span className="hint" style={{ display: "block", fontSize: "0.75rem" }}>
+                              Costo ${Number(extra.costo).toFixed(2)}
+                            </span>
+                          )}
                         </button>
                       );
                     })}
@@ -1081,9 +1138,9 @@ export default function Ventas({ modoParaLlevar = false }) {
                 type="button"
                 className="btn btn--primary"
                 onClick={confirmarAgregarAlCarrito}
-                disabled={!calculoPromo || !calculoPromo.margen_ok}
+                disabled={!calculoPromo || !calculoPromo.margen_ok || guardandoLinea || loading}
               >
-                Agregar al pedido
+                {guardandoLinea ? "Agregando…" : "Agregar al pedido"}
               </button>
             </div>
           </div>

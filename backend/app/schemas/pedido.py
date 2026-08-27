@@ -14,6 +14,7 @@ class ExtraLineaPedido(BaseModel):
     id_extra: int
     nombre: str
     precio: float
+    costo: Optional[float] = None
     id_insumo: Optional[int] = None
     cantidad_insumo: float = 1
 
@@ -34,6 +35,9 @@ class DetallePedidoLinea(BaseModel):
     en_comanda: bool
     comentario: Optional[str] = None
     line_key: str
+    fecha_envio_comanda: Optional[str] = None
+    fecha_listo_comanda: Optional[str] = None
+    segundos_preparacion: Optional[int] = None
 
 
 class Pedido(BaseModel):
@@ -44,7 +48,7 @@ class Pedido(BaseModel):
     id_cliente: Optional[int] = None
     id_usuario: int
     id_venta: Optional[int] = None
-    fecha_apertura: datetime
+    fecha_apertura: Optional[str] = None
     total: float
     lineas: List[DetallePedidoLinea] = []
     cliente_nombre: Optional[str] = None
@@ -53,9 +57,14 @@ class Pedido(BaseModel):
 class PedidoResumen(BaseModel):
     id_pedido: int
     numero_mesa: int
+    para_llevar: bool = False
     total: float
     num_lineas: int
     pendientes_comanda: int
+    fecha_apertura: Optional[str] = None
+    segundos_activa: Optional[int] = None
+    cliente_nombre: Optional[str] = None
+    lineas: List[DetallePedidoLinea] = []
 
 
 class PedidoLineaCreate(BaseModel):

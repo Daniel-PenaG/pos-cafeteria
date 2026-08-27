@@ -6,8 +6,10 @@ import {
   getConsumoInsumos,
   getTiemposPreparacion,
   getProductosRanking,
+  getPromocionesVentasReporte,
 } from "../services/reportesService";
 import PageHeader from "../components/PageHeader";
+import { fechaMexicoISO } from "../utils/datetimeMx";
 
 const MESES = [
   { v: 1, l: "Enero" },
@@ -94,10 +96,7 @@ export default function Reportes() {
   const hoy = new Date();
   const [tab, setTab] = useState("dia");
 
-  const [fecha, setFecha] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  });
+  const [fecha, setFecha] = useState(fechaMexicoISO);
   const [anioMes, setAnioMes] = useState(hoy.getFullYear());
   const [mes, setMes] = useState(hoy.getMonth() + 1);
   const [anio, setAnio] = useState(hoy.getFullYear());
@@ -106,6 +105,8 @@ export default function Reportes() {
   const [consumo, setConsumo] = useState(null);
   const [tiempos, setTiempos] = useState(null);
   const [ranking, setRanking] = useState(null);
+  const [promociones, setPromociones] = useState(null);
+  const [promocionesPeriodo, setPromocionesPeriodo] = useState("dia");
   const [rankingPeriodo, setRankingPeriodo] = useState("dia");
   const [ordenRank, setOrdenRank] = useState("cantidad");
   const [loading, setLoading] = useState(false);
@@ -129,6 +130,24 @@ export default function Reportes() {
         setReporte(null);
         setConsumo(null);
         setTiempos(null);
+        setPromociones(null);
+      } else if (tab === "promociones") {
+        const params = { periodo: promocionesPeriodo };
+        if (promocionesPeriodo === "dia") {
+          if (!fecha) return alert("Selecciona una fecha");
+          params.fecha = fecha;
+        } else if (promocionesPeriodo === "mes") {
+          params.anio = anioMes;
+          params.mes = mes;
+        } else {
+          params.anio = anio;
+        }
+        const p = await getPromocionesVentasReporte(params);
+        setPromociones(p);
+        setReporte(null);
+        setConsumo(null);
+        setTiempos(null);
+        setRanking(null);
       } else if (tab === "tiempos") {
         if (!fecha) return alert("Selecciona una fecha");
         const t = await getTiemposPreparacion(fecha);
@@ -136,6 +155,7 @@ export default function Reportes() {
         setReporte(null);
         setConsumo(null);
         setRanking(null);
+        setPromociones(null);
       } else if (tab === "dia") {
         if (!fecha) return alert("Selecciona una fecha");
         const [v, c] = await Promise.all([
@@ -146,18 +166,21 @@ export default function Reportes() {
         setConsumo(c);
         setTiempos(null);
         setRanking(null);
+        setPromociones(null);
       } else if (tab === "mes") {
         const v = await getVentasMes(anioMes, mes);
         setReporte(v);
         setConsumo(null);
         setTiempos(null);
         setRanking(null);
+        setPromociones(null);
       } else {
         const v = await getVentasAnio(anio);
         setReporte(v);
         setConsumo(null);
         setTiempos(null);
         setRanking(null);
+        setPromociones(null);
       }
     } catch (err) {
       alert(err.response?.data?.detail || "Error al cargar reporte");
@@ -177,7 +200,7 @@ export default function Reportes() {
     <div>
       <PageHeader
         title="Reportes"
-        subtitle="Ventas, insumos y tiempos de preparación en cocina"
+        subtitle="Ventas, promociones, insumos y tiempos de preparación en cocina"
       />
 
       <div className="tabs" style={{ marginBottom: "1rem" }}>
@@ -187,6 +210,7 @@ export default function Reportes() {
           { id: "anio", label: "Ventas por año" },
           { id: "tiempos", label: "Tiempos por mesa" },
           { id: "ranking", label: "Top productos" },
+          { id: "promociones", label: "Ventas por promoción" },
         ].map((t) => (
           <button
             key={t.id}
@@ -198,6 +222,7 @@ export default function Reportes() {
               setConsumo(null);
               setTiempos(null);
               setRanking(null);
+              setPromociones(null);
             }}
           >
             {t.label}
@@ -230,8 +255,35 @@ export default function Reportes() {
           </div>
         )}
 
+        {tab === "promociones" && (
+          <div className="tabs" style={{ marginBottom: "1rem" }}>
+            {[
+              { id: "dia", label: "Por día" },
+              { id: "mes", label: "Por mes" },
+              { id: "anio", label: "Por año" },
+            ].map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={
+                  promocionesPeriodo === p.id ? "btn btn--primary btn--sm" : "btn btn--ghost btn--sm"
+                }
+                onClick={() => {
+                  setPromocionesPeriodo(p.id);
+                  setPromociones(null);
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-end" }}>
-          {(tab === "dia" || tab === "tiempos" || (tab === "ranking" && rankingPeriodo === "dia")) && (
+          {(tab === "dia" ||
+            tab === "tiempos" ||
+            (tab === "ranking" && rankingPeriodo === "dia") ||
+            (tab === "promociones" && promocionesPeriodo === "dia")) && (
             <div className="form-row" style={{ margin: 0 }}>
               <label>Fecha</label>
               <input
@@ -243,7 +295,9 @@ export default function Reportes() {
             </div>
           )}
 
-          {(tab === "mes" || (tab === "ranking" && rankingPeriodo === "mes")) && (
+          {(tab === "mes" ||
+            (tab === "ranking" && rankingPeriodo === "mes") ||
+            (tab === "promociones" && promocionesPeriodo === "mes")) && (
             <>
               <div className="form-row" style={{ margin: 0 }}>
                 <label>Año</label>
@@ -273,7 +327,9 @@ export default function Reportes() {
             </>
           )}
 
-          {(tab === "anio" || (tab === "ranking" && rankingPeriodo === "anio")) && (
+          {(tab === "anio" ||
+            (tab === "ranking" && rankingPeriodo === "anio") ||
+            (tab === "promociones" && promocionesPeriodo === "anio")) && (
             <div className="form-row" style={{ margin: 0 }}>
               <label>Año</label>
               <input
@@ -479,6 +535,63 @@ export default function Reportes() {
               </div>
             ))
           )}
+        </>
+      )}
+
+      {promociones && (
+        <>
+          <div className="stats-grid" style={{ marginBottom: "1.5rem" }}>
+            <div className="stat-card">
+              <p className="stat-card__label">Periodo</p>
+              <p className="stat-card__value">{promociones.periodo_label}</p>
+            </div>
+            <div className="stat-card">
+              <p className="stat-card__label">Líneas con promo</p>
+              <p className="stat-card__value">{promociones.total_ventas_con_promo}</p>
+            </div>
+            <div className="stat-card">
+              <p className="stat-card__label">Descuento total</p>
+              <p className="stat-card__value">
+                ${Number(promociones.total_descuento || 0).toFixed(2)}
+              </p>
+            </div>
+            <div className="stat-card">
+              <p className="stat-card__label">Ingresos con promo</p>
+              <p className="stat-card__value">
+                ${Number(promociones.total_ingresos_con_promo || 0).toFixed(2)}
+              </p>
+            </div>
+          </div>
+
+          <div className="card">
+            <h3>Ventas por promoción</h3>
+            {!promociones.promociones_usadas?.length ? (
+              <p className="empty-state">Sin ventas con promoción en este periodo.</p>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Promoción</th>
+                      <th>Usos (líneas)</th>
+                      <th>Descuento total</th>
+                      <th>Ingresos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {promociones.promociones_usadas.map((p) => (
+                      <tr key={p.id_promocion}>
+                        <td>{p.nombre}</td>
+                        <td>{p.usos}</td>
+                        <td>${Number(p.descuento_total).toFixed(2)}</td>
+                        <td>${Number(p.ingresos_con_promo || 0).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </>
       )}
 
