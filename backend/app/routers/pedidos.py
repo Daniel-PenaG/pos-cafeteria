@@ -26,7 +26,7 @@ from app.services.pedido_service import (
     _detalle_a_dict,
 )
 from app.services.venta_service import MESA_PARA_LLEVAR
-from app.services.promocion_service import calcular_linea
+from app.services.promocion_service import calcular_linea, es_promo_paquete
 from app.models import ProductoModel
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 from app.utils.deps import require_admin, require_pos
@@ -137,12 +137,13 @@ def actualizar_linea(id_detalle_pedido: int, data: PedidoLineaUpdate, db: Sessio
     if detalle.id_promocion:
         promo = (
             db.query(PromocionModel)
+            .options(joinedload(PromocionModel.productos))
             .filter(PromocionModel.id_promocion == detalle.id_promocion)
             .first()
         )
-        if promo and promo.tipo == "COMBO":
+        if promo and es_promo_paquete(promo):
             raise DatosInvalidosException(
-                "No se puede cambiar la cantidad de una línea de combo; agrega otro paquete"
+                "No se puede cambiar la cantidad de una línea de paquete; agrega otro paquete"
             )
         producto = db.query(ProductoModel).filter(ProductoModel.id_producto == detalle.id_producto).first()
         import json

@@ -400,6 +400,11 @@ export default function Promociones() {
                       Selecciona los productos del combo abajo (mínimo 2).
                     </p>
                   )}
+                  {tipo === "PRECIO_FIJO" && !todaTienda && idsProductos.length >= 2 && (
+                    <p className="hint" style={{ marginTop: "0.25rem" }}>
+                      Con 2 o más productos seleccionados, el valor es el precio del paquete completo.
+                    </p>
+                  )}
                 </div>
               </div>
               <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>

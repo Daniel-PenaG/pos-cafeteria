@@ -104,13 +104,28 @@ def margen_porcentaje(precio: float, costo: float) -> Optional[float]:
     return round((precio - costo) / precio * 100, 2)
 
 
+def es_promo_paquete(promo: PromocionModel) -> bool:
+    """Combo explícito o precio fijo sobre 2+ productos específicos (paquete)."""
+    n = len(promo.productos or [])
+    if promo.tipo == "COMBO":
+        return n >= 2
+    if promo.tipo == "PRECIO_FIJO" and not promo.aplica_toda_tienda:
+        return n >= 2
+    return False
+
+
 def listar_aplicables(
     db: Session, producto: ProductoModel, ahora: Optional[datetime] = None
 ) -> List[PromocionModel]:
-    promos = db.query(PromocionModel).filter(PromocionModel.activa == True).all()
+    promos = (
+        db.query(PromocionModel)
+        .options(joinedload(PromocionModel.productos), joinedload(PromocionModel.categorias))
+        .filter(PromocionModel.activa == True)
+        .all()
+    )
     resultado = []
     for p in promos:
-        if p.tipo == "COMBO":
+        if es_promo_paquete(p):
             continue
         if promocion_vigente(p, ahora) and producto_elegible(p, producto):
             resultado.append(p)
@@ -128,15 +143,17 @@ def listar_combos_producto(
     promos = (
         db.query(PromocionModel)
         .options(joinedload(PromocionModel.productos))
-        .filter(PromocionModel.activa == True, PromocionModel.tipo == "COMBO")
+        .filter(PromocionModel.activa == True, PromocionModel.tipo.in_(["COMBO", "PRECIO_FIJO"]))
         .all()
     )
     resultado = []
     for p in promos:
+        if not es_promo_paquete(p):
+            continue
         if not promocion_vigente(p, ahora):
             continue
         ids = {x.id_producto for x in p.productos}
-        if producto.id_producto in ids and len(ids) >= 2:
+        if producto.id_producto in ids:
             resultado.append(p)
     return resultado
 
@@ -179,12 +196,15 @@ def calcular_combo(
     db: Session, id_promocion: int, cantidad_paquetes: float = 1
 ) -> dict:
     promo = (
-        db.query(PromocionModel).filter(PromocionModel.id_promocion == id_promocion).first()
+        db.query(PromocionModel)
+        .options(joinedload(PromocionModel.productos))
+        .filter(PromocionModel.id_promocion == id_promocion)
+        .first()
     )
     if not promo:
         raise DatosInvalidosException("Promoción no encontrada")
-    if promo.tipo != "COMBO":
-        raise DatosInvalidosException("Esta promoción no es un combo")
+    if not es_promo_paquete(promo):
+        raise DatosInvalidosException("Esta promoción no es un paquete/combo")
     if not promocion_vigente(promo):
         raise DatosInvalidosException(f"La promoción '{promo.nombre}' no está vigente")
 
@@ -279,7 +299,10 @@ def calcular_linea(
     promo = None
     if id_promocion:
         promo = (
-            db.query(PromocionModel).filter(PromocionModel.id_promocion == id_promocion).first()
+            db.query(PromocionModel)
+            .options(joinedload(PromocionModel.productos))
+            .filter(PromocionModel.id_promocion == id_promocion)
+            .first()
         )
         if not promo:
             raise DatosInvalidosException("Promoción no encontrada")
@@ -289,12 +312,12 @@ def calcular_linea(
             raise DatosInvalidosException(
                 f"La promoción '{promo.nombre}' no aplica a este producto"
             )
-        if promo.tipo == "COMBO":
+        if es_promo_paquete(promo):
             raise DatosInvalidosException(
-                f"La promoción '{promo.nombre}' es un combo; agrégalo como paquete"
+                f"La promoción '{promo.nombre}' es un paquete; agrégalo como combo"
             )
     else:
-        aplicables = [p for p in listar_aplicables(db, producto, ahora) if p.tipo != "COMBO"]
+        aplicables = listar_aplicables(db, producto, ahora)
         if aplicables:
             promo = min(
                 aplicables,

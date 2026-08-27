@@ -6,7 +6,7 @@ const LOCAL_API = "http://127.0.0.1:8000";
 
 const baseURL =
   import.meta.env.VITE_API_URL?.replace(/\/$/, "") ||
-  (import.meta.env.MODE === "capacitor" ? PRODUCTION_API : LOCAL_API);
+  (import.meta.env.PROD ? PRODUCTION_API : LOCAL_API);
 
 const api = axios.create({
   baseURL,

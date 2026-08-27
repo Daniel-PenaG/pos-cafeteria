@@ -108,6 +108,11 @@ class ComboPromo(BaseModel):
     productos: List[dict] = []
 
 
+class PromocionOpciones(BaseModel):
+    paquetes: List[ComboPromo] = []
+    promos: List[Promocion] = []
+
+
 class PromocionResumen(BaseModel):
     total_ventas_con_promo: int
     total_descuento: float

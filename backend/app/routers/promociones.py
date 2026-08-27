@@ -21,6 +21,7 @@ from app.schemas.promocion import (
     ComboCalculado,
     ComboCalcularRequest,
     ComboPromo,
+    PromocionOpciones,
 )
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 from app.services.promocion_service import (
@@ -103,6 +104,16 @@ def promociones_aplicables(id_producto: int, db: Session = Depends(get_db)):
     if not producto:
         raise RecursoNoEncontradoException("Producto no encontrado")
     return [_promo_a_dict(p) for p in listar_aplicables(db, producto)]
+
+
+@router.get("/opciones/{id_producto}", response_model=PromocionOpciones)
+def opciones_promo_producto(id_producto: int, db: Session = Depends(get_db)):
+    producto = db.query(ProductoModel).filter(ProductoModel.id_producto == id_producto).first()
+    if not producto:
+        raise RecursoNoEncontradoException("Producto no encontrado")
+    paquetes = [combo_a_dict(p, db) for p in listar_combos_producto(db, id_producto)]
+    promos = [_promo_a_dict(p) for p in listar_aplicables(db, producto)]
+    return {"paquetes": paquetes, "promos": promos}
 
 
 @router.get("/combos/{id_producto}", response_model=List[ComboPromo])

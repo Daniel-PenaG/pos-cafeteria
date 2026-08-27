@@ -19,7 +19,7 @@ import {
 import {
   calcularPromocion,
   getPromocionesAplicables,
-  getCombosProducto,
+  getOpcionesPromoProducto,
 } from "../services/promocionesService";
 import {
   buscarClientes,
@@ -468,27 +468,22 @@ export default function Ventas({ modoParaLlevar = false }) {
     }
     if (!usuario?.id_usuario) return;
 
-    let combos = [];
-    let promos = [];
     try {
-      combos = await getCombosProducto(producto.id_producto);
-    } catch (err) {
-      console.warn("Combos no disponibles:", err.response?.status, err.response?.data?.detail);
-    }
-    try {
-      promos = await getPromocionesAplicables(producto.id_producto);
-    } catch (err) {
-      console.warn("Promos aplicables no disponibles:", err.response?.status);
-    }
+      const opciones = await getOpcionesPromoProducto(producto.id_producto);
+      const paquetes = opciones?.paquetes ?? [];
+      const promos = opciones?.promos ?? [];
 
-    if (combos.length > 0) {
-      setPromoConfirm({ kind: "combo", combo: combos[0], producto });
-      return;
-    }
+      if (paquetes.length > 0) {
+        setPromoConfirm({ kind: "combo", combo: paquetes[0], producto });
+        return;
+      }
 
-    if (promos.length > 0) {
-      setPromoConfirm({ kind: "promo", promo: promos[0], producto });
-      return;
+      if (promos.length > 0) {
+        setPromoConfirm({ kind: "promo", promo: promos[0], producto });
+        return;
+      }
+    } catch (err) {
+      console.error("Opciones de promoción:", err.response?.status, err.response?.data?.detail);
     }
 
     abrirModalProducto(producto);
