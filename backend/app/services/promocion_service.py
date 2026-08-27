@@ -1,10 +1,10 @@
 from datetime import date, datetime, time
-from app.utils.timezone_mx import filtro_dia_mx, filtro_mes_mx, filtro_anio_mx
+from app.utils.timezone_mx import filtro_dia_mx, filtro_mes_mx, filtro_anio_mx, MX, now_utc_naive
 import math
 from typing import List, Optional
 
 from sqlalchemy import and_, extract, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
     ProductoModel,
@@ -36,18 +36,19 @@ def _parse_dias(texto: Optional[str]) -> Optional[set[int]]:
 def promocion_vigente(promo: PromocionModel, ahora: Optional[datetime] = None) -> bool:
     if not promo.activa:
         return False
-    ahora = ahora or datetime.now()
-    if promo.fecha_inicio and ahora < promo.fecha_inicio:
+    ahora_utc = ahora or now_utc_naive()
+    ahora_mx = datetime.now(MX)
+    if promo.fecha_inicio and ahora_utc < promo.fecha_inicio:
         return False
-    if promo.fecha_fin and ahora > promo.fecha_fin:
+    if promo.fecha_fin and ahora_utc > promo.fecha_fin:
         return False
     dias = _parse_dias(promo.dias_semana)
-    if dias is not None and ahora.weekday() not in dias:
+    if dias is not None and ahora_mx.weekday() not in dias:
         return False
     h_ini = _parse_hora(promo.hora_inicio)
     h_fin = _parse_hora(promo.hora_fin)
     if h_ini or h_fin:
-        t = ahora.time()
+        t = ahora_mx.time()
         if h_ini and h_fin:
             if h_ini <= h_fin:
                 if not (h_ini <= t <= h_fin):
@@ -126,6 +127,7 @@ def listar_combos_producto(
         return []
     promos = (
         db.query(PromocionModel)
+        .options(joinedload(PromocionModel.productos))
         .filter(PromocionModel.activa == True, PromocionModel.tipo == "COMBO")
         .all()
     )

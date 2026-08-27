@@ -96,6 +96,8 @@ export default function Ventas({ modoParaLlevar = false }) {
   /** Cantidades en edición (id detalle → texto) antes de guardar en servidor */
   const [cantidadEdit, setCantidadEdit] = useState({});
 
+  const [promoConfirm, setPromoConfirm] = useState(null);
+
   const usuario = useAuthStore((s) => s.user);
   const admin = isAdmin(usuario?.rol);
   const [searchParams] = useSearchParams();
@@ -466,57 +468,70 @@ export default function Ventas({ modoParaLlevar = false }) {
     }
     if (!usuario?.id_usuario) return;
 
+    let combos = [];
+    let promos = [];
     try {
-      const [combos, promos] = await Promise.all([
-        getCombosProducto(producto.id_producto),
-        getPromocionesAplicables(producto.id_producto),
-      ]);
-
-      if (combos.length > 0) {
-        const combo = combos[0];
-        const nombres = (combo.productos || [])
-          .map((p) => p.nombre)
-          .join(" + ");
-        const aplicar = window.confirm(
-          `¿Aplicar promoción "${combo.nombre}"?\n\n${nombres}\nPrecio del paquete: $${Number(combo.valor).toFixed(2)}\n\nAceptar = agregar el combo completo\nCancelar = solo ${producto.nombre} a precio normal`
-        );
-        if (aplicar) {
-          setGuardandoLinea(true);
-          setLoading(true);
-          try {
-            await agregarComboPedido(
-              numeroMesa,
-              usuario.id_usuario,
-              { id_promocion: combo.id_promocion, cantidad: 1, enviar_comanda: false },
-              modoParaLlevar
-            );
-            await cargarPedidoMesa(numeroMesa, modoParaLlevar);
-          } catch (err) {
-            alert(err.response?.data?.detail || "Error al agregar combo");
-          } finally {
-            setLoading(false);
-            setGuardandoLinea(false);
-          }
-          return;
-        }
-        abrirModalProducto(producto, { promoModo: "none" });
-        return;
-      }
-
-      if (promos.length > 0) {
-        const promo = promos[0];
-        const aplicar = window.confirm(
-          `¿Aplicar promoción "${promo.nombre}" a ${producto.nombre}?\n\nAceptar = con promoción\nCancelar = precio normal`
-        );
-        abrirModalProducto(producto, { promoModo: aplicar ? "auto" : "none" });
-        return;
-      }
-
-      abrirModalProducto(producto);
+      combos = await getCombosProducto(producto.id_producto);
     } catch (err) {
-      console.error(err);
-      abrirModalProducto(producto);
+      console.warn("Combos no disponibles:", err.response?.status, err.response?.data?.detail);
     }
+    try {
+      promos = await getPromocionesAplicables(producto.id_producto);
+    } catch (err) {
+      console.warn("Promos aplicables no disponibles:", err.response?.status);
+    }
+
+    if (combos.length > 0) {
+      setPromoConfirm({ kind: "combo", combo: combos[0], producto });
+      return;
+    }
+
+    if (promos.length > 0) {
+      setPromoConfirm({ kind: "promo", promo: promos[0], producto });
+      return;
+    }
+
+    abrirModalProducto(producto);
+  };
+
+  const cerrarPromoConfirm = () => setPromoConfirm(null);
+
+  const rechazarPromoConfirm = () => {
+    if (!promoConfirm) return;
+    const { producto } = promoConfirm;
+    cerrarPromoConfirm();
+    abrirModalProducto(producto, { promoModo: "none" });
+  };
+
+  const aceptarPromoConfirm = async () => {
+    if (!promoConfirm || !usuario?.id_usuario || !numeroMesa) return;
+
+    if (promoConfirm.kind === "combo") {
+      const { combo, producto } = promoConfirm;
+      cerrarPromoConfirm();
+      setGuardandoLinea(true);
+      setLoading(true);
+      try {
+        await agregarComboPedido(
+          numeroMesa,
+          usuario.id_usuario,
+          { id_promocion: combo.id_promocion, cantidad: 1, enviar_comanda: false },
+          modoParaLlevar
+        );
+        await cargarPedidoMesa(numeroMesa, modoParaLlevar);
+      } catch (err) {
+        alert(err.response?.data?.detail || "Error al agregar combo");
+        abrirModalProducto(producto, { promoModo: "none" });
+      } finally {
+        setLoading(false);
+        setGuardandoLinea(false);
+      }
+      return;
+    }
+
+    const { promo, producto } = promoConfirm;
+    cerrarPromoConfirm();
+    abrirModalProducto(producto, { promoModo: promo.id_promocion ?? "auto" });
   };
 
   const toggleExtra = (extra) => {
@@ -1051,6 +1066,67 @@ export default function Ventas({ modoParaLlevar = false }) {
           </div>
         </aside>
       </div>
+
+      {promoConfirm && (
+        <div className="modal-overlay" onClick={cerrarPromoConfirm}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <h2>¿Aplicar promoción?</h2>
+            {promoConfirm.kind === "combo" ? (
+              <>
+                <p style={{ marginBottom: "0.5rem" }}>
+                  <strong>{promoConfirm.combo.nombre}</strong>
+                </p>
+                <p className="hint" style={{ marginBottom: "0.75rem" }}>
+                  {(promoConfirm.combo.productos || [])
+                    .map((p) => p.nombre)
+                    .join(" + ")}
+                </p>
+                <p>
+                  Precio del paquete:{" "}
+                  <strong>${Number(promoConfirm.combo.valor).toFixed(2)}</strong>
+                </p>
+                <p className="hint" style={{ marginTop: "0.75rem" }}>
+                  Sí = se agregan todos los productos del combo.
+                  No = solo {promoConfirm.producto.nombre} a precio normal.
+                </p>
+              </>
+            ) : (
+              <>
+                <p style={{ marginBottom: "0.5rem" }}>
+                  Promoción: <strong>{promoConfirm.promo.nombre}</strong>
+                </p>
+                <p className="hint">Producto: {promoConfirm.producto.nombre}</p>
+                <p className="hint" style={{ marginTop: "0.75rem" }}>
+                  Sí = con promoción. No = precio normal.
+                </p>
+              </>
+            )}
+            <div
+              className="btn-group"
+              style={{ marginTop: "1.25rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
+            >
+              <button
+                type="button"
+                className="btn btn--secondary"
+                style={{ flex: 1, minWidth: "8rem" }}
+                onClick={rechazarPromoConfirm}
+                disabled={loading}
+              >
+                No, precio normal
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                style={{ flex: 1, minWidth: "8rem" }}
+                onClick={aceptarPromoConfirm}
+                disabled={loading}
+              >
+                Sí, aplicar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {productoModal && (
         <div className="modal-overlay">
