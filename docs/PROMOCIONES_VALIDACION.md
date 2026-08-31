@@ -6,9 +6,9 @@ Rama: [`feature/promociones-ticket-level`](https://github.com/Daniel-PenaG/pos-c
 
 | Métrica | Valor |
 |---------|-------|
-| Pruebas anteriores | **5** |
-| Pruebas actuales | **53** |
-| Agregadas | **48** |
+| Pruebas anteriores | **53** |
+| Pruebas actuales | **58** |
+| Agregadas (rollback atómico) | **5** netas (+8 nuevas, −3 obsoletas) |
 | Aprobadas | **53** |
 | Fallidas | **0** |
 
@@ -31,7 +31,17 @@ cd backend && python -m pytest -q
 - Redondeo Decimal
 - Transacción: documentación doble commit + venta huérfana simulada
 
-## Bugs corregidos en esta validación
+## Transacción atómica (2026-08-31)
+
+`registrar_venta` usa un único `commit` con `flush()` para `id_venta`. Ante cualquier excepción: `rollback()`.
+
+Cierre de pedido integrado vía `VentaCreate.id_pedido` (un solo commit con venta, detalles, inventario, fidelidad).
+
+Pruebas: `test_promociones_transaccion.py` (8 casos rollback + integridad).
+
+Dependencias dev: `backend/requirements-dev.txt`
+
+## Bugs corregidos en validación promociones
 
 1. **`recalcular_lineas_ticket`**: promociones de línea (%, fijo, 2×1) se ignoraban tras expandir unidades sin promo ticket.
 2. **`registrar_venta`**: `sin_promocion=True` cuando `id_promocion` era null impedía auto-aplicar promos de línea.
@@ -40,8 +50,8 @@ cd backend && python -m pytest -q
 
 | Riesgo | Severidad | Detalle |
 |--------|-----------|---------|
-| Transacción no atómica | **Alta** | `registrar_venta` hace 2× `commit`. Fallo post-venta puede dejar venta sin detalles. Ver `test_fallo_segundo_commit_deja_venta_huerfana`. |
-| `valor_promocion` en líneas | Baja | Promos de línea no guardan `valor_promocion` en `detalle_venta` (solo ticket). `nombre_promocion` y `tipo_promocion` sí. |
+| ~~Transacción no atómica~~ | Resuelto | Un solo commit + rollback |
+| `valor_promocion` en líneas | Baja | Promos de línea no guardan `valor_promocion` en `detalle_venta` |
 | Impresión ticket | — | No validada en CI; requiere hardware Coffe Song. |
 
 ## Pruebas manuales pendientes

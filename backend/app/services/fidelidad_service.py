@@ -34,8 +34,7 @@ def obtener_config(db: Session) -> FidelidadConfigModel:
             minimo_compra_acumular=0.0,
         )
         db.add(config)
-        db.commit()
-        db.refresh(config)
+        db.flush()
     return config
 
 

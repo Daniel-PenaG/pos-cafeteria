@@ -399,14 +399,10 @@ def cobrar_pedido(db: Session, pedido: PedidoModel, id_usuario: int, forma_pago:
         forma_pago=forma_pago,
         id_cliente=pedido.id_cliente,
         para_llevar=bool(getattr(pedido, "para_llevar", False)),
+        id_pedido=pedido.id_pedido,
         detalles=detalles_venta,
     )
-    resp = registrar_venta(db, venta_data)
-    pedido.estado = "COBRADO"
-    pedido.id_venta = resp.id_venta
-    pedido.fecha_cierre = now_utc_naive()
-    db.commit()
-    return resp
+    return registrar_venta(db, venta_data)
 
 
 def listar_pedidos_activos_resumen(db: Session) -> list:
