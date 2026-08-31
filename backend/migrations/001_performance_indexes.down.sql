@@ -4,8 +4,7 @@
 
 DROP INDEX CONCURRENTLY IF EXISTS idx_gastos_fecha_hora;
 
-DROP INDEX CONCURRENTLY IF EXISTS idx_cierres_caja_id_usuario;
-DROP INDEX CONCURRENTLY IF EXISTS idx_cierres_caja_fecha;
+-- idx_cierres_caja_* no se crean en UP; no dropear ix_* ni idx_cierres_usuario_fecha
 
 DROP INDEX CONCURRENTLY IF EXISTS idx_movimientos_inventario_fecha;
 DROP INDEX CONCURRENTLY IF EXISTS idx_movimientos_inventario_id_insumo;
@@ -21,8 +20,8 @@ DROP INDEX CONCURRENTLY IF EXISTS idx_detalle_pedido_id_pedido;
 
 DROP INDEX CONCURRENTLY IF EXISTS idx_pedidos_id_venta;
 DROP INDEX CONCURRENTLY IF EXISTS idx_pedidos_fecha_apertura;
-DROP INDEX CONCURRENTLY IF EXISTS idx_pedidos_numero_mesa;
 DROP INDEX CONCURRENTLY IF EXISTS idx_pedidos_estado;
+-- idx_pedidos_numero_mesa no creado en UP
 
 DROP INDEX CONCURRENTLY IF EXISTS idx_detalle_venta_id_promocion;
 DROP INDEX CONCURRENTLY IF EXISTS idx_detalle_venta_id_producto;

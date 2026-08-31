@@ -16,7 +16,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_detalle_venta_id_producto ON detalle
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_detalle_venta_id_promocion ON detalle_venta (id_promocion);
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pedidos_estado ON pedidos (estado);
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pedidos_numero_mesa ON pedidos (numero_mesa);
+-- idx_pedidos_numero_mesa: omitido — ya existe ix_pedidos_numero_mesa (index=True) y idx_pedidos_mesa_estado
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pedidos_fecha_apertura ON pedidos (fecha_apertura);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pedidos_id_venta ON pedidos (id_venta);
 
@@ -32,7 +32,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_receta_insumos_id_insumo ON receta_i
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_movimientos_inventario_id_insumo ON movimientos_inventario (id_insumo);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_movimientos_inventario_fecha ON movimientos_inventario (fecha_hora);
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cierres_caja_fecha ON cierres_caja (fecha);
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cierres_caja_id_usuario ON cierres_caja (id_usuario);
+-- cierres_caja.fecha / id_usuario: omitidos — ya existen ix_cierres_caja_* (index=True)
+-- y idx_cierres_usuario_fecha UNIQUE (id_usuario, fecha) vía migraciones en database.py
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gastos_fecha_hora ON gastos (fecha_hora);
