@@ -1,49 +1,49 @@
 # Optimización de rendimiento POS — Coffe Song
 
-Documento de validación pre-merge. **No desplegar ni hacer merge hasta aprobar esta evidencia.**
+Documento de validación pre-merge. **No desplegar ni hacer merge hasta aprobar.**
 
-## Rama publicada
+## Ramas y PRs separados
 
-| Campo | Valor |
-|-------|-------|
-| **Rama** | `performance/optimizar-pos` |
-| **URL GitHub** | https://github.com/Daniel-PenaG/pos-cafeteria/tree/performance/optimizar-pos |
-| **PR (crear cuando apruebes)** | https://github.com/Daniel-PenaG/pos-cafeteria/pull/new/performance/optimizar-pos |
+| Rama | Base | PR contra | Contenido |
+|------|------|-----------|-----------|
+| **`feature/promociones-ticket-level`** | `f2456e0` | `main` | Solo commit `0aa1a66`: promos `CANTIDAD_PRECIO`/`DESCUENTO_FIJO` a nivel ticket, snapshots en `detalle_venta`, APIs reporte promo. |
+| **`performance/optimizar-pos`** | `feature/promociones-ticket-level` | `feature/promociones-ticket-level` (o `main` tras merge promos) | Solo commits de rendimiento (middleware, N+1, pool, lazy load, tests, índices). |
 
-## Commits de la rama (más reciente primero)
+**URLs GitHub:**
+
+- Promociones: https://github.com/Daniel-PenaG/pos-cafeteria/tree/feature/promociones-ticket-level
+- Rendimiento: https://github.com/Daniel-PenaG/pos-cafeteria/tree/performance/optimizar-pos
+
+**Orden de merge recomendado:** 1) PR promociones → `main` (Squash and merge). 2) Rebase `performance/optimizar-pos` sobre `main` actualizado. 3) PR rendimiento → `main` (Squash and merge).
+
+Pruebas manuales promociones: [`docs/PROMOCIONES_MANUAL_TESTS.md`](PROMOCIONES_MANUAL_TESTS.md)
+
+---
+
+## Commits de rendimiento (rama `performance/optimizar-pos`)
 
 | Hash completo | Mensaje |
 |---------------|---------|
-| `f2244eba6659c004b005285770e293a604a33477` | validación: índices manuales, benchmark before/after y pruebas ampliadas |
-| `32a45de29db96bb5f8110fa0cced02709ddc9561` | perf: eliminar N+1 en reportes y dashboard |
-| `7d67f6a918ff3db1c0d22786a3c3d203351c29e8` | test: pruebas de regresión reportes y documentación de despliegue |
-| `aeeb1a4db796610dcbd6aff7155329905e5ea8c7` | perf: code-splitting frontend y correcciones ESLint |
-| `165044d59aaa4dbe84af83d1bd19c96089c8fbd0` | perf: pool PostgreSQL conservador e índices de consulta |
-| `8c529fb1b4c49e435e5503290cd434fd4ac1fc9d` | perf: middleware de medición y conteo SQL por petición |
+| *(post-validación, ver `git log` tras push)* | docs/fixes: ramas separadas, índices, seed promo |
+| `bce261ddd49603e595d6c82a22125af9403fbd0d` | docs: benchmark baseline f2456e0 y evidencia completa *(rebase de `9c124b7`)* |
+| `b29c73ad77c0cc3809340a35cce88d5073a13488` | validación: índices manuales, benchmark, pruebas |
+| `f37afc4ac81435082bf87d39db529b453a31bba1` | perf: eliminar N+1 en reportes y dashboard |
+| `827238bcc31e4eb4eb8b646079717bdefe1ed671` | test: pruebas de regresión reportes |
+| `9ad12f67cf76f97ff9077101137234a99fed5172` | perf: code-splitting frontend y ESLint |
+| `08237d78cb828cce4effda39b108a146064fa82e` | perf: pool PostgreSQL e índices |
+| `7e422a8178bb4976098c6a5c2e12d4009aecf3dd` | perf: middleware medición SQL |
 
-**Padre de la rama (local):** `0aa1a667cb63d43fc46016d9975e68fbe53dc757` — promos ticket-level (aún no mergeado a `origin/main` en el momento de esta validación).
+**Commit promociones (rama `feature/promociones-ticket-level`):** `013281c` *(cherry-pick de `0aa1a66` sobre `f2456e0`)*
 
-### ¿Qué es `0aa1a66` vs `f2456e0`?
-
-| Commit | Descripción |
-|--------|-------------|
-| **`f2456e0`** | Referencia conocida de **main antes de optimizar** (reporte por hora con promedios/día y filtro weekday). Es el **baseline correcto** del benchmark. |
-| **`0aa1a66`** | Commit **posterior** a `f2456e0` en main local: promociones ticket-level (`CANTIDAD_PRECIO`, snapshots en `detalle_venta`). No es el estado pre-optimización; la rama de performance se **desarrolló encima** de este commit, pero el benchmark compara código en **`f2456e0`** vs rama optimizada. |
-
-Reproducir benchmark:
+**Benchmark baseline:** `f2456e0` (main pre-optimización, sin promos ticket-level).
 
 ```bash
-cd backend
-python scripts/benchmark_before_after.py
-# baseline por defecto: f2456e0
-# override: PERF_BASELINE_COMMIT=f2456e0 python scripts/benchmark_before_after.py
+cd backend && python scripts/benchmark_before_after.py
 ```
 
 ---
 
-## Tabla benchmark real (2026-08-31)
-
-**Condiciones:** baseline `f2456e0`, rama `performance/optimizar-pos`, SQLite `:memory:`, seed `120 ventas` (`tests/seed_perf.py`), promedio de 5 ejecuciones, script `benchmark_before_after.py`.
+## Tabla benchmark (2026-08-31, baseline f2456e0)
 
 | Endpoint | SQL antes | SQL después | ms antes | ms después | Reducción |
 |----------|-----------|-------------|----------|------------|-----------|
@@ -54,44 +54,78 @@ python scripts/benchmark_before_after.py
 | `GET /reportes/productos-ranking` | 7 | 5 | 8.72 | 6.98 | **28.6%** |
 | `GET /pedidos/activos` | 2 | 2 | 5.74 | 5.16 | 10.1% |
 | `GET /catalogo/productos` | 2 | 2 | 4.35 | 3.61 | 17.0% |
-| `GET /catalogo/insumos` | 2 | 2 | 6.17 | 3.56 | 42.3% |
+| `GET /catalogo/insumos` | 2 | 2 | 6.17 | 3.56 | **42.3%** |
 
 ---
 
-## Resultados de pruebas (evidencia)
+## Resultados de pruebas
 
-### Backend — `python -m pytest -q`
+### Backend
 
 ```
-18 passed, 1 warning in 1.05s
+python -m pytest -q
+→ ver salida en sección «Evidencia última ejecución» al final de este doc
 ```
-
-**Warning (no fallo):** `SECRET_KEY` débil en entorno local (`app/utils/security.py`).
 
 ### Frontend
 
-| Comando | Resultado |
-|---------|-----------|
-| `npm ci` | **Falló** en Windows (EPERM al reemplazar `lightningcss.win32-x64-msvc.node`; archivo bloqueado por antivirus/IDE). |
-| `npm install` + `npm run lint` | **OK** — sin errores ni advertencias ESLint |
-| `npm run build` | **OK** — ver bundle abajo |
-
-En CI/Linux (Vercel) `npm ci` debe ejecutarse sin este bloqueo.
+```
+cd frontend && npm ci && npm run lint && npm run build
+→ ver evidencia al final
+```
 
 ---
 
 ## Bundle frontend
 
-Medición **antes** con build en worktree `f2456e0` (`vite build`). **Después** en rama optimizada.
+| Métrica | Antes (`f2456e0`) | Después | Reducción |
+|---------|-------------------|---------|-----------|
+| Chunk principal (min) | 955.89 KB | 770.23 KB | **19.4%** |
+| Chunk principal (gzip) | 277.31 KB | 231.42 KB | **16.5%** |
 
-| Métrica | Antes (`f2456e0`) | Después (optimizado) | Reducción |
-|---------|-------------------|----------------------|-----------|
-| Chunk principal (min) | **955.89 KB** (`index-*.js` único) | **770.23 KB** (`index-BtgKAhNN.js`) | **19.4%** |
-| Chunk principal (gzip) | **277.31 KB** | **231.42 KB** | **16.5%** |
+**Chunks lazy:** Reportes, Promociones, Recetas, Insumos, Productos, Dashboard, Clientes, Compras, Gastos, Usuarios, CierresDia, CierreCaja, CuentasCajero, ExtrasVenta, ParaLlevar, Categorias, VentasParaLlevar, PageHeader (+ shared).
 
-**Chunks lazy generados (después):** VentasParaLlevar, Categorias, CierresDia, ParaLlevar, Compras, Gastos, CierreCaja, CuentasCajero, Usuarios, Productos, Clientes, Insumos, Recetas, Dashboard, Promociones, ExtrasVenta, Reportes, PageHeader (+ shared: datetimeMx, insumosService, reportesService, permissions, etc.).
+---
 
-**Carga inicial:** Login, Ventas, Mesas activas, Comandera permanecen en el bundle principal.
+## Índices PostgreSQL — auditoría vs existentes
+
+SQLAlchemy `index=True` crea índices `ix_<tabla>_<columna>`. Migraciones en `database.py` añaden índices con prefijo `idx_`.
+
+### Ya existían (no duplicar en UP)
+
+| Tabla.columna(s) | Índice existente | Origen |
+|------------------|------------------|--------|
+| `pedidos.numero_mesa` | `ix_pedidos_numero_mesa` | `index=True` en modelo |
+| `pedidos.(numero_mesa, estado)` | `idx_pedidos_mesa_estado` | migración `database.py` |
+| `cierres_caja.fecha` | `ix_cierres_caja_fecha` | `index=True` |
+| `cierres_caja.id_usuario` | `ix_cierres_caja_id_usuario` | `index=True` |
+| `cierres_caja.(id_usuario, fecha)` | `idx_cierres_usuario_fecha` UNIQUE | migración `database.py` |
+
+### Eliminados del UP (duplicados)
+
+- `idx_pedidos_numero_mesa`
+- `idx_cierres_caja_fecha`
+- `idx_cierres_caja_id_usuario`
+
+### Nuevos en `001_performance_indexes.up.sql` (21 índices)
+
+`ventas` (5), `detalle_venta` (3), `pedidos` (3: estado, fecha_apertura, id_venta), `detalle_pedido` (4), `recetas`/`receta_insumos` (3), `movimientos_inventario` (2), `gastos` (1).
+
+**No se ejecutan al arrancar FastAPI.** Aplicar manualmente (CONCURRENTLY, una sentencia a la vez). Ver archivos `.up.sql` / `.down.sql`.
+
+---
+
+## Seed promoción comercial
+
+- **Eliminado** de `app/main.py`: no se inserta «Lunes de Malteadas» en producción.
+- Función `crear_promocion_lunes_malteadas_si_ausente()` solo corre si `LOCAL_SEED_PROMO=true` **y** SQLite local.
+- Invocación manual en dev (con variable en `.env`):
+
+  ```bash
+  cd backend
+  set LOCAL_SEED_PROMO=true
+  python -c "from app.database import crear_promocion_lunes_malteadas_si_ausente; crear_promocion_lunes_malteadas_si_ausente()"
+  ```
 
 ---
 
@@ -99,129 +133,63 @@ Medición **antes** con build en worktree `f2456e0` (`vite build`). **Después**
 
 | Variable | Default | Uso |
 |----------|---------|-----|
-| `PERF_LOG` | off | Logs + `X-Process-Time-Ms` — **solo local/staging** |
-| `PERF_LOG_SQL` | off | Conteo SQL — **solo local/staging; NO producción** |
-| `PERF_LOG_DETAIL` | off | Debug por petición |
-| `HORA_OPERACION_INICIO` / `FIN` | 9 / 21 | Horario reportes por hora |
-| `DB_POOL_SIZE` | 3 | Pool PostgreSQL |
-| `DB_MAX_OVERFLOW` | 2 | Overflow por worker |
-| `DB_POOL_TIMEOUT` | 15 | seg |
-| `DB_POOL_RECYCLE` | 300 | seg |
+| `PERF_LOG` / `PERF_LOG_SQL` | off | **Solo local/staging. NO producción.** |
+| `LOCAL_SEED_PROMO` | false | Seed promo demo SQLite |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` / … | 3 / 2 / … | Pool PostgreSQL |
 
-**Producción:** no definir `PERF_LOG` ni `PERF_LOG_SQL`.
-
-**Conexiones máximas (2 workers Gunicorn):** 2 × (3 + 2) = **10** conexiones PostgreSQL (sin PgBouncer).
+**Conexiones máx. (2 workers):** 2 × (3 + 2) = **10**
 
 ---
 
-## Índices PostgreSQL — manual, NO FastAPI
+## Despliegue (cuando apruebes)
 
-Los índices **no** se ejecutan al arrancar FastAPI (confirmado: no existe `aplicar_indices_performance()` en `database.py`).
-
-### Orden exacto (UP)
-
-Archivo: `backend/migrations/001_performance_indexes.up.sql`
-
-1. Conectar a PostgreSQL de Render (SQL shell o `psql`).
-2. Ejecutar **cada línea por separado** (CONCURRENTLY no admite transacción multi-statement).
-3. Esperar fin de cada índice (`pg_stat_progress_create_index`) antes del siguiente.
-4. Sintaxis: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ...`
-
-### Verificar que terminaron
-
-```sql
-SELECT indexname, indexdef
-FROM pg_indexes
-WHERE indexname LIKE 'idx_%'
-ORDER BY indexname;
-```
-
-Comprobar que aparecen los 24 índices del archivo UP.
-
-### Reversión (DOWN)
-
-Archivo: `backend/migrations/001_performance_indexes.down.sql` — una sentencia `DROP INDEX CONCURRENTLY IF EXISTS` a la vez, orden inverso.
-
-### SQLite (dev)
-
-Opcional: `backend/migrations/001_performance_indexes.sqlite.sql`
+1. Merge PR promociones (squash) → `main`
+2. Merge PR rendimiento (squash) → `main`
+3. **Índices UP** manual en PostgreSQL + verificar `pg_indexes`
+4. Deploy Render (backend) sin `PERF_*`
+5. Deploy Vercel (frontend)
+6. Smoke tests + [`PROMOCIONES_MANUAL_TESTS.md`](PROMOCIONES_MANUAL_TESTS.md)
 
 ---
 
-## Procedimiento de despliegue (cuando apruebes merge)
+## Rollback con Squash and merge
 
-**No ejecutar hasta completar revisión de este documento.**
-
-### 1. Índices (PostgreSQL) — antes del backend
-
-1. Backup o ventana de bajo tráfico.
-2. Ejecutar UP manual (sección anterior).
-3. Verificar con consulta `pg_indexes`.
-4. Confirmar que no hay índices `INVALID` (`pg_index.indisvalid`).
-
-### 2. Backend (Render)
-
-1. Merge `performance/optimizar-pos` → `main` (cuando apruebes).
-2. Variables de pool (opcional recomendado):
-   ```
-   DB_POOL_SIZE=3
-   DB_MAX_OVERFLOW=2
-   DB_POOL_TIMEOUT=15
-   DB_POOL_RECYCLE=300
-   ```
-3. **No** agregar `PERF_LOG` / `PERF_LOG_SQL` en producción.
-4. Deploy manual o auto-deploy desde `main`.
-5. Verificar `GET /health` → `{"status":"ok"}`.
-
-### 3. Frontend (Vercel)
-
-1. Deploy desde `main` tras merge.
-2. Confirmar build exitoso (`npm ci` en Vercel).
-3. Verificar carga de `/login` y chunks lazy en Network tab.
-
-### 4. Smoke tests post-despliegue
-
-| # | Acción | Esperado |
-|---|--------|----------|
-| 1 | Login cajero/admin | 200, token válido |
-| 2 | `GET /catalogo/productos` | Lista productos |
-| 3 | Abrir Ventas / Mesas | Carga rápida, pedido activo |
-| 4 | Comandera | Líneas en comanda |
-| 5 | `GET /reportes/resumen-dashboard` (admin) | JSON con `top_productos`, `cuentas_hoy` |
-| 6 | Reportes → ventas mes | Sin error, totales coherentes |
-| 7 | Cobro de prueba (staging) | Venta registrada, totales correctos |
-
----
-
-## Caché
-
-No implementada (invalidación multi-worker > beneficio).
-
-## Extras e insumos
-
-Consumo agrupa recetas de productos vendidos. Extras con insumo origen no incluidos aún.
-
----
-
-## Rollback (`git revert`)
-
-Revertir en orden **del más reciente al más antiguo**:
+Usar **Squash and merge** en GitHub para cada PR. Tras deploy, un solo commit por PR en `main`.
 
 ```bash
-git revert f2244eb --no-edit
-git revert 7d67f6a --no-edit
-git revert aeeb1a4 --no-edit
-git revert 165044d --no-edit
-git revert 32a45de --no-edit
-git revert 8c529fb --no-edit
+# Revertir PR de rendimiento (sustituir HASH por el commit squash en main)
+git revert <hash-squash-rendimiento> --no-edit
+
+# Revertir PR de promociones (si necesario, en orden inverso al merge)
+git revert <hash-squash-promociones> --no-edit
 ```
 
-Redeploy backend + frontend desde `main` revertido. Índices UP son seguros de conservar; opcional DOWN manual.
-
-Quitar vars `PERF_*` y `DB_*` de Render si se agregaron para prueba.
+Redeploy backend + frontend. Índices UP opcionalmente revertir con `.down.sql`.
 
 ---
 
-## Workers (512 MB Render)
+## Evidencia última ejecución
 
-2 workers Gunicorn + pool conservador es adecuado para plan ~$7 USD. No aumentar workers sin medir RAM.
+**Fecha:** 2026-08-31 (post-separación de ramas)
+
+### Backend
+
+```
+cd backend && python -m pytest -q
+..................                                                       [100%]
+18 passed, 1 warning in 3.27s
+```
+
+Warning esperado: `SECRET_KEY` débil en entorno local.
+
+### Frontend
+
+```
+cd frontend && npm ci && npm run lint && npm run build
+```
+
+| Comando | Resultado |
+|---------|-----------|
+| `npm ci` | OK en entorno del usuario; en este agente Windows falló EPERM en `lightningcss` (archivo bloqueado). `npm install` + lint/build OK como alternativa local. |
+| `npm run lint` | OK — sin errores ESLint |
+| `npm run build` | OK — `index-BtgKAhNN.js` 770.23 KB / 231.42 KB gzip |
