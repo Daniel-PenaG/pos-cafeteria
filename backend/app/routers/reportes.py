@@ -28,8 +28,17 @@ from app.utils.timezone_mx import (
     filtro_dia_mx,
     filtro_mes_mx,
     filtro_anio_mx,
+    filtro_rango_mx,
     isoformat_utc,
     fecha_mx_desde_utc_naive,
+)
+from app.services.reporte_ventas_service import (
+    resumen_ventas_dia,
+    resumen_ventas_rango,
+    comparar_periodos_ventas,
+    enriquecer_resumen_mes_anio,
+    _desglose_diario,
+    _productos_vendidos,
 )
 
 router = APIRouter(
@@ -48,51 +57,6 @@ def _filtro_fecha_hora_mx(column, d: date):
     """Registros cuyo timestamp cae en el día calendario de México."""
     inicio, fin = bounds_utc_naive_for_mx_date(d)
     return column >= inicio, column <= fin
-
-
-def _productos_vendidos(db: Session, venta_ids: list[int]):
-    if not venta_ids:
-        return []
-
-    detalles = (
-        db.query(
-            DetalleVentaModel.id_producto,
-            func.sum(DetalleVentaModel.cantidad).label("cantidad"),
-            func.sum(DetalleVentaModel.subtotal).label("subtotal"),
-        )
-        .filter(DetalleVentaModel.id_venta.in_(venta_ids))
-        .group_by(DetalleVentaModel.id_producto)
-        .all()
-    )
-
-    productos = []
-    for d in detalles:
-        producto = db.query(ProductoModel).filter(ProductoModel.id_producto == d.id_producto).first()
-        if not producto:
-            continue
-
-        receta = db.query(RecetaModel).filter(
-            RecetaModel.id_producto == producto.id_producto,
-            RecetaModel.activo == True,
-        ).first()
-
-        costo_total = receta.costo_total if receta else 0
-        precio_venta = float(producto.precio_venta)
-        margen = precio_venta - float(costo_total)
-
-        productos.append({
-            "id_producto": producto.id_producto,
-            "nombre": producto.nombre,
-            "cantidad": float(d.cantidad),
-            "subtotal": float(d.subtotal),
-            "precio_venta": precio_venta,
-            "costo_receta": float(costo_total),
-            "margen_unitario": margen,
-            "margen_total": margen * float(d.cantidad),
-        })
-
-    productos.sort(key=lambda p: (-p["cantidad"], -p["subtotal"]))
-    return productos
 
 
 def _productos_ranking(db: Session, filtro, orden: str = "cantidad"):
@@ -214,31 +178,33 @@ def _mesa_label_venta(venta: VentaModel) -> str:
 # ============================
 @router.get("/ventas-dia", dependencies=[Depends(require_admin)])
 def ventas_por_dia(fecha: date, db: Session = Depends(get_db)):
+    return resumen_ventas_dia(db, fecha)
 
-    ventas = (
-        db.query(VentaModel)
-        .filter(*filtro_dia_mx(VentaModel.fecha_hora, fecha))
-        .all()
+
+@router.get("/ventas-rango", dependencies=[Depends(require_admin)])
+def ventas_por_rango(
+    fecha_inicio: date,
+    fecha_fin: date,
+    db: Session = Depends(get_db),
+):
+    if fecha_fin < fecha_inicio:
+        raise HTTPException(status_code=400, detail="fecha_fin debe ser posterior o igual a fecha_inicio")
+    return resumen_ventas_rango(db, fecha_inicio, fecha_fin)
+
+
+@router.get("/ventas-comparar", dependencies=[Depends(require_admin)])
+def ventas_comparar_periodos(
+    fecha_inicio_a: date,
+    fecha_fin_a: date,
+    fecha_inicio_b: date,
+    fecha_fin_b: date,
+    db: Session = Depends(get_db),
+):
+    if fecha_fin_a < fecha_inicio_a or fecha_fin_b < fecha_inicio_b:
+        raise HTTPException(status_code=400, detail="Rango de fechas inválido")
+    return comparar_periodos_ventas(
+        db, fecha_inicio_a, fecha_fin_a, fecha_inicio_b, fecha_fin_b
     )
-
-    if not ventas:
-        return {
-            "fecha": fecha,
-            "total_dia": 0,
-            "numero_ventas": 0,
-            "productos": []
-        }
-
-    total_dia = sum(float(v.total) for v in ventas)
-    venta_ids = [v.id_venta for v in ventas]
-    productos = _productos_vendidos(db, venta_ids)
-
-    return {
-        "fecha": fecha,
-        "total_dia": total_dia,
-        "numero_ventas": len(ventas),
-        "productos": productos
-    }
 
 
 # ============================
@@ -334,30 +300,21 @@ def ventas_por_mes(anio: int, mes: int, db: Session = Depends(get_db)):
 
     total_mes = sum(float(v.total) for v in ventas)
     venta_ids = [v.id_venta for v in ventas]
-
-    from collections import defaultdict
-
-    dias_map = defaultdict(lambda: {"total": 0.0, "numero_ventas": 0})
-    for v in ventas:
-        d = fecha_mx_desde_utc_naive(v.fecha_hora)
-        dias_map[d]["total"] += float(v.total)
-        dias_map[d]["numero_ventas"] += 1
-
-    desglose_dias = [
-        {
-            "fecha": str(d),
-            "total": round(info["total"], 2),
-            "numero_ventas": info["numero_ventas"],
-        }
-        for d, info in sorted(dias_map.items())
-    ]
+    metricas = enriquecer_resumen_mes_anio(db, ventas, venta_ids)
+    desglose_dias = _desglose_diario(db, ventas)
 
     return {
         "anio": anio,
         "mes": mes,
         "nombre_mes": MESES[mes],
         "total_mes": float(total_mes),
-        "numero_ventas": len(ventas),
+        "numero_ventas": metricas["numero_tickets"],
+        "numero_tickets": metricas["numero_tickets"],
+        "ticket_promedio": metricas["ticket_promedio"],
+        "unidades_vendidas": metricas["unidades_vendidas"],
+        "productos_por_ticket": metricas["productos_por_ticket"],
+        "promociones_utilizadas": metricas["promociones_utilizadas"],
+        "venta_por_promociones": metricas["venta_por_promociones"],
         "desglose_dias": desglose_dias,
         "productos": _productos_vendidos(db, venta_ids),
     }
@@ -376,29 +333,44 @@ def ventas_por_anio(anio: int, db: Session = Depends(get_db)):
 
     total_anio = sum(float(v.total) for v in ventas)
     venta_ids = [v.id_venta for v in ventas]
+    metricas = enriquecer_resumen_mes_anio(db, ventas, venta_ids)
 
     from collections import defaultdict
 
-    meses_map = defaultdict(lambda: {"total": 0.0, "numero_ventas": 0})
+    meses_map = defaultdict(lambda: {"ventas": []})
     for v in ventas:
         m = fecha_mx_desde_utc_naive(v.fecha_hora).month
-        meses_map[m]["total"] += float(v.total)
-        meses_map[m]["numero_ventas"] += 1
+        meses_map[m]["ventas"].append(v)
 
-    desglose_meses = [
-        {
-            "mes": m,
-            "nombre_mes": MESES[m],
-            "total": round(info["total"], 2),
-            "numero_ventas": info["numero_ventas"],
-        }
-        for m, info in sorted(meses_map.items())
-    ]
+    desglose_meses = []
+    for m in sorted(meses_map.keys()):
+        grupo = meses_map[m]["ventas"]
+        sub = enriquecer_resumen_mes_anio(db, grupo, [x.id_venta for x in grupo])
+        desglose_meses.append(
+            {
+                "mes": m,
+                "nombre_mes": MESES[m],
+                "total": sub["venta_total"],
+                "venta_total": sub["venta_total"],
+                "numero_ventas": sub["numero_tickets"],
+                "numero_tickets": sub["numero_tickets"],
+                "ticket_promedio": sub["ticket_promedio"],
+                "unidades_vendidas": sub["unidades_vendidas"],
+                "promociones_utilizadas": sub["promociones_utilizadas"],
+                "venta_por_promociones": sub["venta_por_promociones"],
+            }
+        )
 
     return {
         "anio": anio,
         "total_anio": float(total_anio),
-        "numero_ventas": len(ventas),
+        "numero_ventas": metricas["numero_tickets"],
+        "numero_tickets": metricas["numero_tickets"],
+        "ticket_promedio": metricas["ticket_promedio"],
+        "unidades_vendidas": metricas["unidades_vendidas"],
+        "productos_por_ticket": metricas["productos_por_ticket"],
+        "promociones_utilizadas": metricas["promociones_utilizadas"],
+        "venta_por_promociones": metricas["venta_por_promociones"],
         "desglose_meses": desglose_meses,
         "productos": _productos_vendidos(db, venta_ids),
     }

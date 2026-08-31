@@ -3,6 +3,8 @@ import {
   getVentasDia,
   getVentasMes,
   getVentasAnio,
+  getVentasRango,
+  getVentasComparar,
   getConsumoInsumos,
   getTiemposPreparacion,
   getProductosRanking,
@@ -25,6 +27,138 @@ const MESES = [
   { v: 11, l: "Noviembre" },
   { v: 12, l: "Diciembre" },
 ];
+
+function fmt(n) {
+  return `$${Number(n || 0).toFixed(2)}`;
+}
+
+function fmtPct(n) {
+  if (n == null || Number.isNaN(n)) return "—";
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${Number(n).toFixed(1)}%`;
+}
+
+function fmtFecha(iso) {
+  if (!iso) return "—";
+  const [y, m, d] = String(iso).split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function ResumenOperaciones({ data, titulo = "Resumen del día" }) {
+  if (!data) return null;
+  const ventaTotal = data.total_dia ?? data.total_mes ?? data.total_anio ?? data.venta_total ?? 0;
+  const tickets = data.numero_tickets ?? data.numero_ventas ?? 0;
+
+  return (
+    <div className="card" style={{ marginBottom: "1.5rem" }}>
+      <h3 style={{ marginTop: 0 }}>{titulo}</h3>
+      <div className="stats-grid">
+        <div className="stat-card">
+          <p className="stat-card__label">Venta total</p>
+          <p className="stat-card__value">{fmt(ventaTotal)}</p>
+        </div>
+        <div className="stat-card">
+          <p className="stat-card__label">Número de tickets</p>
+          <p className="stat-card__value">{tickets}</p>
+        </div>
+        <div className="stat-card">
+          <p className="stat-card__label">Ticket promedio</p>
+          <p className="stat-card__value">{fmt(data.ticket_promedio)}</p>
+        </div>
+        <div className="stat-card">
+          <p className="stat-card__label">Unidades vendidas</p>
+          <p className="stat-card__value">{Number(data.unidades_vendidas || 0).toFixed(0)}</p>
+        </div>
+        <div className="stat-card">
+          <p className="stat-card__label">Productos por ticket</p>
+          <p className="stat-card__value">{Number(data.productos_por_ticket || 0).toFixed(2)}</p>
+        </div>
+        <div className="stat-card">
+          <p className="stat-card__label">Promociones utilizadas</p>
+          <p className="stat-card__value">{data.promociones_utilizadas ?? 0}</p>
+        </div>
+        <div className="stat-card">
+          <p className="stat-card__label">Venta por promociones</p>
+          <p className="stat-card__value">{fmt(data.venta_por_promociones)}</p>
+        </div>
+        {data.promedio_venta_diaria != null && (
+          <div className="stat-card">
+            <p className="stat-card__label">Promedio venta diaria</p>
+            <p className="stat-card__value">{fmt(data.promedio_venta_diaria)}</p>
+          </div>
+        )}
+        {data.promedio_tickets_diarios != null && (
+          <div className="stat-card">
+            <p className="stat-card__label">Promedio tickets/día</p>
+            <p className="stat-card__value">{Number(data.promedio_tickets_diarios || 0).toFixed(1)}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TablaProductos({ productos }) {
+  if (!productos?.length) {
+    return <p className="muted">Sin ventas de productos en este periodo.</p>;
+  }
+
+  return (
+    <table className="table">
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th>Cantidad</th>
+          <th>Subtotal</th>
+          <th>Margen total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {productos.map((p) => (
+          <tr key={p.id_producto}>
+            <td>{p.nombre}</td>
+            <td>{p.cantidad}</td>
+            <td>{fmt(p.subtotal)}</td>
+            <td>{fmt(p.margen_total)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function TablaDesgloseDias({ filas }) {
+  if (!filas?.length) {
+    return <p className="muted">Sin ventas en el periodo.</p>;
+  }
+
+  return (
+    <table className="table">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Venta</th>
+          <th>Tickets</th>
+          <th>Ticket prom.</th>
+          <th>Unidades</th>
+          <th>Promociones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {filas.map((d) => (
+          <tr key={d.fecha}>
+            <td>{fmtFecha(d.fecha)}</td>
+            <td>{fmt(d.venta_total ?? d.total)}</td>
+            <td>{d.numero_tickets ?? d.numero_ventas}</td>
+            <td>{fmt(d.ticket_promedio)}</td>
+            <td>{Number(d.unidades_vendidas || 0).toFixed(0)}</td>
+            <td>{d.promociones_utilizadas ?? 0}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 function TablaRanking({ productos }) {
   if (!productos?.length) {
@@ -54,7 +188,7 @@ function TablaRanking({ productos }) {
             <td>{p.nombre}</td>
             <td>{p.categoria || "—"}</td>
             <td>{p.cantidad}</td>
-            <td>${p.subtotal.toFixed(2)}</td>
+            <td>{fmt(p.subtotal)}</td>
             <td>{p.porcentaje}%</td>
           </tr>
         ))}
@@ -63,32 +197,32 @@ function TablaRanking({ productos }) {
   );
 }
 
-function TablaProductos({ productos }) {
-  if (!productos?.length) {
-    return <p className="muted">Sin ventas de productos en este periodo.</p>;
-  }
-
+function TablaPromocionesDetalle({ promociones }) {
+  if (!promociones?.length) return null;
   return (
-    <table className="table">
-      <thead>
-        <tr>
-          <th>Producto</th>
-          <th>Cantidad</th>
-          <th>Subtotal</th>
-          <th>Margen total</th>
-        </tr>
-      </thead>
-      <tbody>
-        {productos.map((p) => (
-          <tr key={p.id_producto}>
-            <td>{p.nombre}</td>
-            <td>{p.cantidad}</td>
-            <td>${p.subtotal.toFixed(2)}</td>
-            <td>${p.margen_total.toFixed(2)}</td>
+    <div className="card" style={{ marginTop: "1.5rem" }}>
+      <h3>Detalle de promociones</h3>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Promoción</th>
+            <th>Cantidad</th>
+            <th>Importe</th>
+            <th>Descuento</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {promociones.map((p) => (
+            <tr key={p.id_promocion}>
+              <td>{p.nombre}</td>
+              <td>{p.cantidad}</td>
+              <td>{fmt(p.importe)}</td>
+              <td>{fmt(p.descuento_total)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -97,6 +231,13 @@ export default function Reportes() {
   const [tab, setTab] = useState("dia");
 
   const [fecha, setFecha] = useState(fechaMexicoISO);
+  const [fechaInicio, setFechaInicio] = useState(fechaMexicoISO);
+  const [fechaFin, setFechaFin] = useState(fechaMexicoISO);
+  const [fechaInicioA, setFechaInicioA] = useState("");
+  const [fechaFinA, setFechaFinA] = useState("");
+  const [fechaInicioB, setFechaInicioB] = useState(fechaMexicoISO);
+  const [fechaFinB, setFechaFinB] = useState(fechaMexicoISO);
+
   const [anioMes, setAnioMes] = useState(hoy.getFullYear());
   const [mes, setMes] = useState(hoy.getMonth() + 1);
   const [anio, setAnio] = useState(hoy.getFullYear());
@@ -106,14 +247,73 @@ export default function Reportes() {
   const [tiempos, setTiempos] = useState(null);
   const [ranking, setRanking] = useState(null);
   const [promociones, setPromociones] = useState(null);
+  const [comparacion, setComparacion] = useState(null);
   const [promocionesPeriodo, setPromocionesPeriodo] = useState("dia");
   const [rankingPeriodo, setRankingPeriodo] = useState("dia");
   const [ordenRank, setOrdenRank] = useState("cantidad");
   const [loading, setLoading] = useState(false);
 
+  const limpiarResultados = () => {
+    setReporte(null);
+    setConsumo(null);
+    setTiempos(null);
+    setRanking(null);
+    setPromociones(null);
+    setComparacion(null);
+  };
+
+  const presetSemanaAnterior = () => {
+    const fin = new Date();
+    fin.setDate(fin.getDate() - 7);
+    const inicio = new Date(fin);
+    inicio.setDate(inicio.getDate() - 6);
+    const fmtIso = (d) => d.toISOString().slice(0, 10);
+    setFechaInicioA(fmtIso(inicio));
+    setFechaFinA(fmtIso(fin));
+    setFechaInicioB(fechaMexicoISO);
+    const hoyDate = new Date();
+    const inicioSemana = new Date(hoyDate);
+    inicioSemana.setDate(hoyDate.getDate() - 6);
+    setFechaFinB(fechaMexicoISO);
+    setFechaInicioB(inicioSemana.toISOString().slice(0, 10));
+  };
+
   const cargar = async () => {
     setLoading(true);
     try {
+      if (tab === "comparar") {
+        if (!fechaInicioA || !fechaFinA || !fechaInicioB || !fechaFinB) {
+          alert("Completa las fechas de ambos periodos");
+          return;
+        }
+        const c = await getVentasComparar({
+          fechaInicioA,
+          fechaFinA,
+          fechaInicioB,
+          fechaFinB,
+        });
+        setReporte(null);
+        setConsumo(null);
+        setTiempos(null);
+        setRanking(null);
+        setPromociones(null);
+        setComparacion(c);
+        return;
+      }
+
+      if (tab === "rango") {
+        if (!fechaInicio || !fechaFin) return alert("Selecciona fecha inicial y final");
+        if (fechaFin < fechaInicio) return alert("La fecha final debe ser posterior o igual");
+        const v = await getVentasRango(fechaInicio, fechaFin);
+        setReporte(v);
+        setConsumo(null);
+        setTiempos(null);
+        setRanking(null);
+        setPromociones(null);
+        setComparacion(null);
+        return;
+      }
+
       if (tab === "ranking") {
         const params = { periodo: rankingPeriodo, orden: ordenRank };
         if (rankingPeriodo === "dia") {
@@ -131,6 +331,7 @@ export default function Reportes() {
         setConsumo(null);
         setTiempos(null);
         setPromociones(null);
+        setComparacion(null);
       } else if (tab === "promociones") {
         const params = { periodo: promocionesPeriodo };
         if (promocionesPeriodo === "dia") {
@@ -148,6 +349,7 @@ export default function Reportes() {
         setConsumo(null);
         setTiempos(null);
         setRanking(null);
+        setComparacion(null);
       } else if (tab === "tiempos") {
         if (!fecha) return alert("Selecciona una fecha");
         const t = await getTiemposPreparacion(fecha);
@@ -156,6 +358,7 @@ export default function Reportes() {
         setConsumo(null);
         setRanking(null);
         setPromociones(null);
+        setComparacion(null);
       } else if (tab === "dia") {
         if (!fecha) return alert("Selecciona una fecha");
         const [v, c] = await Promise.all([
@@ -167,6 +370,7 @@ export default function Reportes() {
         setTiempos(null);
         setRanking(null);
         setPromociones(null);
+        setComparacion(null);
       } else if (tab === "mes") {
         const v = await getVentasMes(anioMes, mes);
         setReporte(v);
@@ -174,6 +378,7 @@ export default function Reportes() {
         setTiempos(null);
         setRanking(null);
         setPromociones(null);
+        setComparacion(null);
       } else {
         const v = await getVentasAnio(anio);
         setReporte(v);
@@ -181,6 +386,7 @@ export default function Reportes() {
         setTiempos(null);
         setRanking(null);
         setPromociones(null);
+        setComparacion(null);
       }
     } catch (err) {
       alert(err.response?.data?.detail || "Error al cargar reporte");
@@ -189,23 +395,29 @@ export default function Reportes() {
     }
   };
 
-  const totalLabel =
+  const tituloResumen =
     tab === "dia"
-      ? reporte?.total_dia
+      ? `Resumen del día — ${fmtFecha(reporte?.fecha)}`
       : tab === "mes"
-        ? reporte?.total_mes
-        : reporte?.total_anio;
+        ? `Resumen del mes — ${reporte?.nombre_mes} ${reporte?.anio}`
+        : tab === "anio"
+          ? `Resumen del año — ${reporte?.anio}`
+          : tab === "rango"
+            ? `Resumen del periodo — ${fmtFecha(reporte?.fecha_inicio)} al ${fmtFecha(reporte?.fecha_fin)}`
+            : "Resumen";
 
   return (
     <div>
       <PageHeader
         title="Reportes"
-        subtitle="Ventas, promociones, insumos y tiempos de preparación en cocina"
+        subtitle="Análisis de ventas, tickets, promociones e insumos"
       />
 
-      <div className="tabs" style={{ marginBottom: "1rem" }}>
+      <div className="tabs" style={{ marginBottom: "1rem", flexWrap: "wrap" }}>
         {[
           { id: "dia", label: "Ventas por día" },
+          { id: "rango", label: "Por rango" },
+          { id: "comparar", label: "Comparar periodos" },
           { id: "mes", label: "Ventas por mes" },
           { id: "anio", label: "Ventas por año" },
           { id: "tiempos", label: "Tiempos por mesa" },
@@ -218,11 +430,7 @@ export default function Reportes() {
             className={tab === t.id ? "btn btn--accent btn--sm" : "btn btn--ghost btn--sm"}
             onClick={() => {
               setTab(t.id);
-              setReporte(null);
-              setConsumo(null);
-              setTiempos(null);
-              setRanking(null);
-              setPromociones(null);
+              limpiarResultados();
             }}
           >
             {t.label}
@@ -231,7 +439,7 @@ export default function Reportes() {
       </div>
 
       <div className="card" style={{ marginBottom: "1rem" }}>
-        {tab === "ranking" && (
+        {(tab === "ranking" || tab === "promociones") && (
           <div className="tabs" style={{ marginBottom: "1rem" }}>
             {[
               { id: "dia", label: "Por día" },
@@ -242,35 +450,18 @@ export default function Reportes() {
                 key={p.id}
                 type="button"
                 className={
-                  rankingPeriodo === p.id ? "btn btn--primary btn--sm" : "btn btn--ghost btn--sm"
+                  (tab === "ranking" ? rankingPeriodo : promocionesPeriodo) === p.id
+                    ? "btn btn--primary btn--sm"
+                    : "btn btn--ghost btn--sm"
                 }
                 onClick={() => {
-                  setRankingPeriodo(p.id);
-                  setRanking(null);
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {tab === "promociones" && (
-          <div className="tabs" style={{ marginBottom: "1rem" }}>
-            {[
-              { id: "dia", label: "Por día" },
-              { id: "mes", label: "Por mes" },
-              { id: "anio", label: "Por año" },
-            ].map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className={
-                  promocionesPeriodo === p.id ? "btn btn--primary btn--sm" : "btn btn--ghost btn--sm"
-                }
-                onClick={() => {
-                  setPromocionesPeriodo(p.id);
-                  setPromociones(null);
+                  if (tab === "ranking") {
+                    setRankingPeriodo(p.id);
+                    setRanking(null);
+                  } else {
+                    setPromocionesPeriodo(p.id);
+                    setPromociones(null);
+                  }
                 }}
               >
                 {p.label}
@@ -280,18 +471,50 @@ export default function Reportes() {
         )}
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-end" }}>
+          {tab === "rango" && (
+            <>
+              <div className="form-row" style={{ margin: 0 }}>
+                <label>Fecha inicial</label>
+                <input type="date" className="input" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
+              </div>
+              <div className="form-row" style={{ margin: 0 }}>
+                <label>Fecha final</label>
+                <input type="date" className="input" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
+              </div>
+            </>
+          )}
+
+          {tab === "comparar" && (
+            <>
+              <div className="form-row" style={{ margin: 0 }}>
+                <label>Periodo A — inicio</label>
+                <input type="date" className="input" value={fechaInicioA} onChange={(e) => setFechaInicioA(e.target.value)} />
+              </div>
+              <div className="form-row" style={{ margin: 0 }}>
+                <label>Periodo A — fin</label>
+                <input type="date" className="input" value={fechaFinA} onChange={(e) => setFechaFinA(e.target.value)} />
+              </div>
+              <div className="form-row" style={{ margin: 0 }}>
+                <label>Periodo B — inicio</label>
+                <input type="date" className="input" value={fechaInicioB} onChange={(e) => setFechaInicioB(e.target.value)} />
+              </div>
+              <div className="form-row" style={{ margin: 0 }}>
+                <label>Periodo B — fin</label>
+                <input type="date" className="input" value={fechaFinB} onChange={(e) => setFechaFinB(e.target.value)} />
+              </div>
+              <button type="button" className="btn btn--ghost btn--sm" onClick={presetSemanaAnterior}>
+                Semana ant. vs actual
+              </button>
+            </>
+          )}
+
           {(tab === "dia" ||
             tab === "tiempos" ||
             (tab === "ranking" && rankingPeriodo === "dia") ||
             (tab === "promociones" && promocionesPeriodo === "dia")) && (
             <div className="form-row" style={{ margin: 0 }}>
               <label>Fecha</label>
-              <input
-                type="date"
-                className="input"
-                value={fecha}
-                onChange={(e) => setFecha(e.target.value)}
-              />
+              <input type="date" className="input" value={fecha} onChange={(e) => setFecha(e.target.value)} />
             </div>
           )}
 
@@ -301,26 +524,13 @@ export default function Reportes() {
             <>
               <div className="form-row" style={{ margin: 0 }}>
                 <label>Año</label>
-                <input
-                  type="number"
-                  className="input"
-                  min={2020}
-                  max={2100}
-                  value={anioMes}
-                  onChange={(e) => setAnioMes(Number(e.target.value))}
-                />
+                <input type="number" className="input" min={2020} max={2100} value={anioMes} onChange={(e) => setAnioMes(Number(e.target.value))} />
               </div>
               <div className="form-row" style={{ margin: 0 }}>
                 <label>Mes</label>
-                <select
-                  className="input"
-                  value={mes}
-                  onChange={(e) => setMes(Number(e.target.value))}
-                >
+                <select className="input" value={mes} onChange={(e) => setMes(Number(e.target.value))}>
                   {MESES.map((m) => (
-                    <option key={m.v} value={m.v}>
-                      {m.l}
-                    </option>
+                    <option key={m.v} value={m.v}>{m.l}</option>
                   ))}
                 </select>
               </div>
@@ -332,28 +542,14 @@ export default function Reportes() {
             (tab === "promociones" && promocionesPeriodo === "anio")) && (
             <div className="form-row" style={{ margin: 0 }}>
               <label>Año</label>
-              <input
-                type="number"
-                className="input"
-                min={2020}
-                max={2100}
-                value={anio}
-                onChange={(e) => setAnio(Number(e.target.value))}
-              />
+              <input type="number" className="input" min={2020} max={2100} value={anio} onChange={(e) => setAnio(Number(e.target.value))} />
             </div>
           )}
 
           {tab === "ranking" && (
             <div className="form-row" style={{ margin: 0 }}>
               <label>Ordenar por</label>
-              <select
-                className="input"
-                value={ordenRank}
-                onChange={(e) => {
-                  setOrdenRank(e.target.value);
-                  setRanking(null);
-                }}
-              >
+              <select className="input" value={ordenRank} onChange={(e) => { setOrdenRank(e.target.value); setRanking(null); }}>
                 <option value="cantidad">Cantidad vendida</option>
                 <option value="subtotal">Ingresos ($)</option>
               </select>
@@ -368,50 +564,13 @@ export default function Reportes() {
 
       {reporte && (
         <>
-          <div className="stats-grid" style={{ marginBottom: "1.5rem" }}>
-            <div className="stat-card">
-              <p className="stat-card__label">Total</p>
-              <p className="stat-card__value">${Number(totalLabel || 0).toFixed(2)}</p>
-            </div>
-            <div className="stat-card">
-              <p className="stat-card__label">Número de ventas</p>
-              <p className="stat-card__value">{reporte.numero_ventas}</p>
-            </div>
-            {tab === "mes" && (
-              <div className="stat-card">
-                <p className="stat-card__label">Periodo</p>
-                <p className="stat-card__value">{reporte.nombre_mes} {reporte.anio}</p>
-              </div>
-            )}
-            {tab === "anio" && (
-              <div className="stat-card">
-                <p className="stat-card__label">Año</p>
-                <p className="stat-card__value">{reporte.anio}</p>
-              </div>
-            )}
-          </div>
+          <ResumenOperaciones data={reporte} titulo={tituloResumen} />
+          <TablaPromocionesDetalle promociones={reporte.promociones_detalle} />
 
-          {tab === "mes" && reporte.desglose_dias?.length > 0 && (
+          {(tab === "rango" || tab === "mes") && reporte.desglose_dias?.length > 0 && (
             <div className="card" style={{ marginBottom: "1.5rem" }}>
               <h3>Desglose por día</h3>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th>Total</th>
-                    <th>Ventas</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reporte.desglose_dias.map((d) => (
-                    <tr key={d.fecha}>
-                      <td>{d.fecha}</td>
-                      <td>${d.total.toFixed(2)}</td>
-                      <td>{d.numero_ventas}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <TablaDesgloseDias filas={reporte.desglose_dias} />
             </div>
           )}
 
@@ -422,16 +581,22 @@ export default function Reportes() {
                 <thead>
                   <tr>
                     <th>Mes</th>
-                    <th>Total</th>
-                    <th>Ventas</th>
+                    <th>Venta</th>
+                    <th>Tickets</th>
+                    <th>Ticket prom.</th>
+                    <th>Unidades</th>
+                    <th>Promociones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {reporte.desglose_meses.map((m) => (
                     <tr key={m.mes}>
                       <td>{m.nombre_mes}</td>
-                      <td>${m.total.toFixed(2)}</td>
-                      <td>{m.numero_ventas}</td>
+                      <td>{fmt(m.venta_total ?? m.total)}</td>
+                      <td>{m.numero_tickets ?? m.numero_ventas}</td>
+                      <td>{fmt(m.ticket_promedio)}</td>
+                      <td>{Number(m.unidades_vendidas || 0).toFixed(0)}</td>
+                      <td>{m.promociones_utilizadas ?? 0}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -440,8 +605,48 @@ export default function Reportes() {
           )}
 
           <div className="card">
-            <h3>Productos vendidos (mayor a menor)</h3>
+            <h3>Productos vendidos</h3>
             <TablaProductos productos={reporte.productos} />
+          </div>
+        </>
+      )}
+
+      {comparacion && (
+        <>
+          <div className="card" style={{ marginBottom: "1.5rem" }}>
+            <h3>Comparación de periodos</h3>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Métrica</th>
+                  <th>
+                    Periodo A<br />
+                    <span className="hint">{fmtFecha(comparacion.periodo_a.fecha_inicio)} — {fmtFecha(comparacion.periodo_a.fecha_fin)}</span>
+                  </th>
+                  <th>
+                    Periodo B<br />
+                    <span className="hint">{fmtFecha(comparacion.periodo_b.fecha_inicio)} — {fmtFecha(comparacion.periodo_b.fecha_fin)}</span>
+                  </th>
+                  <th>Variación</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ["Venta total", "venta_total", fmt],
+                  ["Tickets", "numero_tickets", (n) => n],
+                  ["Ticket promedio", "ticket_promedio", fmt],
+                  ["Unidades vendidas", "unidades_vendidas", (n) => Number(n).toFixed(0)],
+                  ["Productos por ticket", "productos_por_ticket", (n) => Number(n).toFixed(2)],
+                ].map(([label, key, formatter]) => (
+                  <tr key={key}>
+                    <td>{label}</td>
+                    <td>{formatter(comparacion.periodo_a[key])}</td>
+                    <td>{formatter(comparacion.periodo_b[key])}</td>
+                    <td>{fmtPct(comparacion.variacion[`${key}_pct`])}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </>
       )}
@@ -490,7 +695,6 @@ export default function Reportes() {
               <p className="stat-card__value">{tiempos.por_mesa?.length ?? 0}</p>
             </div>
           </div>
-
           {tiempos.por_mesa?.length === 0 ? (
             <p className="empty-state">No hay pedidos completados en cocina para esta fecha.</p>
           ) : (
@@ -499,18 +703,13 @@ export default function Reportes() {
                 <h3>
                   Mesa {mesa.numero_mesa}{" "}
                   <span className="hint">
-                    — {mesa.total_pedidos} pedido(s) · prom. {mesa.promedio_texto} · máx{" "}
-                    {mesa.max_texto}
+                    — {mesa.total_pedidos} pedido(s) · prom. {mesa.promedio_texto} · máx {mesa.max_texto}
                   </span>
                 </h3>
                 {mesa.pedidos.map((ped) => (
                   <div key={ped.id_pedido} className="panel-muted" style={{ marginTop: "1rem" }}>
                     <p>
-                      <strong>Pedido #{ped.id_pedido}</strong> · {ped.duracion_pedido_texto}{" "}
-                      <span className="hint">
-                        ({new Date(ped.inicio).toLocaleTimeString()} →{" "}
-                        {new Date(ped.fin).toLocaleTimeString()})
-                      </span>
+                      <strong>Pedido #{ped.id_pedido}</strong> · {ped.duracion_pedido_texto}
                     </p>
                     <table className="table" style={{ marginTop: "0.5rem" }}>
                       <thead>
@@ -546,50 +745,43 @@ export default function Reportes() {
               <p className="stat-card__value">{promociones.periodo_label}</p>
             </div>
             <div className="stat-card">
-              <p className="stat-card__label">Líneas con promo</p>
+              <p className="stat-card__label">Unidades con promo</p>
               <p className="stat-card__value">{promociones.total_ventas_con_promo}</p>
             </div>
             <div className="stat-card">
               <p className="stat-card__label">Descuento total</p>
-              <p className="stat-card__value">
-                ${Number(promociones.total_descuento || 0).toFixed(2)}
-              </p>
+              <p className="stat-card__value">{fmt(promociones.total_descuento)}</p>
             </div>
             <div className="stat-card">
               <p className="stat-card__label">Ingresos con promo</p>
-              <p className="stat-card__value">
-                ${Number(promociones.total_ingresos_con_promo || 0).toFixed(2)}
-              </p>
+              <p className="stat-card__value">{fmt(promociones.total_ingresos_con_promo)}</p>
             </div>
           </div>
-
           <div className="card">
             <h3>Ventas por promoción</h3>
             {!promociones.promociones_usadas?.length ? (
               <p className="empty-state">Sin ventas con promoción en este periodo.</p>
             ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Promoción</th>
-                      <th>Usos (líneas)</th>
-                      <th>Descuento total</th>
-                      <th>Ingresos</th>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Promoción</th>
+                    <th>Usos (unidades)</th>
+                    <th>Descuento total</th>
+                    <th>Ingresos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {promociones.promociones_usadas.map((p) => (
+                    <tr key={p.id_promocion}>
+                      <td>{p.nombre}</td>
+                      <td>{p.usos}</td>
+                      <td>{fmt(p.descuento_total)}</td>
+                      <td>{fmt(p.ingresos_con_promo)}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {promociones.promociones_usadas.map((p) => (
-                      <tr key={p.id_promocion}>
-                        <td>{p.nombre}</td>
-                        <td>{p.usos}</td>
-                        <td>${Number(p.descuento_total).toFixed(2)}</td>
-                        <td>${Number(p.ingresos_con_promo || 0).toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         </>
@@ -612,19 +804,20 @@ export default function Reportes() {
             </div>
             <div className="stat-card">
               <p className="stat-card__label">Ingresos totales</p>
-              <p className="stat-card__value">${ranking.total_ingresos?.toFixed(2)}</p>
+              <p className="stat-card__value">{fmt(ranking.total_ingresos)}</p>
             </div>
           </div>
-
           <div className="card">
-            <h3>
-              Ranking —{" "}
-              {ordenRank === "cantidad" ? "por cantidad vendida" : "por ingresos"}
-            </h3>
+            <h3>Ranking — {ordenRank === "cantidad" ? "por cantidad" : "por ingresos"}</h3>
             <TablaRanking productos={ranking.productos} />
           </div>
         </>
       )}
+
+      <p className="hint" style={{ marginTop: "1.5rem" }}>
+        Tickets: cada fila en <code>ventas</code> (id_venta) es una operación cerrada — válido en todo el histórico.
+        Promociones: métricas confiables solo en ventas con <code>id_promocion</code> registrado en detalle.
+      </p>
     </div>
   );
 }

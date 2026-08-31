@@ -45,6 +45,35 @@ export async function getVentasDia(fecha) {
   return res.data;
 }
 
+export async function getVentasRango(fechaInicio, fechaFin) {
+  const params = new URLSearchParams({
+    fecha_inicio: fechaInicio,
+    fecha_fin: fechaFin,
+  });
+  const res = await api.get(`/reportes/ventas-rango?${params}`, {
+    headers: getAuthHeader(),
+  });
+  return res.data;
+}
+
+export async function getVentasComparar({
+  fechaInicioA,
+  fechaFinA,
+  fechaInicioB,
+  fechaFinB,
+}) {
+  const params = new URLSearchParams({
+    fecha_inicio_a: fechaInicioA,
+    fecha_fin_a: fechaFinA,
+    fecha_inicio_b: fechaInicioB,
+    fecha_fin_b: fechaFinB,
+  });
+  const res = await api.get(`/reportes/ventas-comparar?${params}`, {
+    headers: getAuthHeader(),
+  });
+  return res.data;
+}
+
 export async function getConsumoInsumos(fecha) {
   const res = await api.get(`/reportes/consumo-insumos?fecha=${fecha}`, {
     headers: getAuthHeader(),

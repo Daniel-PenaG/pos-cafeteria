@@ -50,6 +50,15 @@ def filtro_anio_mx(column, anio: int):
     return column >= inicio, column <= fin
 
 
+def filtro_rango_mx(column, fecha_inicio: date, fecha_fin: date):
+    """SQLAlchemy: columna datetime dentro del rango [fecha_inicio, fecha_fin] (MX)."""
+    if fecha_fin < fecha_inicio:
+        raise ValueError("fecha_fin debe ser >= fecha_inicio")
+    inicio, _ = bounds_utc_naive_for_mx_date(fecha_inicio)
+    _, fin = bounds_utc_naive_for_mx_date(fecha_fin)
+    return column >= inicio, column <= fin
+
+
 def isoformat_utc(dt: datetime | None) -> str | None:
     """Serializa datetime UTC naive con sufijo Z para el frontend."""
     if dt is None:
