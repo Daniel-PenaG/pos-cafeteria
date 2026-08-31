@@ -1,8 +1,10 @@
 import { Link, useLocation } from "react-router-dom";
-import { HiOutlineBuildingStorefront } from "react-icons/hi2";
+import { HiOutlineBuildingStorefront, HiOutlineXMark } from "react-icons/hi2";
 import { useAuthStore } from "../store/authStore";
 import { canAccessRoute, normalizeRole } from "../config/permissions";
 import NavIcon from "./NavIcon";
+
+const SIDEBAR_ID = "app-sidebar-nav";
 
 const NAV = [
   {
@@ -45,26 +47,39 @@ const NAV = [
   },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ open = false, onClose }) {
   const location = useLocation();
   const rol = normalizeRole(useAuthStore((state) => state.user?.rol));
   const modulos = useAuthStore((state) => state.user?.modulos);
 
   return (
-    <aside className="sidebar">
+    <aside
+      id={SIDEBAR_ID}
+      className={`sidebar${open ? " sidebar--open" : ""}`}
+    >
       <div className="sidebar__brand">
-        <div className="flex items-center gap-2.5">
-          <span className="flex size-9 items-center justify-center rounded-lg bg-white/15 text-white">
-            <HiOutlineBuildingStorefront className="size-5" aria-hidden />
-          </span>
-          <div>
-            <h1 className="sidebar__logo">Café POS</h1>
-            <p className="sidebar__tagline">Gestión de cafetería</p>
+        <div className="sidebar__brand-row">
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-9 items-center justify-center rounded-lg bg-white/15 text-white">
+              <HiOutlineBuildingStorefront className="size-5" aria-hidden />
+            </span>
+            <div>
+              <h1 className="sidebar__logo">Coffe Song</h1>
+              <p className="sidebar__tagline">Gestión de cafetería</p>
+            </div>
           </div>
+          <button
+            type="button"
+            className="sidebar__close"
+            aria-label="Cerrar menú"
+            onClick={onClose}
+          >
+            <HiOutlineXMark className="size-6" aria-hidden />
+          </button>
         </div>
       </div>
 
-      <nav className="sidebar__nav">
+      <nav className="sidebar__nav" aria-label="Navegación principal">
         {NAV.map((section) => {
           const items = section.items.filter((item) =>
             canAccessRoute(rol, item.to, modulos)
@@ -83,6 +98,7 @@ export default function Sidebar() {
                       ? "sidebar__link sidebar__link--active"
                       : "sidebar__link"
                   }
+                  onClick={onClose}
                 >
                   <span className="sidebar__icon" aria-hidden>
                     <NavIcon to={item.to} className="size-[1.1rem]" />
@@ -97,3 +113,5 @@ export default function Sidebar() {
     </aside>
   );
 }
+
+export { SIDEBAR_ID };

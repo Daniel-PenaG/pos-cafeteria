@@ -1,0 +1,367 @@
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE — breakpoints en docs/RESPONSIVE_VALIDATION.md
+   0–479 celular pequeño | 480–767 celular | 768–1023 tablet | 1024+ escritorio
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.sidebar-overlay {
+  display: none;
+}
+
+.sidebar__brand-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.sidebar__close {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--paper);
+  cursor: pointer;
+}
+
+.navbar__start {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.navbar__menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--cream-dark);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--coffee);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.navbar__title-short {
+  display: none;
+}
+
+.navbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.table-toolbar .btn {
+  min-height: 44px;
+}
+
+/* ─── Mobile (< 768px) ─── */
+@media (max-width: 767px) {
+  html {
+    overflow-x: hidden;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+
+  .app-shell {
+    display: block;
+  }
+
+  .app-main {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .app-content {
+    padding: 1rem;
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .page {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    border: none;
+    background: rgba(44, 24, 16, 0.45);
+    cursor: pointer;
+    animation: fadeIn 0.2s ease;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1200;
+    width: min(82vw, 290px);
+    height: 100dvh;
+    max-height: 100dvh;
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    transform: translateX(-100%);
+    transition: transform 0.28s ease;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .sidebar--open {
+    transform: translateX(0);
+  }
+
+  .sidebar__close {
+    display: inline-flex;
+  }
+
+  .navbar {
+    height: auto;
+    min-height: 56px;
+    padding: 0.65rem 1rem;
+    padding-top: max(0.65rem, env(safe-area-inset-top));
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .navbar__menu-btn {
+    display: inline-flex;
+  }
+
+  .navbar__title-full {
+    display: none;
+  }
+
+  .navbar__title-short {
+    display: inline;
+  }
+
+  .navbar__title {
+    font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .navbar__user-name {
+    display: none;
+  }
+
+  .navbar__user-badge {
+    display: none;
+  }
+
+  .navbar__logout-label {
+    display: none;
+  }
+
+  .navbar__logout {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0.5rem;
+  }
+
+  .page-header__row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-header h1 {
+    font-size: 1.45rem;
+  }
+
+  .page-header__actions {
+    width: 100%;
+  }
+
+  .page-header__actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .table-wrap::before {
+    content: "Desliza para ver más →";
+    display: block;
+    font-size: 0.8rem;
+    color: var(--mocha);
+    margin-bottom: 0.5rem;
+  }
+
+  .table-scroll-hint {
+    display: block;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-wrap table,
+  .page table,
+  table.table {
+    min-width: 680px;
+  }
+
+  .card:has(> table),
+  .panel-muted:has(> table) {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .table-toolbar .btn {
+    width: 100%;
+  }
+
+  .promo-vigencia-cell {
+    max-width: none;
+    white-space: normal;
+  }
+
+  .modal-overlay {
+    padding: 0.5rem;
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+    align-items: flex-start;
+    overflow-y: auto;
+  }
+
+  .modal-box,
+  .modal-box--wide {
+    width: 100%;
+    max-width: none;
+    max-height: calc(100dvh - 1rem);
+    margin: 0;
+    overflow-y: auto;
+  }
+
+  .modal-footer {
+    flex-wrap: wrap;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .modal-footer .btn {
+    min-height: 44px;
+    flex: 1 1 auto;
+  }
+
+  .form-grid,
+  .form-row,
+  .promo-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .input,
+  .select,
+  textarea.input,
+  select.input {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  .btn {
+    min-height: 44px;
+  }
+
+  .ventas-mesas-grid {
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  }
+
+  .mesa-card {
+    min-height: 76px;
+  }
+
+  .ventas-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .cart-panel {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+  }
+
+  .comandera-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .comandera-item {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .comandera-item__actions .btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .login-page {
+    padding: 1rem;
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+}
+
+/* ─── Tablet (768–1023) — conservar sidebar fijo ─── */
+@media (min-width: 768px) {
+  .app-shell {
+    display: flex;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+    flex-shrink: 0;
+  }
+
+  .navbar__menu-btn {
+    display: none !important;
+  }
+
+  .sidebar-overlay {
+    display: none !important;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .app-content {
+    padding: 1.25rem 1.5rem 2rem;
+  }
+
+  .navbar {
+    padding: 0 1.25rem;
+  }
+}
