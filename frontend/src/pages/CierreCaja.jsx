@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import PageHeader from "../components/PageHeader";
 import { getResumenCierre, registrarCierre } from "../services/cierresService";
 import { fechaMexicoISO, formatearHoraMexico } from "../utils/datetimeMx";
@@ -18,7 +18,7 @@ export default function CierreCaja() {
   const [notas, setNotas] = useState("");
   const [guardando, setGuardando] = useState(false);
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     setLoading(true);
     try {
       const res = await getResumenCierre(fecha);
@@ -35,11 +35,11 @@ export default function CierreCaja() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fecha]);
 
   useEffect(() => {
     cargar();
-  }, [fecha]);
+  }, [cargar]);
 
   const contadoNum = parseFloat(efectivoContado);
   const diferencia =

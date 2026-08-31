@@ -1427,11 +1427,33 @@ body {
 }
 
 /* ─── Loading & empty ─── */
-.loading-state {
+.loading-state,
+.page-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 12rem;
   padding: 3rem;
   text-align: center;
   color: var(--mocha);
   font-size: 0.95rem;
+}
+
+@keyframes page-loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.page-loader__spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid rgba(100, 116, 139, 0.25);
+  border-top-color: var(--primary, #2563eb);
+  border-radius: 50%;
+  animation: page-loader-spin 0.7s linear infinite;
 }
 
 .empty-state {
