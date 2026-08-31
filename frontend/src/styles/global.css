@@ -1519,6 +1519,61 @@ body {
   color: #92400e;
 }
 
+.report-highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.report-badge {
+  display: inline-block;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.report-badge--best {
+  background: rgba(34, 197, 94, 0.15);
+  color: #15803d;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.report-badge--worst {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.report-badge--warn {
+  background: rgba(245, 158, 11, 0.15);
+  color: #b45309;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.report-badge--muted {
+  background: rgba(100, 116, 139, 0.12);
+  color: #475569;
+  border: 1px solid rgba(100, 116, 139, 0.25);
+}
+
+.table tr.report-row--best {
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.table tr.report-row--worst {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.table tr.report-row--inactive {
+  opacity: 0.45;
+}
+
+.table tr.report-row--warn {
+  background: rgba(245, 158, 11, 0.08);
+}
+
 .comandera-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));

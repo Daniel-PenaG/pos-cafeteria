@@ -1,5 +1,5 @@
 """Hora y fechas del negocio (Ciudad de México)."""
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 MX = ZoneInfo("America/Mexico_City")
@@ -69,6 +69,21 @@ def isoformat_utc(dt: datetime | None) -> str | None:
 def fecha_mx_desde_utc_naive(dt: datetime) -> date:
     """Convierte timestamp UTC naive a fecha calendario México."""
     return dt.replace(tzinfo=timezone.utc).astimezone(MX).date()
+
+
+def datetime_mx_desde_utc_naive(dt: datetime) -> datetime:
+    """Convierte timestamp UTC naive a datetime con zona México."""
+    return dt.replace(tzinfo=timezone.utc).astimezone(MX)
+
+
+def contar_dias_semana_en_rango(fecha_inicio: date, fecha_fin: date) -> dict[int, int]:
+    """Cuántas veces cae cada día de la semana (0=lunes) dentro del rango inclusive."""
+    counts = {i: 0 for i in range(7)}
+    d = fecha_inicio
+    while d <= fecha_fin:
+        counts[d.weekday()] += 1
+        d += timedelta(days=1)
+    return counts
 
 
 def segundos_desde(dt: datetime | None) -> int | None:

@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Tuple
+
+from calendar import monthrange
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -21,7 +23,19 @@ from app.utils.timezone_mx import (
     filtro_mes_mx,
     filtro_anio_mx,
     fecha_mx_desde_utc_naive,
+    datetime_mx_desde_utc_naive,
+    contar_dias_semana_en_rango,
 )
+
+DIAS_SEMANA: List[Tuple[int, str]] = [
+    (0, "Lunes"),
+    (1, "Martes"),
+    (2, "Miércoles"),
+    (3, "Jueves"),
+    (4, "Viernes"),
+    (5, "Sábado"),
+    (6, "Domingo"),
+]
 
 
 def _round2(n: float) -> float:
@@ -193,6 +207,184 @@ def resumen_ventas_dia(db: Session, fecha: date) -> dict:
     }
 
 
+def _extremo_filas(filas: list, key: str, mejor: bool = True) -> Optional[dict]:
+    candidatos = [f for f in filas if f.get("dias_analizados", 1) > 0]
+    if not candidatos:
+        return None
+    return max(candidatos, key=lambda f: f[key]) if mejor else min(candidatos, key=lambda f: f[key])
+
+
+def rendimiento_dia_semana(
+    db: Session,
+    ventas: List[VentaModel],
+    fecha_inicio: date,
+    fecha_fin: date,
+) -> dict:
+    """Agrega ventas por día de la semana (MX) con promedios normalizados por ocurrencias en el rango."""
+    dias_en_rango = contar_dias_semana_en_rango(fecha_inicio, fecha_fin)
+    por_dow: dict[int, list] = defaultdict(list)
+
+    for v in ventas:
+        dow = fecha_mx_desde_utc_naive(v.fecha_hora).weekday()
+        por_dow[dow].append(v)
+
+    unidades_por_dow: dict[int, float] = {}
+    for dow, grupo in por_dow.items():
+        unidades_por_dow[dow] = _unidades_vendidas(db, [v.id_venta for v in grupo])
+
+    filas = []
+    for dow, nombre in DIAS_SEMANA:
+        grupo = por_dow.get(dow, [])
+        dias_analizados = dias_en_rango[dow]
+        venta_total = sum(float(v.total) for v in grupo)
+        tickets_totales = len(grupo)
+        unidades_totales = unidades_por_dow.get(dow, 0.0)
+
+        filas.append(
+            {
+                "dia_semana": dow,
+                "dia": nombre,
+                "dias_analizados": dias_analizados,
+                "venta_total": _round2(venta_total),
+                "venta_promedio_dia": _safe_div(venta_total, dias_analizados),
+                "tickets_totales": tickets_totales,
+                "tickets_promedio_dia": _safe_div(tickets_totales, dias_analizados),
+                "ticket_promedio": _safe_div(venta_total, tickets_totales),
+                "unidades_promedio_dia": _safe_div(unidades_totales, dias_analizados),
+            }
+        )
+
+    return {
+        "filas": filas,
+        "destacados": {
+            "mayor_venta_promedio": _extremo_filas(filas, "venta_promedio_dia", True),
+            "menor_venta_promedio": _extremo_filas(filas, "venta_promedio_dia", False),
+            "mayor_tickets_promedio": _extremo_filas(filas, "tickets_promedio_dia", True),
+            "menor_tickets_promedio": _extremo_filas(filas, "tickets_promedio_dia", False),
+        },
+    }
+
+
+def ventas_por_hora(db: Session, ventas: List[VentaModel]) -> dict:
+    """Agrupa tickets por hora de cierre (zona México)."""
+    por_hora: dict[int, list] = defaultdict(list)
+    for v in ventas:
+        hora = datetime_mx_desde_utc_naive(v.fecha_hora).hour
+        por_hora[hora].append(v)
+
+    filas = []
+    for h in range(24):
+        grupo = por_hora.get(h, [])
+        venta_total = sum(float(v.total) for v in grupo)
+        tickets = len(grupo)
+        filas.append(
+            {
+                "hora": h,
+                "hora_label": f"{h:02d}:00",
+                "venta_total": _round2(venta_total),
+                "tickets": tickets,
+                "ticket_promedio": _safe_div(venta_total, tickets),
+            }
+        )
+
+    con_actividad = [f for f in filas if f["tickets"] > 0]
+    sin_actividad = [f["hora_label"] for f in filas if f["tickets"] == 0]
+
+    poca_actividad: list[str] = []
+    if len(con_actividad) >= 2:
+        tickets_vals = sorted(f["tickets"] for f in con_actividad)
+        idx = max(0, len(tickets_vals) // 4 - 1)
+        umbral = tickets_vals[idx]
+        poca_actividad = [
+            f["hora_label"]
+            for f in con_actividad
+            if f["tickets"] <= umbral and f["tickets"] < max(tickets_vals)
+        ]
+
+    mayor_venta = max(con_actividad, key=lambda f: f["venta_total"]) if con_actividad else None
+    mayor_tickets = max(con_actividad, key=lambda f: f["tickets"]) if con_actividad else None
+
+    return {
+        "filas": filas,
+        "destacados": {
+            "hora_mayor_venta": mayor_venta,
+            "hora_mayor_tickets": mayor_tickets,
+            "horas_sin_actividad": sin_actividad,
+            "horas_poca_actividad": poca_actividad,
+        },
+    }
+
+
+def analisis_temporal_periodo(
+    db: Session,
+    ventas: List[VentaModel],
+    fecha_inicio: date,
+    fecha_fin: date,
+) -> dict:
+    return {
+        "rendimiento_dia_semana": rendimiento_dia_semana(db, ventas, fecha_inicio, fecha_fin),
+        "ventas_por_hora": ventas_por_hora(db, ventas),
+    }
+
+
+def _analisis_temporal_vacio(fecha_inicio: date | None = None, fecha_fin: date | None = None) -> dict:
+    dias_en_rango = (
+        contar_dias_semana_en_rango(fecha_inicio, fecha_fin)
+        if fecha_inicio and fecha_fin
+        else {i: 0 for i in range(7)}
+    )
+    filas_semana = []
+    for dow, nombre in DIAS_SEMANA:
+        filas_semana.append(
+            {
+                "dia_semana": dow,
+                "dia": nombre,
+                "dias_analizados": dias_en_rango[dow],
+                "venta_total": 0.0,
+                "venta_promedio_dia": 0.0,
+                "tickets_totales": 0,
+                "tickets_promedio_dia": 0.0,
+                "ticket_promedio": 0.0,
+                "unidades_promedio_dia": 0.0,
+            }
+        )
+    filas_hora = [
+        {
+            "hora": h,
+            "hora_label": f"{h:02d}:00",
+            "venta_total": 0.0,
+            "tickets": 0,
+            "ticket_promedio": 0.0,
+        }
+        for h in range(24)
+    ]
+    return {
+        "rendimiento_dia_semana": {
+            "filas": filas_semana,
+            "destacados": {
+                "mayor_venta_promedio": None,
+                "menor_venta_promedio": None,
+                "mayor_tickets_promedio": None,
+                "menor_tickets_promedio": None,
+            },
+        },
+        "ventas_por_hora": {
+            "filas": filas_hora,
+            "destacados": {
+                "hora_mayor_venta": None,
+                "hora_mayor_tickets": None,
+                "horas_sin_actividad": [f"{h:02d}:00" for h in range(24)],
+                "horas_poca_actividad": [],
+            },
+        },
+    }
+
+
+def rango_fechas_mes(anio: int, mes: int) -> tuple[date, date]:
+    ultimo = monthrange(anio, mes)[1]
+    return date(anio, mes, 1), date(anio, mes, ultimo)
+
+
 def _desglose_diario(db: Session, ventas: List[VentaModel]) -> list:
     por_dia: dict[date, list] = defaultdict(list)
     for v in ventas:
@@ -226,6 +418,7 @@ def resumen_ventas_rango(db: Session, fecha_inicio: date, fecha_fin: date) -> di
         .all()
     )
 
+    analisis = _analisis_temporal_vacio(fecha_inicio, fecha_fin)
     if not ventas:
         return _resumen_vacio(
             fecha_inicio=fecha_inicio,
@@ -234,11 +427,13 @@ def resumen_ventas_rango(db: Session, fecha_inicio: date, fecha_fin: date) -> di
             promedio_venta_diaria=0.0,
             promedio_tickets_diarios=0.0,
             desglose_dias=[],
+            **analisis,
         )
 
     metricas = _metricas_desde_ventas(db, ventas)
     desglose = _desglose_diario(db, ventas)
     dias_con_ventas = len(desglose)
+    analisis = analisis_temporal_periodo(db, ventas, fecha_inicio, fecha_fin)
 
     return {
         "fecha_inicio": fecha_inicio,
@@ -249,6 +444,7 @@ def resumen_ventas_rango(db: Session, fecha_inicio: date, fecha_fin: date) -> di
         **metricas,
         "productos": _productos_vendidos(db, [v.id_venta for v in ventas]),
         "desglose_dias": desglose,
+        **analisis,
     }
 
 

@@ -127,6 +127,154 @@ function TablaProductos({ productos }) {
   );
 }
 
+function rowHighlightClasses(fila, destacados) {
+  if (!destacados || !fila) return "";
+  const ds = fila.dia_semana;
+  const isBest =
+    ds === destacados.mayor_venta_promedio?.dia_semana ||
+    ds === destacados.mayor_tickets_promedio?.dia_semana;
+  const isWorst =
+    ds === destacados.menor_venta_promedio?.dia_semana ||
+    ds === destacados.menor_tickets_promedio?.dia_semana;
+  if (isBest) return "report-row--best";
+  if (isWorst) return "report-row--worst";
+  return "";
+}
+
+function TablaRendimientoDiaSemana({ data }) {
+  if (!data?.filas?.length) return null;
+  const { filas, destacados } = data;
+
+  return (
+    <div className="card" style={{ marginBottom: "1.5rem" }}>
+      <h3>Rendimiento por día de la semana</h3>
+      <p className="hint" style={{ marginTop: 0 }}>
+        Promedios normalizados por cuántas veces aparece cada día en el rango seleccionado (hora México).
+      </p>
+      {destacados && (
+        <div className="report-highlights" style={{ marginBottom: "1rem" }}>
+          {destacados.mayor_venta_promedio && (
+            <span className="report-badge report-badge--best">
+              Mayor venta prom.: {destacados.mayor_venta_promedio.dia} ({fmt(destacados.mayor_venta_promedio.venta_promedio_dia)})
+            </span>
+          )}
+          {destacados.menor_venta_promedio && (
+            <span className="report-badge report-badge--worst">
+              Menor venta prom.: {destacados.menor_venta_promedio.dia} ({fmt(destacados.menor_venta_promedio.venta_promedio_dia)})
+            </span>
+          )}
+          {destacados.mayor_tickets_promedio && (
+            <span className="report-badge report-badge--best">
+              Más tickets prom.: {destacados.mayor_tickets_promedio.dia} ({Number(destacados.mayor_tickets_promedio.tickets_promedio_dia).toFixed(1)})
+            </span>
+          )}
+          {destacados.menor_tickets_promedio && (
+            <span className="report-badge report-badge--worst">
+              Menos tickets prom.: {destacados.menor_tickets_promedio.dia} ({Number(destacados.menor_tickets_promedio.tickets_promedio_dia).toFixed(1)})
+            </span>
+          )}
+        </div>
+      )}
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Día</th>
+            <th>Días analizados</th>
+            <th>Venta total</th>
+            <th>Venta prom./día</th>
+            <th>Tickets totales</th>
+            <th>Tickets prom./día</th>
+            <th>Ticket prom.</th>
+            <th>Unidades prom./día</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map((f) => (
+              <tr key={f.dia_semana} className={rowHighlightClasses(f, destacados) || undefined}>
+                <td><strong>{f.dia}</strong></td>
+                <td>{f.dias_analizados}</td>
+                <td>{fmt(f.venta_total)}</td>
+                <td>{fmt(f.venta_promedio_dia)}</td>
+                <td>{f.tickets_totales}</td>
+                <td>{Number(f.tickets_promedio_dia || 0).toFixed(1)}</td>
+                <td>{fmt(f.ticket_promedio)}</td>
+                <td>{Number(f.unidades_promedio_dia || 0).toFixed(1)}</td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TablaVentasPorHora({ data }) {
+  if (!data?.filas?.length) return null;
+  const { filas, destacados } = data;
+  const horaMaxVenta = destacados?.hora_mayor_venta?.hora;
+  const horaMaxTickets = destacados?.hora_mayor_tickets?.hora;
+  const sinActividad = new Set(destacados?.horas_sin_actividad || []);
+  const pocaActividad = new Set(destacados?.horas_poca_actividad || []);
+
+  return (
+    <div className="card" style={{ marginBottom: "1.5rem" }}>
+      <h3>Ventas por hora</h3>
+      <p className="hint" style={{ marginTop: 0 }}>
+        Agrupado por hora de cierre del ticket (zona horaria México).
+      </p>
+      {destacados && (
+        <div className="report-highlights" style={{ marginBottom: "1rem" }}>
+          {destacados.hora_mayor_venta && (
+            <span className="report-badge report-badge--best">
+              Mayor venta: {destacados.hora_mayor_venta.hora_label} ({fmt(destacados.hora_mayor_venta.venta_total)})
+            </span>
+          )}
+          {destacados.hora_mayor_tickets && (
+            <span className="report-badge report-badge--best">
+              Más tickets: {destacados.hora_mayor_tickets.hora_label} ({destacados.hora_mayor_tickets.tickets})
+            </span>
+          )}
+          {destacados.horas_sin_actividad?.length > 0 && (
+            <span className="report-badge report-badge--muted">
+              Sin actividad: {destacados.horas_sin_actividad.join(", ")}
+            </span>
+          )}
+          {destacados.horas_poca_actividad?.length > 0 && (
+            <span className="report-badge report-badge--warn">
+              Poca actividad: {destacados.horas_poca_actividad.join(", ")}
+            </span>
+          )}
+        </div>
+      )}
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Hora</th>
+            <th>Venta total</th>
+            <th>Tickets</th>
+            <th>Ticket prom.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map((f) => {
+            let cls = "";
+            if (f.hora === horaMaxVenta || f.hora === horaMaxTickets) cls = "report-row--best";
+            else if (sinActividad.has(f.hora_label)) cls = "report-row--inactive";
+            else if (pocaActividad.has(f.hora_label)) cls = "report-row--warn";
+            return (
+              <tr key={f.hora} className={cls || undefined}>
+                <td><strong>{f.hora_label}</strong></td>
+                <td>{fmt(f.venta_total)}</td>
+                <td>{f.tickets}</td>
+                <td>{fmt(f.ticket_promedio)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function TablaDesgloseDias({ filas }) {
   if (!filas?.length) {
     return <p className="muted">Sin ventas en el periodo.</p>;
@@ -566,6 +714,14 @@ export default function Reportes() {
         <>
           <ResumenOperaciones data={reporte} titulo={tituloResumen} />
           <TablaPromocionesDetalle promociones={reporte.promociones_detalle} />
+
+          {(tab === "rango" || tab === "mes") && reporte.rendimiento_dia_semana && (
+            <TablaRendimientoDiaSemana data={reporte.rendimiento_dia_semana} />
+          )}
+
+          {(tab === "rango" || tab === "mes") && reporte.ventas_por_hora && (
+            <TablaVentasPorHora data={reporte.ventas_por_hora} />
+          )}
 
           {(tab === "rango" || tab === "mes") && reporte.desglose_dias?.length > 0 && (
             <div className="card" style={{ marginBottom: "1.5rem" }}>

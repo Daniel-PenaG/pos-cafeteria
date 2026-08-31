@@ -37,6 +37,9 @@ from app.services.reporte_ventas_service import (
     resumen_ventas_rango,
     comparar_periodos_ventas,
     enriquecer_resumen_mes_anio,
+    analisis_temporal_periodo,
+    _analisis_temporal_vacio,
+    rango_fechas_mes,
     _desglose_diario,
     _productos_vendidos,
 )
@@ -302,6 +305,11 @@ def ventas_por_mes(anio: int, mes: int, db: Session = Depends(get_db)):
     venta_ids = [v.id_venta for v in ventas]
     metricas = enriquecer_resumen_mes_anio(db, ventas, venta_ids)
     desglose_dias = _desglose_diario(db, ventas)
+    inicio_mes, fin_mes = rango_fechas_mes(anio, mes)
+    if ventas:
+        temporal = analisis_temporal_periodo(db, ventas, inicio_mes, fin_mes)
+    else:
+        temporal = _analisis_temporal_vacio(inicio_mes, fin_mes)
 
     return {
         "anio": anio,
@@ -317,6 +325,7 @@ def ventas_por_mes(anio: int, mes: int, db: Session = Depends(get_db)):
         "venta_por_promociones": metricas["venta_por_promociones"],
         "desglose_dias": desglose_dias,
         "productos": _productos_vendidos(db, venta_ids),
+        **temporal,
     }
 
 
