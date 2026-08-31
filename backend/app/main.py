@@ -1,9 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import logging
+import os
+
 from app.utils.config import get_cors_origins
 from app.database import Base, engine, aplicar_migraciones_sqlite, ensure_cierres_caja_table, crear_admin_inicial_si_vacio, crear_catalogo_demo_si_vacio
 from app.models import models
 from app.routers import auth, productos, recetas, ventas, reportes, compras, configuracion, extras_venta, promociones, clientes, pedidos, comandera, usuarios, gastos, cierres
+from app.middleware.performance import PerformanceMiddleware
+import app.utils.sql_counter  # noqa: F401 — registra listener de conteo SQL
+
+if os.getenv("PERF_LOG", "").lower() in ("1", "true", "yes"):
+    logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(
     title="POS Cafetería",
@@ -11,6 +19,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
+app.add_middleware(PerformanceMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_cors_origins(),
