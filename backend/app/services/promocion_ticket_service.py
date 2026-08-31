@@ -256,23 +256,23 @@ def recalcular_lineas_ticket(
             cant = len(units_line)
             promo_ids = {u["id_promocion"] for u in units_line if u["id_promocion"]}
             promo_id = promo_ids.pop() if len(promo_ids) == 1 else None
-            unitario = _round2(total_line / cant)
-            item.update(
-                {
-                    "precio_unitario": unitario,
-                    "precio_original": precio_orig,
-                    "descuento_unitario": _round2(max(0, precio_orig - unitario)),
-                    "id_promocion": promo_id,
-                    "nombre_promocion": next((u["nombre_promocion"] for u in units_line if u["nombre_promocion"]), None),
-                    "tipo_promocion": next((u["tipo_promocion"] for u in units_line if u["tipo_promocion"]), None),
-                    "valor_promocion": next((u["valor_promocion"] for u in units_line if u["valor_promocion"] is not None), None),
-                    "promocion_aplicaciones": 0,
-                    "margen_ok": True,
-                    "mensaje": None,
-                    "costo_unitario": costo_producto(db, item["id_producto"]),
-                }
-            )
             if promo_id:
+                unitario = _round2(total_line / cant)
+                item.update(
+                    {
+                        "precio_unitario": unitario,
+                        "precio_original": precio_orig,
+                        "descuento_unitario": _round2(max(0, precio_orig - unitario)),
+                        "id_promocion": promo_id,
+                        "nombre_promocion": next((u["nombre_promocion"] for u in units_line if u["nombre_promocion"]), None),
+                        "tipo_promocion": next((u["tipo_promocion"] for u in units_line if u["tipo_promocion"]), None),
+                        "valor_promocion": next((u["valor_promocion"] for u in units_line if u["valor_promocion"] is not None), None),
+                        "promocion_aplicaciones": 0,
+                        "margen_ok": True,
+                        "mensaje": None,
+                        "costo_unitario": costo_producto(db, item["id_producto"]),
+                    }
+                )
                 continue
 
         if item.get("precio_unitario") is not None:

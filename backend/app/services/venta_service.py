@@ -182,7 +182,7 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
                 "precio_extras": precio_extras,
                 "extras": item.extras,
                 "id_promocion": item.id_promocion,
-                "sin_promocion": item.id_promocion is None,
+                "sin_promocion": False,
             }
         )
 
