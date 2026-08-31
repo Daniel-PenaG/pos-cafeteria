@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { HiOutlineBuildingStorefront, HiOutlineXMark } from "react-icons/hi2";
 import { useAuthStore } from "../store/authStore";
@@ -51,11 +52,25 @@ export default function Sidebar({ open = false, onClose }) {
   const location = useLocation();
   const rol = normalizeRole(useAuthStore((state) => state.user?.rol));
   const modulos = useAuthStore((state) => state.user?.modulos);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const onChange = () => setIsMobile(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  const mobileClosed = isMobile && !open;
 
   return (
     <aside
       id={SIDEBAR_ID}
       className={`sidebar${open ? " sidebar--open" : ""}`}
+      aria-hidden={mobileClosed ? true : undefined}
+      inert={mobileClosed || undefined}
     >
       <div className="sidebar__brand">
         <div className="sidebar__brand-row">
@@ -98,6 +113,7 @@ export default function Sidebar({ open = false, onClose }) {
                       ? "sidebar__link sidebar__link--active"
                       : "sidebar__link"
                   }
+                  tabIndex={mobileClosed ? -1 : undefined}
                   onClick={onClose}
                 >
                   <span className="sidebar__icon" aria-hidden>

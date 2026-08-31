@@ -224,16 +224,13 @@
   }
 
   .table-wrap table,
-  .page table,
   table.table {
     min-width: 680px;
   }
 
-  .card:has(> table),
-  .panel-muted:has(> table) {
-    overflow-x: auto;
-    overscroll-behavior-inline: contain;
-    -webkit-overflow-scrolling: touch;
+  .card:has(> .table-wrap),
+  .panel-muted:has(> .table-wrap) {
+    overflow: visible;
   }
 
   .table-toolbar {
@@ -305,12 +302,6 @@
 
   .ventas-workspace {
     grid-template-columns: 1fr;
-  }
-
-  .cart-panel {
-    position: sticky;
-    bottom: 0;
-    z-index: 5;
   }
 
   .comandera-grid {

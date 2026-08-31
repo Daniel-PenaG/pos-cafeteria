@@ -1,6 +1,6 @@
 # Validación responsive móvil — Coffe Song POS
 
-Rama: [`ui/responsive-mobile`](https://github.com/Daniel-PenaG/pos-cafeteria/tree/ui/responsive-mobile)  
+Rama: [`ui/responsive-mobile`](https://github.com/Daniel-PenaG/pos-cafeteria/tree/ui/responsive-mobile)
 PR base temporal: `performance/optimizar-pos`
 
 ## Breakpoints
@@ -12,96 +12,76 @@ PR base temporal: `performance/optimizar-pos`
 | 768–1023 px | Tablet | idem + `@media (min-width: 768px)` |
 | 1024 px+ | Escritorio | estilos base en `global.css` |
 
-## Archivos modificados
+## Archivos modificados (BLOQUE 2)
 
 - `frontend/index.html` — viewport `viewport-fit=cover`
-- `frontend/src/layout.jsx` — estado `sidebarOpen`, overlay, Escape, ruta, popstate
-- `frontend/src/components/Sidebar.jsx` — off-canvas, cierre, navegación cierra menú
-- `frontend/src/components/Navbar.jsx` — hamburguesa 44×44, título corto
+- `frontend/src/layout.jsx` — focus trap, restauración de foco, Escape
+- `frontend/src/components/Sidebar.jsx` — `inert`/`aria-hidden` menú cerrado móvil
+- `frontend/src/components/Navbar.jsx` — `forwardRef` hamburguesa
 - `frontend/src/components/PageHeader.jsx` — columna en móvil
-- `frontend/src/styles/responsive.css` — **nuevo**
-- `frontend/src/styles/global.css` — `.table-wrap`, `.page-header__row`
-- `frontend/src/main.jsx` — import responsive.css
+- `frontend/src/pages/Reportes.jsx` — todas las tablas en `.table-wrap`
+- `frontend/src/pages/Usuarios.jsx` — `.table-wrap`
+- `frontend/src/pages/CuentasCajero.jsx` — `.table-wrap` (×2)
+- `frontend/src/styles/responsive.css` — tablas, inputs 16px, sin sticky cart-panel
+- `frontend/scripts/capture-responsive.mjs` — capturas Playwright
+- `frontend/package.json` / `package-lock.json` — Playwright devDep
+- `docs/screenshots/responsive/` — evidencia visual
 
 **Sin cambios en backend ni lógica de negocio.**
 
-## Build y lint (ejecutado 2026-08-31)
+## Build y lint (2026-08-31)
 
 ```
 npm run lint  → 0 errores
 npm run build → OK
-  index-CfQU4iNj.js  772.24 KB / 231.90 KB gzip
-  CSS total          35.86 KB / 7.76 KB gzip
 ```
 
-Sin dependencias nuevas. Bundle inicial similar a `performance/optimizar-pos`.
+`npm ci` en Windows puede fallar con EPERM en `lightningcss` si hay procesos usando `node_modules`; en ese caso `npm install` + lint/build es válido.
+
+Regenerar capturas:
+
+```bash
+cd frontend
+npm run build
+npm run preview -- --host 127.0.0.1 --port 4173
+# otra terminal:
+npm run capture:responsive
+```
 
 ## Matriz de validación visual
 
 Estados: **APROBADO** | **FALLÓ** | **PENDIENTE**
 
-Validación visual en navegador real no ejecutada en CI de este agente → filas marcadas **PENDIENTE** salvo comprobaciones estáticas de CSS/componentes.
+Capturas generadas con **Playwright + Chromium** contra build de producción (`vite preview`).
 
-| Resolución | Ruta | Menú | Tabla | Modal | Scroll global | Estado |
-|------------|------|------|-------|-------|---------------|--------|
-| 360×800 | `/login` | N/A | N/A | N/A | — | **PENDIENTE** |
-| 360×800 | `/ventas` | off/on | N/A | N/A | — | **PENDIENTE** |
-| 390×844 | `/promociones` | — | scroll | modal | — | **PENDIENTE** |
-| 390×844 | `/comandera` | — | — | — | — | **PENDIENTE** |
-| 768×1024 | `/dashboard` | fijo | — | — | — | **PENDIENTE** |
-| 1024×768 | `/ventas` | fijo | — | — | — | **PENDIENTE** |
-| 1366×768 | `/reportes` | fijo | scroll | — | — | **PENDIENTE** |
+| Resolución | Menú cerrado | Menú abierto | Promociones | Modal promo | Ventas+carrito | Comandera | Reportes | Usuarios | Cuentas cajero | Tablet | Escritorio | Estado |
+|------------|--------------|--------------|-------------|-------------|----------------|-----------|----------|----------|----------------|--------|------------|--------|
+| 320×568 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | **APROBADO** |
+| 360×800 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | **APROBADO** |
+| 390×844 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | **APROBADO** |
+| 412×915 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | **APROBADO** |
+| 768×1024 | — | — | — | — | — | — | ✓ | — | — | ✓ | — | **APROBADO** |
+| 1024×768 | — | — | — | — | — | — | ✓ | — | — | ✓ | — | **APROBADO** |
+| 1366×768 | — | — | — | — | — | — | ✓ | — | — | — | ✓ | **APROBADO** |
 
-### Comprobado estáticamente (sin navegador)
+Rutas de capturas: `docs/screenshots/responsive/{320x568,360x800,390x844,412x915,768x1024,1024x768,1366x768}/`
+
+### Comprobaciones adicionales
 
 | Aspecto | Estado |
 |---------|--------|
-| Sidebar off-canvas `<768px` | **APROBADO** (código + CSS) |
-| Overlay + Escape + cierre en ruta | **APROBADO** (layout.jsx) |
-| Hamburguesa 44×44 + `aria-*` | **APROBADO** (Navbar.jsx) |
-| `.table-wrap` scroll horizontal | **APROBADO** (responsive.css) |
-| Modales full-width móvil | **APROBADO** (responsive.css) |
+| Sidebar off-canvas `<768px` | **APROBADO** |
+| Overlay + Escape + cierre en ruta | **APROBADO** |
+| Focus trap + foco al abrir/cerrar | **APROBADO** |
+| Menú cerrado no navegable (`inert`) | **APROBADO** |
+| `.table-wrap` en Reportes/Usuarios/Cuentas | **APROBADO** |
+| Inputs 16px móvil (anti-zoom iOS) | **APROBADO** |
+| `cart-panel` sticky eliminado | **APROBADO** |
 | ESLint | **APROBADO** |
 | Build producción | **APROBADO** |
-
-## Capturas requeridas — PENDIENTES
-
-Generar en dispositivo real o Chrome DevTools:
-
-1. 360×800 — menú cerrado  
-2. 360×800 — menú abierto  
-3. 390×844 — Promociones  
-4. 390×844 — modal Promoción  
-5. 390×844 — Ventas  
-6. 390×844 — Comandera  
-7. 768×1024 — tablet  
-8. 1024×768 — tablet horizontal  
-9. 1366×768 — escritorio  
-
-Guardar en `docs/screenshots/responsive/` (crear al capturar).
-
-### Instrucciones capturas
-
-```bash
-cd frontend
-npm run dev
-# Chrome → F12 → Toggle device toolbar
-# Resolución → captura PNG
-# Rutas: /login, /ventas, /promociones, /comandera
-```
-
-Login local: usuario de prueba en SQLite (admin demo de `database.py`).
-
-## Prueba física tablet/celular
-
-1. `npm run build && npm run preview` o instalar APK Capacitor debug.
-2. Verificar menú abre/cierra, overlay, sin scroll horizontal en página.
-3. Tablas desplazan solo dentro de `.table-wrap`.
-4. Modal promoción completo con teclado virtual.
-5. Botones táctiles ≥44 px.
 
 ## PR
 
 Crear contra: https://github.com/Daniel-PenaG/pos-cafeteria/compare/performance/optimizar-pos...ui/responsive-mobile
 
-**No merge ni deploy** hasta aprobación.
+**No merge ni deploy** hasta aprobación humana.

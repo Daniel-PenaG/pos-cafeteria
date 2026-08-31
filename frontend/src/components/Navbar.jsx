@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import {
   HiOutlineArrowRightOnRectangle,
   HiOutlineBars3,
@@ -8,7 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { ROLE_LABELS, normalizeRole } from "../config/permissions";
 import { SIDEBAR_ID } from "./Sidebar";
 
-export default function Navbar({ onMenuOpen, menuExpanded = false }) {
+const Navbar = forwardRef(function Navbar({ onMenuOpen, menuExpanded = false }, menuBtnRef) {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const navigate = useNavigate();
@@ -22,6 +23,7 @@ export default function Navbar({ onMenuOpen, menuExpanded = false }) {
     <header className="navbar">
       <div className="navbar__start">
         <button
+          ref={menuBtnRef}
           type="button"
           className="navbar__menu-btn"
           aria-label="Abrir menú"
@@ -59,4 +61,6 @@ export default function Navbar({ onMenuOpen, menuExpanded = false }) {
       </div>
     </header>
   );
-}
+});
+
+export default Navbar;
