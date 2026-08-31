@@ -28,6 +28,17 @@ const MESES = [
   { v: 12, l: "Diciembre" },
 ];
 
+const FILTRO_DIA_SEMANA_HORA = [
+  { value: "todos", label: "Todos" },
+  { value: "0", label: "Lunes" },
+  { value: "1", label: "Martes" },
+  { value: "2", label: "Miércoles" },
+  { value: "3", label: "Jueves" },
+  { value: "4", label: "Viernes" },
+  { value: "5", label: "Sábado" },
+  { value: "6", label: "Domingo" },
+];
+
 function fmt(n) {
   return `$${Number(n || 0).toFixed(2)}`;
 }
@@ -207,65 +218,101 @@ function TablaRendimientoDiaSemana({ data }) {
   );
 }
 
-function TablaVentasPorHora({ data }) {
-  if (!data?.filas?.length) return null;
-  const { filas, destacados } = data;
-  const horaMaxVenta = destacados?.hora_mayor_venta?.hora;
+function TablaRendimientoPorHora({ rendimientoPorHora, filtroDia, onFiltroDiaChange }) {
+  if (!rendimientoPorHora?.variantes) return null;
+
+  const variante =
+    rendimientoPorHora.variantes[filtroDia] || rendimientoPorHora.variantes.todos;
+  if (!variante?.filas?.length) return null;
+
+  const { filas, destacados, dias_analizados, promedio_tickets_por_hora } = variante;
   const horaMaxTickets = destacados?.hora_mayor_tickets?.hora;
-  const sinActividad = new Set(destacados?.horas_sin_actividad || []);
-  const pocaActividad = new Set(destacados?.horas_poca_actividad || []);
+  const horaMaxVentaProm = destacados?.hora_mayor_venta_promedio?.hora;
+  const horaMenorActividad = destacados?.hora_menor_actividad?.hora;
+  const sinVentas = new Set(destacados?.horas_sin_ventas || destacados?.horas_sin_actividad || []);
 
   return (
     <div className="card" style={{ marginBottom: "1.5rem" }}>
-      <h3>Ventas por hora</h3>
-      <p className="hint" style={{ marginTop: 0 }}>
-        Agrupado por hora de cierre del ticket (zona horaria México).
-      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "flex-end", justifyContent: "space-between" }}>
+        <div>
+          <h3 style={{ marginTop: 0, marginBottom: "0.35rem" }}>Rendimiento por hora</h3>
+          <p className="hint" style={{ margin: 0 }}>
+            Hora de cierre del ticket ({rendimientoPorHora.hora_inicio ?? 9}:00–{rendimientoPorHora.hora_fin ?? 21}:59, México).
+            Promedios ÷ {dias_analizados} día(s) analizados
+            {filtroDia !== "todos" ? ` (${variante.dia_filtro_label})` : ""}.
+          </p>
+        </div>
+        <div className="form-row" style={{ margin: 0, minWidth: "180px" }}>
+          <label>Día de la semana</label>
+          <select
+            className="input"
+            value={filtroDia}
+            onChange={(e) => onFiltroDiaChange(e.target.value)}
+          >
+            {FILTRO_DIA_SEMANA_HORA.map((d) => (
+              <option key={d.value} value={d.value}>{d.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {destacados && (
-        <div className="report-highlights" style={{ marginBottom: "1rem" }}>
-          {destacados.hora_mayor_venta && (
-            <span className="report-badge report-badge--best">
-              Mayor venta: {destacados.hora_mayor_venta.hora_label} ({fmt(destacados.hora_mayor_venta.venta_total)})
-            </span>
-          )}
+        <div className="report-highlights" style={{ margin: "1rem 0" }}>
           {destacados.hora_mayor_tickets && (
             <span className="report-badge report-badge--best">
-              Más tickets: {destacados.hora_mayor_tickets.hora_label} ({destacados.hora_mayor_tickets.tickets})
+              Más tickets: {destacados.hora_mayor_tickets.hora_label} ({destacados.hora_mayor_tickets.tickets_totales ?? destacados.hora_mayor_tickets.tickets})
             </span>
           )}
-          {destacados.horas_sin_actividad?.length > 0 && (
+          {destacados.hora_mayor_venta_promedio && (
+            <span className="report-badge report-badge--best">
+              Mayor venta prom./día: {destacados.hora_mayor_venta_promedio.hora_label} ({fmt(destacados.hora_mayor_venta_promedio.venta_promedio_dia)})
+            </span>
+          )}
+          {destacados.hora_menor_actividad && (
+            <span className="report-badge report-badge--worst">
+              Menor actividad: {destacados.hora_menor_actividad.hora_label} ({Number(destacados.hora_menor_actividad.tickets_promedio_dia || 0).toFixed(2)} tickets/día)
+            </span>
+          )}
+          {sinVentas.size > 0 && (
             <span className="report-badge report-badge--muted">
-              Sin actividad: {destacados.horas_sin_actividad.join(", ")}
+              Sin ventas: {[...sinVentas].join(", ")}
             </span>
           )}
-          {destacados.horas_poca_actividad?.length > 0 && (
-            <span className="report-badge report-badge--warn">
-              Poca actividad: {destacados.horas_poca_actividad.join(", ")}
+          {promedio_tickets_por_hora != null && (
+            <span className="report-badge report-badge--muted">
+              Prom. tickets/hora: {Number(promedio_tickets_por_hora).toFixed(2)}
             </span>
           )}
         </div>
       )}
+
       <table className="table">
         <thead>
           <tr>
             <th>Hora</th>
             <th>Venta total</th>
-            <th>Tickets</th>
+            <th>Venta prom./día</th>
+            <th>Tickets totales</th>
+            <th>Tickets prom./día</th>
             <th>Ticket prom.</th>
+            <th>Unidades</th>
           </tr>
         </thead>
         <tbody>
           {filas.map((f) => {
             let cls = "";
-            if (f.hora === horaMaxVenta || f.hora === horaMaxTickets) cls = "report-row--best";
-            else if (sinActividad.has(f.hora_label)) cls = "report-row--inactive";
-            else if (pocaActividad.has(f.hora_label)) cls = "report-row--warn";
+            if (f.hora === horaMaxTickets || f.hora === horaMaxVentaProm) cls = "report-row--best";
+            else if (f.hora === horaMenorActividad) cls = "report-row--worst";
+            else if (sinVentas.has(f.hora_label)) cls = "report-row--inactive";
             return (
               <tr key={f.hora} className={cls || undefined}>
                 <td><strong>{f.hora_label}</strong></td>
                 <td>{fmt(f.venta_total)}</td>
-                <td>{f.tickets}</td>
+                <td>{fmt(f.venta_promedio_dia)}</td>
+                <td>{f.tickets_totales ?? f.tickets}</td>
+                <td>{Number(f.tickets_promedio_dia || 0).toFixed(2)}</td>
                 <td>{fmt(f.ticket_promedio)}</td>
+                <td>{Number(f.unidades_vendidas || 0).toFixed(0)}</td>
               </tr>
             );
           })}
@@ -399,6 +446,7 @@ export default function Reportes() {
   const [promocionesPeriodo, setPromocionesPeriodo] = useState("dia");
   const [rankingPeriodo, setRankingPeriodo] = useState("dia");
   const [ordenRank, setOrdenRank] = useState("cantidad");
+  const [filtroHoraDiaSemana, setFiltroHoraDiaSemana] = useState("todos");
   const [loading, setLoading] = useState(false);
 
   const limpiarResultados = () => {
@@ -453,6 +501,7 @@ export default function Reportes() {
         if (!fechaInicio || !fechaFin) return alert("Selecciona fecha inicial y final");
         if (fechaFin < fechaInicio) return alert("La fecha final debe ser posterior o igual");
         const v = await getVentasRango(fechaInicio, fechaFin);
+        setFiltroHoraDiaSemana("todos");
         setReporte(v);
         setConsumo(null);
         setTiempos(null);
@@ -521,6 +570,7 @@ export default function Reportes() {
         setComparacion(null);
       } else if (tab === "mes") {
         const v = await getVentasMes(anioMes, mes);
+        setFiltroHoraDiaSemana("todos");
         setReporte(v);
         setConsumo(null);
         setTiempos(null);
@@ -719,8 +769,12 @@ export default function Reportes() {
             <TablaRendimientoDiaSemana data={reporte.rendimiento_dia_semana} />
           )}
 
-          {(tab === "rango" || tab === "mes") && reporte.ventas_por_hora && (
-            <TablaVentasPorHora data={reporte.ventas_por_hora} />
+          {(tab === "rango" || tab === "mes") && reporte.rendimiento_por_hora && (
+            <TablaRendimientoPorHora
+              rendimientoPorHora={reporte.rendimiento_por_hora}
+              filtroDia={filtroHoraDiaSemana}
+              onFiltroDiaChange={setFiltroHoraDiaSemana}
+            />
           )}
 
           {(tab === "rango" || tab === "mes") && reporte.desglose_dias?.length > 0 && (

@@ -37,6 +37,9 @@ DIAS_SEMANA: List[Tuple[int, str]] = [
     (6, "Domingo"),
 ]
 
+HORA_OPERACION_INICIO = 9
+HORA_OPERACION_FIN = 21
+
 
 def _round2(n: float) -> float:
     return round(float(n), 2)
@@ -265,22 +268,142 @@ def rendimiento_dia_semana(
     }
 
 
-def ventas_por_hora(db: Session, ventas: List[VentaModel]) -> dict:
-    """Agrupa tickets por hora de cierre (zona México)."""
+def _label_rango_hora(h: int) -> str:
+    return f"{h:02d}:00–{h:02d}:59"
+
+
+def _horas_operacion() -> range:
+    return range(HORA_OPERACION_INICIO, HORA_OPERACION_FIN + 1)
+
+
+def _rendimiento_por_hora_variante(
+    db: Session,
+    ventas: List[VentaModel],
+    dias_analizados: int,
+    dia_filtro: Optional[int],
+    dia_filtro_label: str,
+) -> dict:
+    """Agrupa tickets por hora de cierre (MX) dentro del horario de operación."""
     por_hora: dict[int, list] = defaultdict(list)
     for v in ventas:
         hora = datetime_mx_desde_utc_naive(v.fecha_hora).hour
-        por_hora[hora].append(v)
+        if HORA_OPERACION_INICIO <= hora <= HORA_OPERACION_FIN:
+            por_hora[hora].append(v)
+
+    num_horas = HORA_OPERACION_FIN - HORA_OPERACION_INICIO + 1
+    filas = []
+    for h in _horas_operacion():
+        grupo = por_hora.get(h, [])
+        venta_ids = [v.id_venta for v in grupo]
+        venta_total = sum(float(v.total) for v in grupo)
+        tickets_totales = len(grupo)
+        unidades = _unidades_vendidas(db, venta_ids) if venta_ids else 0.0
+
+        filas.append(
+            {
+                "hora": h,
+                "hora_label": _label_rango_hora(h),
+                "venta_total": _round2(venta_total),
+                "venta_promedio_dia": _safe_div(venta_total, dias_analizados),
+                "tickets_totales": tickets_totales,
+                "tickets": tickets_totales,
+                "tickets_promedio_dia": _safe_div(tickets_totales, dias_analizados),
+                "ticket_promedio": _safe_div(venta_total, tickets_totales),
+                "unidades_vendidas": _round2(unidades),
+            }
+        )
+
+    con_actividad = [f for f in filas if f["tickets_totales"] > 0]
+    sin_ventas = [f["hora_label"] for f in filas if f["tickets_totales"] == 0]
+    total_tickets = sum(f["tickets_totales"] for f in filas)
+
+    hora_mayor_tickets = (
+        max(con_actividad, key=lambda f: f["tickets_totales"]) if con_actividad else None
+    )
+    hora_mayor_venta_promedio = (
+        max(con_actividad, key=lambda f: f["venta_promedio_dia"]) if con_actividad else None
+    )
+    hora_menor_actividad = min(filas, key=lambda f: f["tickets_promedio_dia"]) if filas else None
+
+    poca_actividad: list[str] = []
+    if len(con_actividad) >= 2:
+        umbral = min(f["tickets_promedio_dia"] for f in con_actividad)
+        max_prom = max(f["tickets_promedio_dia"] for f in con_actividad)
+        if max_prom > umbral:
+            poca_actividad = [
+                f["hora_label"]
+                for f in con_actividad
+                if f["tickets_promedio_dia"] == umbral
+            ]
+
+    return {
+        "dia_filtro": dia_filtro,
+        "dia_filtro_label": dia_filtro_label,
+        "dias_analizados": dias_analizados,
+        "promedio_tickets_por_hora": _safe_div(total_tickets, dias_analizados * num_horas),
+        "filas": filas,
+        "destacados": {
+            "hora_mayor_tickets": hora_mayor_tickets,
+            "hora_mayor_venta_promedio": hora_mayor_venta_promedio,
+            "hora_menor_actividad": hora_menor_actividad,
+            "horas_sin_ventas": sin_ventas,
+            "hora_mayor_venta": hora_mayor_venta_promedio,
+            "horas_sin_actividad": sin_ventas,
+            "horas_poca_actividad": poca_actividad,
+        },
+    }
+
+
+def rendimiento_por_hora(
+    db: Session,
+    ventas: List[VentaModel],
+    fecha_inicio: date,
+    fecha_fin: date,
+) -> dict:
+    """Rendimiento por hora con variantes por día de la semana (promedios normalizados)."""
+    dias_totales = (fecha_fin - fecha_inicio).days + 1
+    dias_semana = contar_dias_semana_en_rango(fecha_inicio, fecha_fin)
+
+    variantes = {
+        "todos": _rendimiento_por_hora_variante(
+            db, ventas, dias_totales, None, "Todos"
+        ),
+    }
+    for dow, nombre in DIAS_SEMANA:
+        filtradas = [
+            v
+            for v in ventas
+            if fecha_mx_desde_utc_naive(v.fecha_hora).weekday() == dow
+        ]
+        variantes[str(dow)] = _rendimiento_por_hora_variante(
+            db, filtradas, dias_semana[dow], dow, nombre
+        )
+
+    return {
+        "hora_inicio": HORA_OPERACION_INICIO,
+        "hora_fin": HORA_OPERACION_FIN,
+        "campo_hora": "ventas.fecha_hora",
+        "variantes": variantes,
+    }
+
+
+def ventas_por_hora(db: Session, ventas: List[VentaModel]) -> dict:
+    """Compatibilidad: vista «todos» sin normalización de rango (legacy)."""
+    por_hora: dict[int, list] = defaultdict(list)
+    for v in ventas:
+        hora = datetime_mx_desde_utc_naive(v.fecha_hora).hour
+        if HORA_OPERACION_INICIO <= hora <= HORA_OPERACION_FIN:
+            por_hora[hora].append(v)
 
     filas = []
-    for h in range(24):
+    for h in _horas_operacion():
         grupo = por_hora.get(h, [])
         venta_total = sum(float(v.total) for v in grupo)
         tickets = len(grupo)
         filas.append(
             {
                 "hora": h,
-                "hora_label": f"{h:02d}:00",
+                "hora_label": _label_rango_hora(h),
                 "venta_total": _round2(venta_total),
                 "tickets": tickets,
                 "ticket_promedio": _safe_div(venta_total, tickets),
@@ -321,9 +444,11 @@ def analisis_temporal_periodo(
     fecha_inicio: date,
     fecha_fin: date,
 ) -> dict:
+    rendimiento_hora = rendimiento_por_hora(db, ventas, fecha_inicio, fecha_fin)
     return {
         "rendimiento_dia_semana": rendimiento_dia_semana(db, ventas, fecha_inicio, fecha_fin),
-        "ventas_por_hora": ventas_por_hora(db, ventas),
+        "rendimiento_por_hora": rendimiento_hora,
+        "ventas_por_hora": rendimiento_hora["variantes"]["todos"],
     }
 
 
@@ -332,6 +457,9 @@ def _analisis_temporal_vacio(fecha_inicio: date | None = None, fecha_fin: date |
         contar_dias_semana_en_rango(fecha_inicio, fecha_fin)
         if fecha_inicio and fecha_fin
         else {i: 0 for i in range(7)}
+    )
+    dias_totales = (
+        (fecha_fin - fecha_inicio).days + 1 if fecha_inicio and fecha_fin else 0
     )
     filas_semana = []
     for dow, nombre in DIAS_SEMANA:
@@ -351,13 +479,40 @@ def _analisis_temporal_vacio(fecha_inicio: date | None = None, fecha_fin: date |
     filas_hora = [
         {
             "hora": h,
-            "hora_label": f"{h:02d}:00",
+            "hora_label": _label_rango_hora(h),
             "venta_total": 0.0,
+            "venta_promedio_dia": 0.0,
+            "tickets_totales": 0,
             "tickets": 0,
+            "tickets_promedio_dia": 0.0,
             "ticket_promedio": 0.0,
+            "unidades_vendidas": 0.0,
         }
-        for h in range(24)
+        for h in _horas_operacion()
     ]
+    variante_vacia = {
+        "dias_analizados": dias_totales if fecha_inicio and fecha_fin else 0,
+        "promedio_tickets_por_hora": 0.0,
+        "filas": filas_hora,
+        "destacados": {
+            "hora_mayor_tickets": None,
+            "hora_mayor_venta_promedio": None,
+            "hora_menor_actividad": None,
+            "horas_sin_ventas": [f["hora_label"] for f in filas_hora],
+            "hora_mayor_venta": None,
+            "horas_sin_actividad": [f["hora_label"] for f in filas_hora],
+            "horas_poca_actividad": [],
+        },
+    }
+    variantes_hora = {"todos": {**variante_vacia, "dia_filtro": None, "dia_filtro_label": "Todos"}}
+    for dow, nombre in DIAS_SEMANA:
+        variantes_hora[str(dow)] = {
+            **variante_vacia,
+            "dia_filtro": dow,
+            "dia_filtro_label": nombre,
+            "dias_analizados": dias_en_rango[dow],
+        }
+
     return {
         "rendimiento_dia_semana": {
             "filas": filas_semana,
@@ -368,15 +523,13 @@ def _analisis_temporal_vacio(fecha_inicio: date | None = None, fecha_fin: date |
                 "menor_tickets_promedio": None,
             },
         },
-        "ventas_por_hora": {
-            "filas": filas_hora,
-            "destacados": {
-                "hora_mayor_venta": None,
-                "hora_mayor_tickets": None,
-                "horas_sin_actividad": [f"{h:02d}:00" for h in range(24)],
-                "horas_poca_actividad": [],
-            },
+        "rendimiento_por_hora": {
+            "hora_inicio": HORA_OPERACION_INICIO,
+            "hora_fin": HORA_OPERACION_FIN,
+            "campo_hora": "ventas.fecha_hora",
+            "variantes": variantes_hora,
         },
+        "ventas_por_hora": variantes_hora["todos"],
     }
 
 
