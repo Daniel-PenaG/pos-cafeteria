@@ -504,14 +504,15 @@ def resumen_ventas_rango(db: Session, fecha_inicio: date, fecha_fin: date) -> di
     )
 
     analisis = _analisis_temporal_vacio(fecha_inicio, fecha_fin)
+    dias_calendario = _dias_calendario_efectivos(fecha_inicio, fecha_fin)
+    promedios_vacio = _promedios_rango(0.0, 0, 0, dias_calendario)
     if not ventas:
         return _resumen_vacio(
             fecha_inicio=fecha_inicio,
             fecha_fin=fecha_fin,
             dias_con_ventas=0,
-            promedio_venta_diaria=0.0,
-            promedio_tickets_diarios=0.0,
             desglose_dias=[],
+            **promedios_vacio,
             **analisis,
         )
 

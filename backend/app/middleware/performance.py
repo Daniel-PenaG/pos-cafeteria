@@ -30,7 +30,7 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
         sql_count = get_sql_count()
 
         response.headers["X-Process-Time-Ms"] = str(elapsed_ms)
-        if sql_count:
+        if sql_counting_enabled():
             response.headers["X-SQL-Query-Count"] = str(sql_count)
 
         if PERF_LOG:

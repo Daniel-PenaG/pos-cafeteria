@@ -71,9 +71,8 @@ def seed_perf_db(db, num_ventas: int = 120) -> None:
         valor=5,
         activa=True,
         aplica_toda_tienda=True,
+        cantidad_requerida=1,
     )
-    if hasattr(PromocionModel, "cantidad_requerida"):
-        promo.cantidad_requerida = 1
     db.add(promo)
     db.flush()
 

@@ -17,17 +17,18 @@ def sql_counting_enabled() -> bool:
 
 def reset_sql_count() -> None:
     _query_count.set(0)
-    _counting_enabled.set(sql_counting_enabled())
+    enabled = sql_counting_enabled()
+    _counting_enabled.set(enabled)
 
 
 def get_sql_count() -> int:
-    if not _counting_enabled.get():
+    if not (sql_counting_enabled() or _counting_enabled.get()):
         return 0
     return _query_count.get()
 
 
 def _increment() -> None:
-    if _counting_enabled.get():
+    if sql_counting_enabled() or _counting_enabled.get():
         _query_count.set(_query_count.get() + 1)
 
 
