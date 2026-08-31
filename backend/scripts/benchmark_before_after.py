@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-BASELINE_COMMIT = os.getenv("PERF_BASELINE_COMMIT", "0aa1a66")
+BASELINE_COMMIT = os.getenv("PERF_BASELINE_COMMIT", "f2456e0")
 REPO_ROOT = ROOT.parent
 
 
