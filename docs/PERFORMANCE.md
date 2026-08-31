@@ -24,7 +24,9 @@ Pruebas manuales promociones: [`docs/PROMOCIONES_MANUAL_TESTS.md`](PROMOCIONES_M
 
 | Hash completo | Mensaje |
 |---------------|---------|
-| *(post-validación, ver `git log` tras push)* | docs/fixes: ramas separadas, índices, seed promo |
+| `3fea37d90a58a333a3c90aa3531b987c3772c887` | docs: ramas separadas, auditoría índices, pruebas manuales |
+| `6bd59782465fcdd6e8340b543f16b8d65c1c14fc` | fix: omitir índices duplicados en migración 001 |
+| `09f6aeb04cde21f91cadaf817b397311687434be` | fix: seed promo comercial solo LOCAL_SEED_PROMO SQLite |
 | `bce261ddd49603e595d6c82a22125af9403fbd0d` | docs: benchmark baseline f2456e0 y evidencia completa *(rebase de `9c124b7`)* |
 | `b29c73ad77c0cc3809340a35cce88d5073a13488` | validación: índices manuales, benchmark, pruebas |
 | `f37afc4ac81435082bf87d39db529b453a31bba1` | perf: eliminar N+1 en reportes y dashboard |
@@ -33,7 +35,7 @@ Pruebas manuales promociones: [`docs/PROMOCIONES_MANUAL_TESTS.md`](PROMOCIONES_M
 | `08237d78cb828cce4effda39b108a146064fa82e` | perf: pool PostgreSQL e índices |
 | `7e422a8178bb4976098c6a5c2e12d4009aecf3dd` | perf: middleware medición SQL |
 
-**Commit promociones (rama `feature/promociones-ticket-level`):** `013281c` *(cherry-pick de `0aa1a66` sobre `f2456e0`)*
+**Rama `feature/promociones-ticket-level`:** `013281c` promos *(de `0aa1a66`)* + `5e1d1ce` seed fix + `57249de` pruebas manuales
 
 **Benchmark baseline:** `f2456e0` (main pre-optimización, sin promos ticket-level).
 
