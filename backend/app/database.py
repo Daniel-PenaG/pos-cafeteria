@@ -625,7 +625,11 @@ def crear_catalogo_demo_si_vacio():
 
 
 def crear_promocion_lunes_malteadas_si_ausente():
-    """Crea promoción demo INACTIVA si no existe (revisión admin antes de activar)."""
+    """Seed local opcional: promoción demo INACTIVA. Nunca en producción."""
+    if engine.dialect.name != "sqlite":
+        return
+    if os.getenv("LOCAL_SEED_PROMO", "false").lower() not in ("1", "true", "yes"):
+        return
     from app.models.models import (
         PromocionModel,
         PromocionCategoriaModel,
