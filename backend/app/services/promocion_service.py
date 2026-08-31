@@ -17,6 +17,12 @@ from app.models import (
 )
 from app.exceptions import DatosInvalidosException
 
+TIPOS_TICKET = frozenset({"CANTIDAD_PRECIO", "DESCUENTO_FIJO"})
+
+
+def es_promo_ticket(promo: PromocionModel) -> bool:
+    return promo.tipo in TIPOS_TICKET
+
 
 def _parse_hora(texto: Optional[str]) -> Optional[time]:
     if not texto or not texto.strip():
@@ -126,6 +132,8 @@ def listar_aplicables(
     resultado = []
     for p in promos:
         if es_promo_paquete(p):
+            continue
+        if es_promo_ticket(p):
             continue
         if promocion_vigente(p, ahora) and producto_elegible(p, producto):
             resultado.append(p)
@@ -315,6 +323,10 @@ def calcular_linea(
         if es_promo_paquete(promo):
             raise DatosInvalidosException(
                 f"La promoción '{promo.nombre}' es un paquete; agrégalo como combo"
+            )
+        if es_promo_ticket(promo):
+            raise DatosInvalidosException(
+                f"La promoción '{promo.nombre}' se aplica automáticamente al ticket"
             )
     else:
         aplicables = listar_aplicables(db, producto, ahora)

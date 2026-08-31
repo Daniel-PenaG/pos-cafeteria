@@ -20,6 +20,7 @@ from app.models import (
 )
 from app.schemas.ventas import VentaCreate, VentaResponse, ExtraVentaLinea
 from app.services.promocion_service import calcular_linea
+from app.services.promocion_ticket_service import recalcular_lineas_ticket
 from app.services.fidelidad_service import obtener_config, calcular_puntos_ganados, acumular_puntos_venta
 from app.services.extras_validacion_service import validar_extras_producto
 from app.exceptions import (
@@ -163,40 +164,48 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
     if not data.forma_pago or data.forma_pago.strip() == "":
         raise DatosInvalidosException("Forma de pago requerida")
 
-    total_calculado = 0
-
+    lineas_entrada = []
     for item in data.detalles:
         if item.cantidad <= 0:
             raise DatosInvalidosException("La cantidad debe ser positiva")
-
         producto = db.query(ProductoModel).filter(ProductoModel.id_producto == item.id_producto).first()
         if not producto:
             raise RecursoNoEncontradoException(f"Producto {item.id_producto} no encontrado")
         if not producto.activo:
             raise DatosInvalidosException(f"Producto {producto.nombre} no está activo")
-
         validar_extras_producto(db, item.id_producto, item.extras)
-
         precio_extras = sum(float(e.precio) for e in item.extras)
-        calculo = calcular_linea(
-            db,
-            producto,
-            float(item.cantidad),
-            precio_extras,
-            item.id_promocion,
+        lineas_entrada.append(
+            {
+                "id_producto": item.id_producto,
+                "cantidad": float(item.cantidad),
+                "precio_extras": precio_extras,
+                "extras": item.extras,
+                "id_promocion": item.id_promocion,
+                "sin_promocion": item.id_promocion is None,
+            }
         )
-        if not calculo["margen_ok"]:
-            raise DatosInvalidosException(calculo["mensaje"] or "Margen insuficiente para la promoción")
 
+    recalc = recalcular_lineas_ticket(db, lineas_entrada)
+    if len(recalc["lineas"]) != len(data.detalles):
+        raise DatosInvalidosException("Error al recalcular promociones del ticket")
+
+    total_calculado = 0.0
+    for item, calculo in zip(data.detalles, recalc["lineas"]):
+        if not calculo.get("margen_ok", True):
+            producto = db.query(ProductoModel).filter(ProductoModel.id_producto == item.id_producto).first()
+            raise DatosInvalidosException(
+                calculo.get("mensaje") or f"Margen insuficiente para '{producto.nombre if producto else item.id_producto}'"
+            )
         esperado = calculo["precio_unitario"]
         if abs(float(item.precio_unitario) - esperado) > 0.02:
+            producto = db.query(ProductoModel).filter(ProductoModel.id_producto == item.id_producto).first()
             raise DatosInvalidosException(
-                f"Precio inválido para '{producto.nombre}'. "
+                f"Precio inválido para '{producto.nombre if producto else item.id_producto}'. "
                 f"Esperado: {esperado:.2f}, recibido: {item.precio_unitario:.2f}"
             )
         if item.precio_unitario <= 0:
             raise DatosInvalidosException("El precio debe ser positivo")
-
         total_calculado += float(item.cantidad) * esperado
 
     cliente = None
@@ -230,16 +239,12 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
     db.commit()
     db.refresh(venta)
 
-    for item in data.detalles:
+    for item, calculo in zip(data.detalles, recalc["lineas"]):
         producto = db.query(ProductoModel).filter(ProductoModel.id_producto == item.id_producto).first()
         extras_json = None
         if item.extras:
             extras_normalizados = validar_extras_producto(db, item.id_producto, item.extras)
             extras_json = json.dumps(extras_normalizados, ensure_ascii=False)
-        precio_extras = sum(float(e.precio) for e in item.extras)
-        calculo = calcular_linea(
-            db, producto, float(item.cantidad), precio_extras, item.id_promocion
-        )
         detalle = DetalleVentaModel(
             id_venta=venta.id_venta,
             id_producto=item.id_producto,
@@ -247,10 +252,14 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
             precio_unitario=calculo["precio_unitario"],
             subtotal=float(item.cantidad) * float(calculo["precio_unitario"]),
             extras_json=extras_json,
-            id_promocion=calculo["id_promocion"],
-            precio_original=calculo["precio_original_unitario"],
-            descuento_unitario=calculo["descuento_unitario"],
-            costo_unitario_snapshot=calculo["costo_unitario"],
+            id_promocion=calculo.get("id_promocion"),
+            precio_original=calculo.get("precio_original"),
+            descuento_unitario=calculo.get("descuento_unitario"),
+            costo_unitario_snapshot=calculo.get("costo_unitario"),
+            nombre_promocion=calculo.get("nombre_promocion"),
+            tipo_promocion=calculo.get("tipo_promocion"),
+            valor_promocion=calculo.get("valor_promocion"),
+            promocion_aplicaciones=calculo.get("promocion_aplicaciones"),
         )
         db.add(detalle)
 

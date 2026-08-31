@@ -17,6 +17,7 @@ from app.services.extras_validacion_service import (
     extras_linea_desde_json,
 )
 from app.services.promocion_service import calcular_linea, calcular_combo
+from app.services.promocion_ticket_service import recalcular_lineas_ticket
 from app.services.venta_service import registrar_venta, MESA_PARA_LLEVAR
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 
@@ -63,11 +64,11 @@ def _detalle_a_dict(d: DetallePedidoModel) -> dict:
     }
 
 
-def _pedido_a_dict(p: PedidoModel) -> dict:
+def _pedido_a_dict(p: PedidoModel, promo_resumen: dict | None = None) -> dict:
     lineas = [_detalle_a_dict(d) for d in p.detalles]
     total = sum(l["cantidad"] * l["precio_unitario"] for l in lineas)
     cliente_nombre = p.cliente.nombre if p.cliente else None
-    return {
+    out = {
         "id_pedido": p.id_pedido,
         "numero_mesa": p.numero_mesa,
         "para_llevar": bool(getattr(p, "para_llevar", False)),
@@ -80,6 +81,11 @@ def _pedido_a_dict(p: PedidoModel) -> dict:
         "lineas": lineas,
         "cliente_nombre": cliente_nombre,
     }
+    if promo_resumen:
+        out["subtotal_normal"] = promo_resumen.get("subtotal_normal")
+        out["descuento_promociones"] = promo_resumen.get("descuento_promociones")
+        out["resumen_promociones"] = promo_resumen.get("resumen_promociones", [])
+    return out
 
 
 def obtener_pedido_abierto_mesa(
@@ -108,6 +114,45 @@ def obtener_pedido_abierto_mesa(
     return pedido
 
 
+def _lineas_desde_pedido(pedido: PedidoModel) -> list:
+    lineas = []
+    for d in pedido.detalles:
+        extras = extras_linea_desde_json(_parse_extras(d.extras_json))
+        lineas.append(
+            {
+                "id_producto": d.id_producto,
+                "cantidad": float(d.cantidad),
+                "precio_extras": sum(float(e.precio) for e in extras),
+                "extras": extras,
+                "id_promocion": d.id_promocion,
+                "sin_promocion": d.id_promocion is None,
+            }
+        )
+    return lineas
+
+
+def recalcular_promociones_pedido(db: Session, pedido: PedidoModel) -> dict:
+    """Recalcula promociones ticket y actualiza líneas del pedido abierto."""
+    if pedido.estado != "ABIERTO" or not pedido.detalles:
+        return {"lineas": [], "resumen_promociones": [], "subtotal_normal": 0.0, "descuento_promociones": 0.0, "total": 0.0}
+
+    recalc = recalcular_lineas_ticket(db, _lineas_desde_pedido(pedido))
+    for detalle, calc in zip(pedido.detalles, recalc["lineas"]):
+        detalle.precio_unitario = calc["precio_unitario"]
+        detalle.precio_original = calc.get("precio_original")
+        detalle.descuento_unitario = calc.get("descuento_unitario")
+        detalle.id_promocion = calc.get("id_promocion")
+        detalle.nombre_promocion = calc.get("nombre_promocion")
+    db.commit()
+    return recalc
+
+
+def pedido_respuesta(db: Session, pedido: PedidoModel) -> dict:
+    resumen = recalcular_promociones_pedido(db, pedido)
+    db.refresh(pedido)
+    return _pedido_a_dict(pedido, resumen)
+
+
 def agregar_linea_pedido(
     db: Session, pedido: PedidoModel, data: PedidoLineaCreate, nombre_promocion: str | None = None
 ) -> DetallePedidoModel:
@@ -121,8 +166,10 @@ def agregar_linea_pedido(
         raise DatosInvalidosException(f"Producto {producto.nombre} no está activo")
 
     precio_extras = sum(float(e.precio) for e in data.extras)
+    sin_promo = data.id_promocion is None
     calculo = calcular_linea(
-        db, producto, float(data.cantidad), precio_extras, data.id_promocion
+        db, producto, float(data.cantidad), precio_extras, data.id_promocion,
+        sin_promocion=sin_promo,
     )
     if not calculo["margen_ok"]:
         raise DatosInvalidosException(calculo["mensaje"] or "Margen insuficiente")
@@ -158,6 +205,8 @@ def agregar_linea_pedido(
                 existente.fecha_listo_comanda = None
         db.commit()
         db.refresh(existente)
+        recalcular_promociones_pedido(db, pedido)
+        db.refresh(existente)
         return existente
 
     # Evita duplicados por doble envío concurrente
@@ -174,6 +223,8 @@ def agregar_linea_pedido(
             if float(existente.cantidad_lista or 0) < float(existente.cantidad):
                 existente.fecha_listo_comanda = None
         db.commit()
+        db.refresh(existente)
+        recalcular_promociones_pedido(db, pedido)
         db.refresh(existente)
         return existente
 
@@ -196,6 +247,8 @@ def agregar_linea_pedido(
     )
     db.add(detalle)
     db.commit()
+    db.refresh(detalle)
+    recalcular_promociones_pedido(db, pedido)
     db.refresh(detalle)
     return detalle
 

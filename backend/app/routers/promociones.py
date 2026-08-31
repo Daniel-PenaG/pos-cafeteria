@@ -32,6 +32,12 @@ from app.services.promocion_service import (
     combo_a_dict,
     resumen_promociones_ventas,
 )
+from app.services.promocion_reporte_service import (
+    rendimiento_promociones_rango,
+    detalle_promocion,
+    comparar_promocion_periodos,
+)
+from app.utils.timezone_mx import now_utc_naive
 from app.utils.deps import require_admin, require_pos
 
 router = APIRouter(
@@ -56,6 +62,10 @@ def _promo_a_dict(p: PromocionModel) -> dict:
         "hora_fin": p.hora_fin,
         "dias_semana": p.dias_semana,
         "margen_minimo": float(p.margen_minimo) if p.margen_minimo is not None else None,
+        "cantidad_requerida": int(p.cantidad_requerida or 1),
+        "limite_usos_por_ticket": int(p.limite_usos_por_ticket) if p.limite_usos_por_ticket is not None else None,
+        "acumulable": bool(p.acumulable),
+        "fecha_creacion": p.fecha_creacion,
         "ids_productos": [x.id_producto for x in p.productos],
         "ids_categorias": [x.id_categoria for x in p.categorias],
     }
@@ -96,6 +106,44 @@ def resumen_promociones(
     db: Session = Depends(get_db),
 ):
     return resumen_promociones_ventas(db, periodo, fecha, anio, mes)
+
+
+@router.get("/rendimiento", dependencies=[Depends(require_admin)])
+def rendimiento_promociones(
+    fecha_inicio: date,
+    fecha_fin: date,
+    db: Session = Depends(get_db),
+):
+    return rendimiento_promociones_rango(db, fecha_inicio, fecha_fin)
+
+
+@router.get("/{id_promocion}/detalle", dependencies=[Depends(require_admin)])
+def detalle_promocion_endpoint(
+    id_promocion: int,
+    fecha_inicio: date,
+    fecha_fin: date,
+    db: Session = Depends(get_db),
+):
+    return detalle_promocion(db, id_promocion, fecha_inicio, fecha_fin)
+
+
+@router.get("/{id_promocion}/comparar", dependencies=[Depends(require_admin)])
+def comparar_promocion_endpoint(
+    id_promocion: int,
+    fecha_inicio_antes: date,
+    fecha_fin_antes: date,
+    fecha_inicio_durante: date,
+    fecha_fin_durante: date,
+    db: Session = Depends(get_db),
+):
+    return comparar_promocion_periodos(
+        db,
+        id_promocion,
+        fecha_inicio_antes,
+        fecha_fin_antes,
+        fecha_inicio_durante,
+        fecha_fin_durante,
+    )
 
 
 @router.get("/aplicables/{id_producto}", response_model=List[Promocion])
@@ -161,6 +209,10 @@ def crear_promocion(data: PromocionCreate, db: Session = Depends(get_db)):
         hora_fin=data.hora_fin,
         dias_semana=data.dias_semana,
         margen_minimo=data.margen_minimo,
+        cantidad_requerida=data.cantidad_requerida or 1,
+        limite_usos_por_ticket=data.limite_usos_por_ticket,
+        acumulable=data.acumulable,
+        fecha_creacion=now_utc_naive(),
     )
     db.add(promo)
     db.flush()
@@ -189,6 +241,9 @@ def actualizar_promocion(
     promo.hora_fin = data.hora_fin
     promo.dias_semana = data.dias_semana
     promo.margen_minimo = data.margen_minimo
+    promo.cantidad_requerida = data.cantidad_requerida or 1
+    promo.limite_usos_por_ticket = data.limite_usos_por_ticket
+    promo.acumulable = data.acumulable
     _sync_enlaces(db, promo, data)
     db.commit()
     db.refresh(promo)

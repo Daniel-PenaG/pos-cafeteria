@@ -73,3 +73,26 @@ export async function deletePromocion(id) {
   const res = await api.delete(`/promociones/${id}`, { headers: getAuthHeader() });
   return res.data;
 }
+
+export async function getPromocionesRendimiento(fechaInicio, fechaFin) {
+  const params = new URLSearchParams({ fecha_inicio: fechaInicio, fecha_fin: fechaFin });
+  const res = await api.get(`/promociones/rendimiento?${params}`, { headers: getAuthHeader() });
+  return res.data;
+}
+
+export async function getPromocionDetalle(idPromocion, fechaInicio, fechaFin) {
+  const params = new URLSearchParams({ fecha_inicio: fechaInicio, fecha_fin: fechaFin });
+  const res = await api.get(`/promociones/${idPromocion}/detalle?${params}`, { headers: getAuthHeader() });
+  return res.data;
+}
+
+export async function getPromocionComparar(idPromocion, { fechaInicioAntes, fechaFinAntes, fechaInicioDurante, fechaFinDurante }) {
+  const params = new URLSearchParams({
+    fecha_inicio_antes: fechaInicioAntes,
+    fecha_fin_antes: fechaFinAntes,
+    fecha_inicio_durante: fechaInicioDurante,
+    fecha_fin_durante: fechaFinDurante,
+  });
+  const res = await api.get(`/promociones/${idPromocion}/comparar?${params}`, { headers: getAuthHeader() });
+  return res.data;
+}

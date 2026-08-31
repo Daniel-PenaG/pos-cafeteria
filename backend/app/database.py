@@ -119,6 +119,14 @@ def aplicar_migraciones_sqlite():
         "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS precio_original NUMERIC(10, 2)",
         "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS descuento_unitario NUMERIC(10, 2)",
         "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS costo_unitario_snapshot NUMERIC(10, 4)",
+        "ALTER TABLE promociones ADD COLUMN IF NOT EXISTS cantidad_requerida INTEGER DEFAULT 1",
+        "ALTER TABLE promociones ADD COLUMN IF NOT EXISTS limite_usos_por_ticket INTEGER",
+        "ALTER TABLE promociones ADD COLUMN IF NOT EXISTS acumulable BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE promociones ADD COLUMN IF NOT EXISTS fecha_creacion TIMESTAMP",
+        "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS nombre_promocion VARCHAR(150)",
+        "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS tipo_promocion VARCHAR(30)",
+        "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS valor_promocion NUMERIC(10, 2)",
+        "ALTER TABLE detalle_venta ADD COLUMN IF NOT EXISTS promocion_aplicaciones INTEGER",
     ]
     migraciones_sqlite_promos = [
         """CREATE TABLE IF NOT EXISTS promociones (
@@ -150,6 +158,14 @@ def aplicar_migraciones_sqlite():
         "ALTER TABLE detalle_venta ADD COLUMN precio_original NUMERIC(10, 2)",
         "ALTER TABLE detalle_venta ADD COLUMN descuento_unitario NUMERIC(10, 2)",
         "ALTER TABLE detalle_venta ADD COLUMN costo_unitario_snapshot NUMERIC(10, 4)",
+        "ALTER TABLE promociones ADD COLUMN cantidad_requerida INTEGER DEFAULT 1",
+        "ALTER TABLE promociones ADD COLUMN limite_usos_por_ticket INTEGER",
+        "ALTER TABLE promociones ADD COLUMN acumulable BOOLEAN DEFAULT 0",
+        "ALTER TABLE promociones ADD COLUMN fecha_creacion TIMESTAMP",
+        "ALTER TABLE detalle_venta ADD COLUMN nombre_promocion VARCHAR(150)",
+        "ALTER TABLE detalle_venta ADD COLUMN tipo_promocion VARCHAR(30)",
+        "ALTER TABLE detalle_venta ADD COLUMN valor_promocion NUMERIC(10, 2)",
+        "ALTER TABLE detalle_venta ADD COLUMN promocion_aplicaciones INTEGER",
     ]
     migraciones_fidelidad_pg = [
         """CREATE TABLE IF NOT EXISTS clientes (
@@ -604,6 +620,56 @@ def crear_catalogo_demo_si_vacio():
     except Exception as exc:
         db.rollback()
         print(f"[WARN] No se pudo crear catálogo demo: {exc}")
+    finally:
+        db.close()
+
+
+def crear_promocion_lunes_malteadas_si_ausente():
+    """Crea promoción demo INACTIVA si no existe (revisión admin antes de activar)."""
+    from app.models.models import (
+        PromocionModel,
+        PromocionCategoriaModel,
+        CategoriaModel,
+    )
+    from app.utils.timezone_mx import now_utc_naive
+    from datetime import timedelta
+
+    db = SessionLocal()
+    try:
+        if db.query(PromocionModel).filter(PromocionModel.nombre == "Lunes de Malteadas").first():
+            return
+        cat = (
+            db.query(CategoriaModel)
+            .filter(CategoriaModel.nombre.ilike("%maltead%"))
+            .first()
+        )
+        if not cat:
+            print("[INFO] Seed promo 'Lunes de Malteadas' omitido: sin categoría Malteadas")
+            return
+        ahora = now_utc_naive()
+        promo = PromocionModel(
+            nombre="Lunes de Malteadas",
+            descripcion="2 malteadas por $90",
+            tipo="CANTIDAD_PRECIO",
+            valor=90,
+            activa=False,
+            cantidad_requerida=2,
+            acumulable=False,
+            dias_semana="0",
+            hora_inicio="11:00",
+            hora_fin="16:00",
+            fecha_inicio=ahora,
+            fecha_fin=ahora + timedelta(days=21),
+            fecha_creacion=ahora,
+        )
+        db.add(promo)
+        db.flush()
+        db.add(PromocionCategoriaModel(id_promocion=promo.id_promocion, id_categoria=cat.id_categoria))
+        db.commit()
+        print("[INFO] Promoción demo 'Lunes de Malteadas' creada (INACTIVA)")
+    except Exception as exc:
+        db.rollback()
+        print(f"[WARN] Seed promo malteadas: {exc}")
     finally:
         db.close()
 

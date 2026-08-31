@@ -114,6 +114,9 @@ export default function Ventas({ modoParaLlevar = false }) {
     () => carrito.reduce((acc, item) => acc + item.cantidad * item.precio_unitario, 0),
     [carrito]
   );
+  const subtotalNormal = pedido?.subtotal_normal;
+  const descuentoPromos = pedido?.descuento_promociones;
+  const resumenPromos = pedido?.resumen_promociones ?? [];
 
   const cobroEfectivo = formaPago === "EFECTIVO";
   const montoRecibidoNum = parseFloat(montoRecibido);
@@ -1041,6 +1044,26 @@ export default function Ventas({ modoParaLlevar = false }) {
           )}
 
           <div className="cart-panel__footer">
+          {(subtotalNormal > 0 && descuentoPromos > 0) ? (
+            <div className="cart-totals-breakdown" style={{ marginBottom: "0.5rem" }}>
+              <div className="hint" style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Subtotal</span>
+                <span>${Number(subtotalNormal).toFixed(2)}</span>
+              </div>
+              {resumenPromos.map((p) => (
+                <div key={p.id_promocion} className="hint" style={{ display: "flex", justifyContent: "space-between", color: "var(--olive-dark)" }}>
+                  <span>{p.nombre}</span>
+                  <span>-${Number(p.descuento || 0).toFixed(2)}</span>
+                </div>
+              ))}
+              {!resumenPromos.length && (
+                <div className="hint" style={{ display: "flex", justifyContent: "space-between", color: "var(--olive-dark)" }}>
+                  <span>Descuento promociones</span>
+                  <span>-${Number(descuentoPromos).toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+          ) : null}
           <div className="cart-total">Total: ${total.toFixed(2)}</div>
           {!modoParaLlevar && (
             <button
