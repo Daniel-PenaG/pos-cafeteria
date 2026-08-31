@@ -1,38 +1,68 @@
 # Pruebas manuales — Promociones (pre-producción)
 
-Ejecutar en **staging o SQLite local** antes de merge/deploy de la rama `feature/promociones-ticket-level`.
+Rama: `feature/promociones-ticket-level`  
+Ejecutar en **staging o SQLite local**. No usar credenciales ni datos de producción.
 
-## Preparación
+## Leyenda de estados
 
-1. Admin → Promociones: crear o activar promos de prueba (una por tipo).
-2. Productos con receta y margen conocido.
-3. Extras configurados en al menos un producto.
-4. Impresora Bluetooth configurada (opcional) o ver ticket en pantalla.
+| Estado | Significado |
+|--------|-------------|
+| **APROBADO** | Ejecutado y verificado |
+| **FALLÓ** | Ejecutado con resultado incorrecto |
+| **PENDIENTE** | Requiere usuario, tablet, impresora o staging |
+| **NO APLICA** | No aplica en este entorno |
 
-## Casos
+## Matriz de casos
 
-| # | Escenario | Pasos | Verificar |
-|---|-----------|-------|-----------|
-| 1 | **Venta normal sin promoción** | Mesa → producto sin promo → cobrar efectivo | Total = suma líneas; `detalle_venta.id_promocion` null; ticket muestra precios sin descuento |
-| 2 | **Porcentaje** | Promo `PORCENTAJE` activa en producto/categoría → vender 1 unidad | Descuento % correcto; subtotal y total coinciden con POS |
-| 3 | **Precio fijo** | Promo `PRECIO_FIJO` → vender producto elegible | Precio unitario = valor promo; margen coherente |
-| 4 | **2x1** | Promo `DOS_X_UNO` → agregar 2 unidades elegibles | Segunda unidad con descuento; total = 1 × precio |
-| 5 | **Cantidad-precio (ticket)** | Promo `CANTIDAD_PRECIO` (ej. 2×$90) → 2+ unidades elegibles en **mismo ticket** | Descuento a nivel ticket; snapshots en `detalle_venta` (`nombre_promocion`, `tipo_promocion`, `valor_promocion`) |
-| 6 | **Paquete** | Promo tipo paquete/combo configurada → productos del paquete | Total paquete; todas las líneas con promo aplicada |
-| 7 | **Extras** | Producto con extras de pago → aplicar promo si aplica | Extras suman al subtotal; promo no rompe extras_json |
-| 8 | **Mesa** | Flujo completo mesa N → comanda → cobro con promo | Pedido cierra; venta ligada; mesa libre |
-| 9 | **Para llevar** | Ventas para llevar (mesa 99) con promo | `para_llevar=true`; total correcto |
-| 10 | **Total e impresión ticket** | Cobrar cualquier caso anterior | Total en modal = total venta; ticket impreso/PDF con líneas, descuentos, forma de pago, cambio (efectivo) |
+| Caso | Total esperado | Total obtenido | Estado | Evidencia | Observaciones |
+|------|---------------:|---------------:|--------|-----------|---------------|
+| 1. Venta normal sin promoción | Suma de subtotales | — | **APROBADO** (automatizado) | `test_venta_normal_varios_productos` | API: total=165, `id_promocion` null |
+| 2. Porcentaje (20 % sobre $65) | $52.00 | — | **APROBADO** (automatizado) | `test_venta_porcentaje`, `test_porcentaje_una_y_varias_unidades` | Descuento $13/u |
+| 3. Precio fijo ($49) | $49.00 | — | **APROBADO** (automatizado) | `test_venta_precio_fijo`, `test_precio_fijo_con_snapshot` | Snapshot nombre promo |
+| 4. Descuento fijo ticket ($10) | $55.00 | — | **APROBADO** (automatizado) | `test_descuento_fijo_ticket` | Tipo `DESCUENTO_FIJO`, cantidad_requerida=1 |
+| 5. 2×1 (2×$65) | $65.00 | — | **APROBADO** (automatizado) | `test_venta_dos_x_uno`, `test_dos_x_uno_cantidades` | Ver tabla cantidades abajo |
+| 6. Cantidad-precio (2×$90) | 1→$65, 2→$90, 3→$155, 4→$180 | — | **APROBADO** (automatizado) | `test_cantidad_precio_malteadas`, `test_venta_cantidad_precio_ticket` | Distribuye en varias líneas |
+| 7. Paquete/combo | $60 paquete | — | **APROBADO** (automatizado) | `test_combo_paquete` | 2 productos, suma partes = total paquete |
+| 8. Extras | base + extra | — | **APROBADO** (automatizado) | `test_venta_con_extras`, `test_inventario_extra` | Promo aplica solo al producto, extra suma aparte |
+| 9. Mesa (comanda → cobro) | Según promo | — | **APROBADO** (automatizado) | `test_flujo_mesa_cobro`, `test_doble_cobro_rechazado` | Pedido COBRADO, mesa liberada |
+| 10. Para llevar (mesa 99) | $52 con 20 % | — | **APROBADO** (automatizado) | `test_para_llevar_mesa_99` | `para_llevar=true` |
+| 11. Cliente y puntos | floor(total/10) | — | **APROBADO** (automatizado) | `test_fidelidad_sobre_total_con_descuento` | Puntos sobre total pagado ($32.50→3 pts) |
+| 12. Total e impresión ticket | Modal = venta | — | **PENDIENTE** | — | Requiere tablet e impresora Coffe Song |
 
-## Seed local opcional (solo SQLite)
+## 2×1 — regla de cobro (documentada en pruebas)
+
+Precio base unitario $100:
+
+| Unidades | Unidades pagadas | Total ticket |
+|---------:|-----------------:|-------------:|
+| 1 | 1 | $100 |
+| 2 | 1 | $100 |
+| 3 | 2 | $200 |
+| 4 | 2 | $200 |
+| 5 | 3 | $300 |
+
+Fórmula: `unidades_pagadas = ceil(cantidad / 2)`; total = unidades_pagadas × precio_base.
+
+## Instrucciones — impresión ticket (caso 12)
+
+1. Levantar backend local: `cd backend && uvicorn app.main:app --reload`
+2. Levantar frontend: `cd frontend && npm run dev`
+3. Login cajero en tablet Android o Chrome DevTools (390×844).
+4. Crear venta con promo visible (ej. 20 % malteada).
+5. Cobrar en efectivo; verificar total en modal de cobro.
+6. Imprimir ticket Bluetooth o PDF.
+7. Verificar: líneas, descuentos por promo, forma de pago, cambio (si efectivo).
+8. Registrar en columna «Total obtenido» y cambiar estado a APROBADO o FALLÓ.
+
+## Regresión reportes
+
+**PENDIENTE** en staging: Reportes → verificar promociones en detalle y totales vs suma manual.
+
+## Seed local opcional
 
 ```bash
 # backend/.env
 LOCAL_SEED_PROMO=true
 ```
 
-Reiniciar API local. Crea promo demo **INACTIVA** «Lunes de Malteadas» si existe categoría Malteadas. **No usar en Render/producción.**
-
-## Regresión reportes
-
-Tras ventas de prueba, en Reportes verificar que promociones aparecen en detalle y totales no cambian vs suma manual.
+Solo SQLite. Crea promo demo **INACTIVA** «Lunes de Malteadas». No usar en Render/producción.
