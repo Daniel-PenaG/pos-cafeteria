@@ -13,9 +13,6 @@ from sqlalchemy.orm import Session
 from app.models.models import (
     VentaModel,
     DetalleVentaModel,
-    ProductoModel,
-    PromocionModel,
-    RecetaModel,
 )
 from app.utils.timezone_mx import (
     filtro_dia_mx,
@@ -25,6 +22,15 @@ from app.utils.timezone_mx import (
     fecha_mx_desde_utc_naive,
     datetime_mx_desde_utc_naive,
     contar_dias_semana_en_rango,
+    today_mx,
+)
+from app.utils.operacion_config import hora_operacion_inicio, hora_operacion_fin
+from app.services.reporte_batch_service import (
+    unidades_por_venta_map,
+    sum_unidades,
+    metricas_promociones_batch,
+    productos_vendidos_batch,
+    desglose_diario_batch,
 )
 
 DIAS_SEMANA: List[Tuple[int, str]] = [
@@ -37,8 +43,9 @@ DIAS_SEMANA: List[Tuple[int, str]] = [
     (6, "Domingo"),
 ]
 
-HORA_OPERACION_INICIO = 9
-HORA_OPERACION_FIN = 21
+# Compatibilidad con imports existentes
+HORA_OPERACION_INICIO = hora_operacion_inicio()
+HORA_OPERACION_FIN = hora_operacion_fin()
 
 
 def _round2(n: float) -> float:
@@ -61,101 +68,11 @@ def _unidades_vendidas(db: Session, venta_ids: List[int]) -> float:
 
 
 def _metricas_promociones(db: Session, venta_ids: List[int]) -> dict:
-    if not venta_ids:
-        return {
-            "promociones_utilizadas": 0,
-            "venta_por_promociones": 0.0,
-            "promociones_detalle": [],
-        }
-
-    filas = (
-        db.query(
-            PromocionModel.id_promocion,
-            PromocionModel.nombre,
-            func.coalesce(func.sum(DetalleVentaModel.cantidad), 0),
-            func.coalesce(func.sum(DetalleVentaModel.subtotal), 0),
-            func.coalesce(
-                func.sum(DetalleVentaModel.descuento_unitario * DetalleVentaModel.cantidad),
-                0,
-            ),
-        )
-        .join(PromocionModel, PromocionModel.id_promocion == DetalleVentaModel.id_promocion)
-        .filter(
-            DetalleVentaModel.id_venta.in_(venta_ids),
-            DetalleVentaModel.id_promocion.isnot(None),
-        )
-        .group_by(PromocionModel.id_promocion, PromocionModel.nombre)
-        .order_by(func.sum(DetalleVentaModel.subtotal).desc())
-        .all()
-    )
-
-    promociones_utilizadas = int(sum(float(r[2]) for r in filas))
-    venta_por_promociones = _round2(sum(float(r[3]) for r in filas))
-
-    return {
-        "promociones_utilizadas": promociones_utilizadas,
-        "venta_por_promociones": venta_por_promociones,
-        "promociones_detalle": [
-            {
-                "id_promocion": r[0],
-                "nombre": r[1],
-                "cantidad": int(float(r[2])),
-                "importe": _round2(float(r[3])),
-                "descuento_total": _round2(float(r[4])),
-            }
-            for r in filas
-        ],
-    }
+    return metricas_promociones_batch(db, venta_ids)
 
 
 def _productos_vendidos(db: Session, venta_ids: list[int]):
-    if not venta_ids:
-        return []
-
-    detalles = (
-        db.query(
-            DetalleVentaModel.id_producto,
-            func.sum(DetalleVentaModel.cantidad).label("cantidad"),
-            func.sum(DetalleVentaModel.subtotal).label("subtotal"),
-        )
-        .filter(DetalleVentaModel.id_venta.in_(venta_ids))
-        .group_by(DetalleVentaModel.id_producto)
-        .all()
-    )
-
-    productos = []
-    for d in detalles:
-        producto = (
-            db.query(ProductoModel).filter(ProductoModel.id_producto == d.id_producto).first()
-        )
-        if not producto:
-            continue
-
-        receta = (
-            db.query(RecetaModel)
-            .filter(RecetaModel.id_producto == producto.id_producto, RecetaModel.activo == True)
-            .first()
-        )
-
-        costo_total = receta.costo_total if receta else 0
-        precio_venta = float(producto.precio_venta)
-        margen = precio_venta - float(costo_total)
-
-        productos.append(
-            {
-                "id_producto": producto.id_producto,
-                "nombre": producto.nombre,
-                "cantidad": float(d.cantidad),
-                "subtotal": float(d.subtotal),
-                "precio_venta": precio_venta,
-                "costo_receta": float(costo_total),
-                "margen_unitario": margen,
-                "margen_total": margen * float(d.cantidad),
-            }
-        )
-
-    productos.sort(key=lambda p: (-p["cantidad"], -p["subtotal"]))
-    return productos
+    return productos_vendidos_batch(db, venta_ids)
 
 
 def _metricas_desde_ventas(db: Session, ventas: Iterable[VentaModel]) -> dict:
@@ -231,9 +148,11 @@ def rendimiento_dia_semana(
         dow = fecha_mx_desde_utc_naive(v.fecha_hora).weekday()
         por_dow[dow].append(v)
 
+    venta_ids = [v.id_venta for v in ventas]
+    unidades_map = unidades_por_venta_map(db, venta_ids)
     unidades_por_dow: dict[int, float] = {}
     for dow, grupo in por_dow.items():
-        unidades_por_dow[dow] = _unidades_vendidas(db, [v.id_venta for v in grupo])
+        unidades_por_dow[dow] = sum_unidades(unidades_map, [v.id_venta for v in grupo])
 
     filas = []
     for dow, nombre in DIAS_SEMANA:
@@ -273,31 +192,60 @@ def _label_rango_hora(h: int) -> str:
 
 
 def _horas_operacion() -> range:
-    return range(HORA_OPERACION_INICIO, HORA_OPERACION_FIN + 1)
+    return range(hora_operacion_inicio(), hora_operacion_fin() + 1)
+
+
+def _dias_calendario_efectivos(fecha_inicio: date, fecha_fin: date) -> int:
+    """Días calendario del rango, sin contar fechas futuras (MX)."""
+    hoy = today_mx()
+    fin_efectivo = min(fecha_fin, hoy)
+    if fin_efectivo < fecha_inicio:
+        return 0
+    return (fin_efectivo - fecha_inicio).days + 1
+
+
+def _promedios_rango(
+    venta_total: float,
+    numero_tickets: int,
+    dias_con_ventas: int,
+    dias_calendario: int,
+) -> dict:
+    """Promedios compatibles + campos adicionales para calendario/operación."""
+    return {
+        "promedio_venta_diaria": _safe_div(venta_total, dias_con_ventas),
+        "promedio_tickets_diarios": _safe_div(numero_tickets, dias_con_ventas),
+        "promedio_venta_diaria_calendario": _safe_div(venta_total, dias_calendario),
+        "promedio_tickets_diarios_calendario": _safe_div(numero_tickets, dias_calendario),
+        "promedio_venta_diaria_operacion": _safe_div(venta_total, dias_con_ventas),
+        "promedio_tickets_diarios_operacion": _safe_div(numero_tickets, dias_con_ventas),
+        "dias_calendario_efectivos": dias_calendario,
+    }
 
 
 def _rendimiento_por_hora_variante(
-    db: Session,
     ventas: List[VentaModel],
+    unidades_map: dict[int, float],
     dias_analizados: int,
     dia_filtro: Optional[int],
     dia_filtro_label: str,
 ) -> dict:
     """Agrupa tickets por hora de cierre (MX) dentro del horario de operación."""
+    h_ini = hora_operacion_inicio()
+    h_fin = hora_operacion_fin()
     por_hora: dict[int, list] = defaultdict(list)
     for v in ventas:
         hora = datetime_mx_desde_utc_naive(v.fecha_hora).hour
-        if HORA_OPERACION_INICIO <= hora <= HORA_OPERACION_FIN:
+        if h_ini <= hora <= h_fin:
             por_hora[hora].append(v)
 
-    num_horas = HORA_OPERACION_FIN - HORA_OPERACION_INICIO + 1
+    num_horas = h_fin - h_ini + 1
     filas = []
     for h in _horas_operacion():
         grupo = por_hora.get(h, [])
         venta_ids = [v.id_venta for v in grupo]
         venta_total = sum(float(v.total) for v in grupo)
         tickets_totales = len(grupo)
-        unidades = _unidades_vendidas(db, venta_ids) if venta_ids else 0.0
+        unidades = sum_unidades(unidades_map, venta_ids) if venta_ids else 0.0
 
         filas.append(
             {
@@ -363,10 +311,11 @@ def rendimiento_por_hora(
     """Rendimiento por hora con variantes por día de la semana (promedios normalizados)."""
     dias_totales = (fecha_fin - fecha_inicio).days + 1
     dias_semana = contar_dias_semana_en_rango(fecha_inicio, fecha_fin)
+    unidades_map = unidades_por_venta_map(db, [v.id_venta for v in ventas])
 
     variantes = {
         "todos": _rendimiento_por_hora_variante(
-            db, ventas, dias_totales, None, "Todos"
+            ventas, unidades_map, dias_totales, None, "Todos"
         ),
     }
     for dow, nombre in DIAS_SEMANA:
@@ -376,12 +325,12 @@ def rendimiento_por_hora(
             if fecha_mx_desde_utc_naive(v.fecha_hora).weekday() == dow
         ]
         variantes[str(dow)] = _rendimiento_por_hora_variante(
-            db, filtradas, dias_semana[dow], dow, nombre
+            filtradas, unidades_map, dias_semana[dow], dow, nombre
         )
 
     return {
-        "hora_inicio": HORA_OPERACION_INICIO,
-        "hora_fin": HORA_OPERACION_FIN,
+        "hora_inicio": hora_operacion_inicio(),
+        "hora_fin": hora_operacion_fin(),
         "campo_hora": "ventas.fecha_hora",
         "variantes": variantes,
     }
@@ -390,9 +339,11 @@ def rendimiento_por_hora(
 def ventas_por_hora(db: Session, ventas: List[VentaModel]) -> dict:
     """Compatibilidad: vista «todos» sin normalización de rango (legacy)."""
     por_hora: dict[int, list] = defaultdict(list)
+    h_ini = hora_operacion_inicio()
+    h_fin = hora_operacion_fin()
     for v in ventas:
         hora = datetime_mx_desde_utc_naive(v.fecha_hora).hour
-        if HORA_OPERACION_INICIO <= hora <= HORA_OPERACION_FIN:
+        if h_ini <= hora <= h_fin:
             por_hora[hora].append(v)
 
     filas = []
@@ -524,8 +475,8 @@ def _analisis_temporal_vacio(fecha_inicio: date | None = None, fecha_fin: date |
             },
         },
         "rendimiento_por_hora": {
-            "hora_inicio": HORA_OPERACION_INICIO,
-            "hora_fin": HORA_OPERACION_FIN,
+            "hora_inicio": hora_operacion_inicio(),
+            "hora_fin": hora_operacion_fin(),
             "campo_hora": "ventas.fecha_hora",
             "variantes": variantes_hora,
         },
@@ -542,26 +493,7 @@ def _desglose_diario(db: Session, ventas: List[VentaModel]) -> list:
     por_dia: dict[date, list] = defaultdict(list)
     for v in ventas:
         por_dia[fecha_mx_desde_utc_naive(v.fecha_hora)].append(v)
-
-    filas = []
-    for dia in sorted(por_dia.keys()):
-        grupo = por_dia[dia]
-        m = _metricas_desde_ventas(db, grupo)
-        filas.append(
-            {
-                "fecha": str(dia),
-                "venta_total": m["venta_total"],
-                "total": m["venta_total"],
-                "numero_tickets": m["numero_tickets"],
-                "numero_ventas": m["numero_tickets"],
-                "ticket_promedio": m["ticket_promedio"],
-                "unidades_vendidas": m["unidades_vendidas"],
-                "productos_por_ticket": m["productos_por_ticket"],
-                "promociones_utilizadas": m["promociones_utilizadas"],
-                "venta_por_promociones": m["venta_por_promociones"],
-            }
-        )
-    return filas
+    return desglose_diario_batch(db, por_dia)
 
 
 def resumen_ventas_rango(db: Session, fecha_inicio: date, fecha_fin: date) -> dict:
@@ -586,14 +518,20 @@ def resumen_ventas_rango(db: Session, fecha_inicio: date, fecha_fin: date) -> di
     metricas = _metricas_desde_ventas(db, ventas)
     desglose = _desglose_diario(db, ventas)
     dias_con_ventas = len(desglose)
+    dias_calendario = _dias_calendario_efectivos(fecha_inicio, fecha_fin)
     analisis = analisis_temporal_periodo(db, ventas, fecha_inicio, fecha_fin)
+    promedios = _promedios_rango(
+        metricas["venta_total"],
+        metricas["numero_tickets"],
+        dias_con_ventas,
+        dias_calendario,
+    )
 
     return {
         "fecha_inicio": fecha_inicio,
         "fecha_fin": fecha_fin,
         "dias_con_ventas": dias_con_ventas,
-        "promedio_venta_diaria": _safe_div(metricas["venta_total"], dias_con_ventas),
-        "promedio_tickets_diarios": _safe_div(metricas["numero_tickets"], dias_con_ventas),
+        **promedios,
         **metricas,
         "productos": _productos_vendidos(db, [v.id_venta for v in ventas]),
         "desglose_dias": desglose,
