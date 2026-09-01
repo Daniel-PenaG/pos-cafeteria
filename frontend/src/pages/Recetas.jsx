@@ -9,7 +9,7 @@ import {
 import { getInsumos } from "../services/insumosService";
 import { getProductos } from "../services/productosService";
 import PageHeader from "../components/PageHeader";
-import { numberInputFromApi, parseNumberField } from "../utils/numberInput";
+import { numberInputFromApi } from "../utils/numberInput";
 
 export default function Recetas() {
   const [recetas, setRecetas] = useState([]);

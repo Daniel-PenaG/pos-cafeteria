@@ -22,6 +22,8 @@ from app.services.pedido_service import (
     cobrar_pedido,
     confirmar_comanda_pedido,
     listar_pedidos_activos_resumen,
+    recalcular_promociones_pedido,
+    pedido_respuesta,
     _pedido_a_dict,
     _detalle_a_dict,
 )
@@ -81,7 +83,7 @@ def obtener_pedido_mesa(
         .filter(PedidoModel.id_pedido == pedido.id_pedido)
         .first()
     )
-    return _pedido_a_dict(pedido)
+    return pedido_respuesta(db, pedido)
 
 
 @router.post("/mesa/{numero_mesa}/lineas", response_model=DetallePedidoLinea)
@@ -201,7 +203,7 @@ def asignar_cliente(id_pedido: int, data: PedidoClienteUpdate, db: Session = Dep
 
     db.commit()
     db.refresh(pedido)
-    return _pedido_a_dict(pedido)
+    return pedido_respuesta(db, pedido)
 
 
 @router.post("/{id_pedido}/confirmar-comanda", response_model=Pedido)
@@ -216,7 +218,7 @@ def confirmar_comanda(id_pedido: int, db: Session = Depends(get_db)):
         raise RecursoNoEncontradoException("Pedido no encontrado")
     confirmar_comanda_pedido(db, pedido)
     db.refresh(pedido)
-    return _pedido_a_dict(pedido)
+    return pedido_respuesta(db, pedido)
 
 
 @router.post("/{id_pedido}/cobrar", response_model=VentaResponse)

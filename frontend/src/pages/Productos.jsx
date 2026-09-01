@@ -9,7 +9,6 @@ import {
 } from "../services/productosService";
 import { createCategoria } from "../services/categoriasService";
 import PageHeader from "../components/PageHeader";
-import { numberInputFromApi } from "../utils/numberInput";
 
 export default function Productos() {
   const [productos, setProductos] = useState([]);

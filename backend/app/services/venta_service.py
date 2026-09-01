@@ -17,9 +17,11 @@ from app.models import (
     UsuarioModel,
     ClienteModel,
     ExtraVentaModel,
+    PedidoModel,
 )
 from app.schemas.ventas import VentaCreate, VentaResponse, ExtraVentaLinea
 from app.services.promocion_service import calcular_linea
+from app.services.promocion_ticket_service import recalcular_lineas_ticket
 from app.services.fidelidad_service import obtener_config, calcular_puntos_ganados, acumular_puntos_venta
 from app.services.extras_validacion_service import validar_extras_producto
 from app.exceptions import (
@@ -145,6 +147,20 @@ def _descontar_stock_extras(db: Session, venta_id: int, detalles) -> None:
             db.add(mov)
 
 
+def _cerrar_pedido_tras_venta(db: Session, id_pedido: int, id_venta: int) -> None:
+    q = db.query(PedidoModel).filter(PedidoModel.id_pedido == id_pedido)
+    if db.bind.dialect.name != "sqlite":
+        q = q.with_for_update()
+    pedido = q.first()
+    if not pedido:
+        raise RecursoNoEncontradoException("Pedido no encontrado")
+    if pedido.estado != "ABIERTO":
+        raise DatosInvalidosException("El pedido ya fue cobrado o cancelado")
+    pedido.estado = "COBRADO"
+    pedido.id_venta = id_venta
+    pedido.fecha_cierre = now_utc_naive()
+
+
 def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
     usuario = db.query(UsuarioModel).filter(UsuarioModel.id_usuario == data.id_usuario).first()
     if not usuario:
@@ -163,40 +179,48 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
     if not data.forma_pago or data.forma_pago.strip() == "":
         raise DatosInvalidosException("Forma de pago requerida")
 
-    total_calculado = 0
-
+    lineas_entrada = []
     for item in data.detalles:
         if item.cantidad <= 0:
             raise DatosInvalidosException("La cantidad debe ser positiva")
-
         producto = db.query(ProductoModel).filter(ProductoModel.id_producto == item.id_producto).first()
         if not producto:
             raise RecursoNoEncontradoException(f"Producto {item.id_producto} no encontrado")
         if not producto.activo:
             raise DatosInvalidosException(f"Producto {producto.nombre} no está activo")
-
         validar_extras_producto(db, item.id_producto, item.extras)
-
         precio_extras = sum(float(e.precio) for e in item.extras)
-        calculo = calcular_linea(
-            db,
-            producto,
-            float(item.cantidad),
-            precio_extras,
-            item.id_promocion,
+        lineas_entrada.append(
+            {
+                "id_producto": item.id_producto,
+                "cantidad": float(item.cantidad),
+                "precio_extras": precio_extras,
+                "extras": item.extras,
+                "id_promocion": item.id_promocion,
+                "sin_promocion": False,
+            }
         )
-        if not calculo["margen_ok"]:
-            raise DatosInvalidosException(calculo["mensaje"] or "Margen insuficiente para la promoción")
 
+    recalc = recalcular_lineas_ticket(db, lineas_entrada)
+    if len(recalc["lineas"]) != len(data.detalles):
+        raise DatosInvalidosException("Error al recalcular promociones del ticket")
+
+    total_calculado = 0.0
+    for item, calculo in zip(data.detalles, recalc["lineas"]):
+        if not calculo.get("margen_ok", True):
+            producto = db.query(ProductoModel).filter(ProductoModel.id_producto == item.id_producto).first()
+            raise DatosInvalidosException(
+                calculo.get("mensaje") or f"Margen insuficiente para '{producto.nombre if producto else item.id_producto}'"
+            )
         esperado = calculo["precio_unitario"]
         if abs(float(item.precio_unitario) - esperado) > 0.02:
+            producto = db.query(ProductoModel).filter(ProductoModel.id_producto == item.id_producto).first()
             raise DatosInvalidosException(
-                f"Precio inválido para '{producto.nombre}'. "
+                f"Precio inválido para '{producto.nombre if producto else item.id_producto}'. "
                 f"Esperado: {esperado:.2f}, recibido: {item.precio_unitario:.2f}"
             )
         if item.precio_unitario <= 0:
             raise DatosInvalidosException("El precio debe ser positivo")
-
         total_calculado += float(item.cantidad) * esperado
 
     cliente = None
@@ -216,52 +240,57 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
     _revisar_stock_receta(db, data.detalles, advertencias_stock)
     _revisar_stock_extras(db, data.detalles, advertencias_stock)
 
-    venta = VentaModel(
-        fecha_hora=now_utc_naive(),
-        id_usuario=data.id_usuario,
-        numero_mesa=data.numero_mesa,
-        para_llevar=para_llevar,
-        total=total_calculado,
-        forma_pago=data.forma_pago,
-        id_cliente=data.id_cliente if cliente else None,
-        puntos_generados=puntos_generados,
-    )
-    db.add(venta)
-    db.commit()
-    db.refresh(venta)
-
-    for item in data.detalles:
-        producto = db.query(ProductoModel).filter(ProductoModel.id_producto == item.id_producto).first()
-        extras_json = None
-        if item.extras:
-            extras_normalizados = validar_extras_producto(db, item.id_producto, item.extras)
-            extras_json = json.dumps(extras_normalizados, ensure_ascii=False)
-        precio_extras = sum(float(e.precio) for e in item.extras)
-        calculo = calcular_linea(
-            db, producto, float(item.cantidad), precio_extras, item.id_promocion
+    try:
+        venta = VentaModel(
+            fecha_hora=now_utc_naive(),
+            id_usuario=data.id_usuario,
+            numero_mesa=data.numero_mesa,
+            para_llevar=para_llevar,
+            total=total_calculado,
+            forma_pago=data.forma_pago,
+            id_cliente=data.id_cliente if cliente else None,
+            puntos_generados=puntos_generados,
         )
-        detalle = DetalleVentaModel(
-            id_venta=venta.id_venta,
-            id_producto=item.id_producto,
-            cantidad=item.cantidad,
-            precio_unitario=calculo["precio_unitario"],
-            subtotal=float(item.cantidad) * float(calculo["precio_unitario"]),
-            extras_json=extras_json,
-            id_promocion=calculo["id_promocion"],
-            precio_original=calculo["precio_original_unitario"],
-            descuento_unitario=calculo["descuento_unitario"],
-            costo_unitario_snapshot=calculo["costo_unitario"],
-        )
-        db.add(detalle)
+        db.add(venta)
+        db.flush()
 
-    _descontar_stock_receta(db, venta.id_venta, data.detalles)
-    _descontar_stock_extras(db, venta.id_venta, data.detalles)
+        for item, calculo in zip(data.detalles, recalc["lineas"]):
+            extras_json = None
+            if item.extras:
+                extras_normalizados = validar_extras_producto(db, item.id_producto, item.extras)
+                extras_json = json.dumps(extras_normalizados, ensure_ascii=False)
+            detalle = DetalleVentaModel(
+                id_venta=venta.id_venta,
+                id_producto=item.id_producto,
+                cantidad=item.cantidad,
+                precio_unitario=calculo["precio_unitario"],
+                subtotal=float(item.cantidad) * float(calculo["precio_unitario"]),
+                extras_json=extras_json,
+                id_promocion=calculo.get("id_promocion"),
+                precio_original=calculo.get("precio_original"),
+                descuento_unitario=calculo.get("descuento_unitario"),
+                costo_unitario_snapshot=calculo.get("costo_unitario"),
+                nombre_promocion=calculo.get("nombre_promocion"),
+                tipo_promocion=calculo.get("tipo_promocion"),
+                valor_promocion=calculo.get("valor_promocion"),
+                promocion_aplicaciones=calculo.get("promocion_aplicaciones"),
+            )
+            db.add(detalle)
 
-    if cliente and puntos_generados > 0:
-        acumular_puntos_venta(db, cliente, puntos_generados, venta.id_venta, data.id_usuario)
+        _descontar_stock_receta(db, venta.id_venta, data.detalles)
+        _descontar_stock_extras(db, venta.id_venta, data.detalles)
 
-    db.commit()
-    db.refresh(venta)
+        if cliente and puntos_generados > 0:
+            acumular_puntos_venta(db, cliente, puntos_generados, venta.id_venta, data.id_usuario)
+
+        if data.id_pedido is not None:
+            _cerrar_pedido_tras_venta(db, data.id_pedido, venta.id_venta)
+
+        db.commit()
+        db.refresh(venta)
+    except Exception:
+        db.rollback()
+        raise
 
     cliente_nombre = None
     cliente_puntos_saldo = None

@@ -7,7 +7,6 @@ import {
 } from "../services/insumosService";
 import PageHeader from "../components/PageHeader";
 import {
-  displayNumberInput,
   numberInputFromApi,
   parseNumberField,
 } from "../utils/numberInput";

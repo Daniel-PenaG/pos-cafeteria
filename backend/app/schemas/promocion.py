@@ -3,7 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 
 
-TIPOS_PROMO = {"PORCENTAJE", "PRECIO_FIJO", "DOS_X_UNO", "COMBO"}
+TIPOS_PROMO = {"PORCENTAJE", "PRECIO_FIJO", "DOS_X_UNO", "COMBO", "CANTIDAD_PRECIO", "DESCUENTO_FIJO"}
 
 
 class PromocionBase(BaseModel):
@@ -19,6 +19,9 @@ class PromocionBase(BaseModel):
     hora_fin: Optional[str] = None
     dias_semana: Optional[str] = None
     margen_minimo: Optional[float] = Field(None, ge=0, le=100)
+    cantidad_requerida: Optional[int] = Field(1, ge=1)
+    limite_usos_por_ticket: Optional[int] = Field(None, ge=1)
+    acumulable: bool = False
     ids_productos: List[int] = Field(default_factory=list)
     ids_categorias: List[int] = Field(default_factory=list)
 
@@ -32,6 +35,8 @@ class PromocionBase(BaseModel):
             raise ValueError("El porcentaje no puede ser mayor a 100")
         if self.tipo == "COMBO" and len(self.ids_productos) < 2:
             raise ValueError("Un combo debe incluir al menos 2 productos")
+        if self.tipo in ("CANTIDAD_PRECIO", "DESCUENTO_FIJO") and (self.cantidad_requerida or 1) < 1:
+            raise ValueError("cantidad_requerida debe ser al menos 1")
         if not self.aplica_toda_tienda and not self.ids_productos and not self.ids_categorias:
             raise ValueError("Indica productos, categorías o marca 'toda la tienda'")
         return self
@@ -47,6 +52,7 @@ class PromocionUpdate(PromocionBase):
 
 class Promocion(PromocionBase):
     id_promocion: int
+    fecha_creacion: Optional[datetime] = None
 
     class Config:
         from_attributes = True

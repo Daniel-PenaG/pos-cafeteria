@@ -13,7 +13,9 @@ import { numberInputFromApi } from "../utils/numberInput";
 
 const TIPOS = [
   { value: "PORCENTAJE", label: "% Descuento" },
-  { value: "PRECIO_FIJO", label: "Precio fijo" },
+  { value: "PRECIO_FIJO", label: "Precio fijo (unidad/paquete)" },
+  { value: "CANTIDAD_PRECIO", label: "Precio especial por cantidad" },
+  { value: "DESCUENTO_FIJO", label: "Descuento fijo ($)" },
   { value: "DOS_X_UNO", label: "2×1" },
   { value: "COMBO", label: "Paquete / Combo" },
 ];
@@ -84,6 +86,9 @@ export default function Promociones() {
   const [usarHorario, setUsarHorario] = useState(false);
   const [usarVigenciaFechas, setUsarVigenciaFechas] = useState(false);
   const [margenMinimo, setMargenMinimo] = useState("");
+  const [cantidadRequerida, setCantidadRequerida] = useState("2");
+  const [limiteUsosTicket, setLimiteUsosTicket] = useState("");
+  const [acumulable, setAcumulable] = useState(false);
   const [idsProductos, setIdsProductos] = useState([]);
   const [idsCategorias, setIdsCategorias] = useState([]);
 
@@ -128,6 +133,9 @@ export default function Promociones() {
     setUsarHorario(false);
     setUsarVigenciaFechas(false);
     setMargenMinimo("");
+    setCantidadRequerida("2");
+    setLimiteUsosTicket("");
+    setAcumulable(false);
     setIdsProductos([]);
     setIdsCategorias([]);
     setEditing(null);
@@ -157,6 +165,11 @@ export default function Promociones() {
     setMargenMinimo(
       p.margen_minimo != null ? numberInputFromApi(p.margen_minimo) || String(p.margen_minimo) : ""
     );
+    setCantidadRequerida(String(p.cantidad_requerida ?? 2));
+    setLimiteUsosTicket(
+      p.limite_usos_por_ticket != null ? String(p.limite_usos_por_ticket) : ""
+    );
+    setAcumulable(!!p.acumulable);
     setIdsProductos(p.ids_productos || []);
     setIdsCategorias(p.ids_categorias || []);
     setShowModal(true);
@@ -214,6 +227,9 @@ export default function Promociones() {
       hora_fin: usarHorario ? horaFin : null,
       dias_semana: usarDiasSemana && diasSel.length ? diasSel.sort((a, b) => a - b).join(",") : null,
       margen_minimo: margenMinimo !== "" ? parseFloat(margenMinimo) : null,
+      cantidad_requerida: parseInt(cantidadRequerida, 10) || 1,
+      limite_usos_por_ticket: limiteUsosTicket !== "" ? parseInt(limiteUsosTicket, 10) : null,
+      acumulable,
       ids_productos: todaTienda ? [] : idsProductos,
       ids_categorias: todaTienda ? [] : idsCategorias,
     };
@@ -457,6 +473,35 @@ export default function Promociones() {
                   onChange={(e) => setMargenMinimo(e.target.value)}
                 />
               </div>
+              {(tipo === "CANTIDAD_PRECIO" || tipo === "DESCUENTO_FIJO") && (
+                <div className="form-row">
+                  <label>Cantidad requerida</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={cantidadRequerida}
+                    onChange={(e) => setCantidadRequerida(e.target.value)}
+                  />
+                </div>
+              )}
+              <div className="form-row">
+                <label>Límite usos por ticket (opcional)</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={limiteUsosTicket}
+                  onChange={(e) => setLimiteUsosTicket(e.target.value)}
+                  placeholder="Sin límite"
+                />
+              </div>
+              <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={acumulable}
+                  onChange={(e) => setAcumulable(e.target.checked)}
+                />
+                Permitir combinar con otras promociones
+              </label>
 
               <fieldset className="promo-fieldset">
                 <legend>Vigencia y horarios</legend>

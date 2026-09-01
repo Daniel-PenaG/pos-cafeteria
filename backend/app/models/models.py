@@ -210,6 +210,10 @@ class DetalleVentaModel(Base):
     precio_original = Column(Numeric(10, 2), nullable=True)
     descuento_unitario = Column(Numeric(10, 2), nullable=True)
     costo_unitario_snapshot = Column(Numeric(10, 4), nullable=True)
+    nombre_promocion = Column(String(150), nullable=True)
+    tipo_promocion = Column(String(30), nullable=True)
+    valor_promocion = Column(Numeric(10, 2), nullable=True)
+    promocion_aplicaciones = Column(Integer, nullable=True)
 
     venta = relationship("VentaModel", back_populates="detalles")
     producto = relationship("ProductoModel", back_populates="detalles")
@@ -235,6 +239,10 @@ class PromocionModel(Base):
     hora_fin = Column(String(5), nullable=True)
     dias_semana = Column(String(20), nullable=True)  # ej. "0,1,2,3,4" lun-vie
     margen_minimo = Column(Numeric(5, 2), nullable=True)
+    cantidad_requerida = Column(Integer, nullable=True, default=1)
+    limite_usos_por_ticket = Column(Integer, nullable=True)
+    acumulable = Column(Boolean, default=False)
+    fecha_creacion = Column(DateTime, nullable=True)
 
     productos = relationship(
         "PromocionProductoModel", back_populates="promocion", cascade="all, delete-orphan"
