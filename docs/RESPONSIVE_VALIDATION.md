@@ -1,73 +1,75 @@
 # Validación responsive móvil — Coffe Song POS
 
-Rama: [`ui/responsive-mobile`](https://github.com/Daniel-PenaG/pos-cafeteria/tree/ui/responsive-mobile)
-PR base temporal: `performance/optimizar-pos`
+Rama: [`ui/responsive-mobile`](https://github.com/Daniel-PenaG/pos-cafeteria/tree/ui/responsive-mobile)  
+**Base `main`:** `1a009dc` (promociones + rendimiento mergeados)  
+**Rebase:** `git rebase --onto origin/main 6ac990b` — solo commits responsive, sin reaplicar rendimiento.
 
-## Commits de referencia
+## Commits de referencia (post-rebase)
 
 | Commit | Contenido |
 |--------|-----------|
-| `52843c0` | Implementación responsive (focus trap, tablas, CSS, Playwright inicial) |
-| `8b6b527` | Script login API local + matriz honesta |
-| `cf0192e` | Capturas API real, validaciones de ancho, modal-bottom |
-| `215da18` | Hashes de evidencia |
-| `e817f43` | Espera animación modal, navbar tablet 768–900 px, capturas finales en `:8000` |
+| `f1624ba` | Sidebar off-canvas y layout móvil (<768 px) |
+| `20781e7` | Tablas responsive, focus trap, Playwright |
+| `04469fa` | Capturas API local y matriz honesta |
+| `7b420e2` | Capturas API real y validaciones de ancho |
+| `21e6687` | Espera animación modal, navbar tablet 768–900 px |
+| *(HEAD)* | Rebase sobre `1a009dc`, capturas regeneradas |
 
-## Validación automatizada (2026-09-01)
+**Respaldo pre-rebase:** `backup/responsive-pre-rebase-f5209bb` (local).
+
+## Validación automatizada (2026-09-01, post-rebase)
+
+### Backend (regresión)
+
+```bash
+cd backend && python -m pytest -q
+# 71 passed in 5.22s
+```
+
+Sin cambios backend en el diff responsive.
+
+### Frontend
 
 ```bash
 cd frontend
-npm ci        # OK
+npm install   # npm ci falló EPERM lightningcss en Windows
 npm run lint  # OK — 0 errores
 npm run build # OK (VITE_API_URL=http://127.0.0.1:8000)
 npm run capture:responsive  # OK — API real: http://127.0.0.1:8000
 ```
 
-**Bundle principal:** `773.40 KB` minificado · `232.34 KB` gzip (`index-*.js`)
+**Bundle principal:** `773.40 KB` minificado · `232.33 KB` gzip (`index-UbMJDs4z.js`)  
+**CSS responsive incluido:** `index-DlzC0Uo5.css` 36.14 KB (incluye `responsive.css`)  
+**Viewport:** `viewport-fit=cover` en `index.html`  
+**Code splitting:** conservado desde `main` (Ventas eager; Promociones, Reportes, etc. lazy).
 
-**Validaciones de ancho (script):** todas las rutas pasaron — sin `scrollWidth` de página mayor que `innerWidth`; tablas en `.table-wrap` con scroll horizontal cuando corresponde.
+**Validaciones de ancho (script):** todas las rutas pasaron.
 
 ## Capturas con API local real
 
-Regeneradas con Playwright + Chromium contra backend SQLite local (catálogo demo, `admin`/`admin123`). **Sin mocks de red.**
+Regeneradas post-rebase con Playwright + Chromium contra backend SQLite local (`admin`/`admin123`). **Sin mocks.**
 
-```bash
-# Terminal 1
-cd backend
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+| Resolución | Estado |
+|------------|--------|
+| 320×568 | **APROBADO** |
+| 360×800 | **APROBADO** |
+| 390×844 | **APROBADO** |
+| 412×915 | **APROBADO** |
+| 768×1024 | **APROBADO** (sin solapamiento navbar) |
+| 1024×768 | **APROBADO** |
+| 1366×768 | **APROBADO** |
 
-# Terminal 2
-cd frontend
-npm ci
-$env:VITE_API_URL="http://127.0.0.1:8000"
-npm run build
-npm run preview -- --host 127.0.0.1 --port 4173
+Confirmado: sin scroll horizontal global; sidebar cerrado en celular; overlay y cierre; promociones legible; modal inicio/fin; Guardar/Cancelar accesibles; ventas una columna; tablas en `.table-wrap`; escritorio sin regresión.
 
-# Terminal 3
-npm run capture:responsive
-# → API real: http://127.0.0.1:8000
-```
+### Corrección modal
 
-El script **falla** si la API no responde en `/health`. `CAPTURE_REAL_API=0` está prohibido. No hay fallback a mocks.
-
-### Corrección modal (2026-09-01)
-
-Tras abrir el modal, el script espera `400 ms` post-animación (`fadeIn 0.2s`) antes de `promociones-modal.png`:
-
-- Fondo blanco sólido del modal
-- Título «Nueva promoción» y primeros campos visibles
-- Overlay oscuro sin mezcla con la página de Promociones
-- `promociones-modal-bottom.png` conservado (Guardar/Cancelar visibles en 320×568 y 390×844)
+Espera `400 ms` post-animación antes de `promociones-modal.png` (fondo blanco sólido, overlay oscuro). `promociones-modal-bottom.png` en 320×568 y 390×844.
 
 ### Navbar tablet 768–900 px
 
-En 768×1024 existía solapamiento entre «Panel de administración», nombre y rol. Ajuste CSS (`responsive.css`):
+Título corto «Coffe Song»; ocultos nombre/rol/label logout; solo iconos.
 
-- Título corto «Coffe Song» en lugar del título largo
-- Ocultos nombre de usuario, badge de rol y etiqueta «Cerrar sesión» (solo iconos)
-- Sin cambios al sidebar ni al layout principal de tablet
-
-## Implementación (`52843c0`)
+## Implementación responsive
 
 | Requisito | Estado |
 |-----------|--------|
@@ -80,19 +82,9 @@ En 768×1024 existía solapamiento entre «Panel de administración», nombre y 
 | Script + comando Playwright | **APROBADO** |
 | Navbar tablet 768–900 px sin solapamiento | **APROBADO** |
 
-## Matriz visual (API real, `:8000`)
+## Alcance del diff contra `main`
 
-| Resolución | Menú | Promos | Modal | Modal bottom | Ventas | Comandera | Reportes | Usuarios | Cuentas | Tablet | Escritorio | Estado |
-|------------|------|--------|-------|--------------|--------|-----------|----------|----------|---------|--------|------------|--------|
-| 320×568 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | **APROBADO** |
-| 360×800 | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | **APROBADO** |
-| 390×844 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | **APROBADO** |
-| 412×915 | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | **APROBADO** |
-| 768×1024 | — | — | — | — | — | — | ✓ | — | — | ✓ | — | **APROBADO** |
-| 1024×768 | — | — | — | — | — | — | ✓ | — | — | ✓ | — | **APROBADO** |
-| 1366×768 | — | — | — | — | — | — | ✓ | — | — | — | ✓ | **APROBADO** |
-
-Rutas: `docs/screenshots/responsive/{320x568,…,1366x768}/`
+Solo frontend + docs + capturas. **Sin backend**, middleware de rendimiento, índices PostgreSQL ni lógica de promociones/ventas.
 
 ## Pendientes
 
@@ -103,6 +95,6 @@ Rutas: `docs/screenshots/responsive/{320x568,…,1366x768}/`
 
 ## PR
 
-https://github.com/Daniel-PenaG/pos-cafeteria/compare/performance/optimizar-pos...ui/responsive-mobile
+https://github.com/Daniel-PenaG/pos-cafeteria/compare/main...ui/responsive-mobile
 
 **No merge ni deploy.**
