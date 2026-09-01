@@ -32,6 +32,8 @@ from app.utils.timezone_mx import (
     isoformat_utc,
     fecha_mx_desde_utc_naive,
 )
+from app.utils.forma_pago import bucket_forma_pago, etiqueta_forma_pago, agregar_por_forma_pago
+from app.services.pago_reporte_service import desglose_pagos_periodo
 from app.services.reporte_ventas_service import (
     resumen_ventas_dia,
     resumen_ventas_rango,
@@ -270,12 +272,29 @@ def cuentas_por_cajero(fecha: date, db: Session = Depends(get_db)):
                 "rol": normalizar_rol(usuario.rol),
                 "numero_ventas": 0,
                 "total": 0.0,
+                "total_efectivo": 0.0,
+                "total_transferencia": 0.0,
+                "total_tarjeta": 0.0,
+                "num_efectivo": 0,
+                "num_transferencia": 0,
+                "num_tarjeta": 0,
                 "ventas": [],
             }
 
         entry = por_usuario[uid]
         entry["numero_ventas"] += 1
         entry["total"] += float(venta.total)
+
+        fp = bucket_forma_pago(venta.forma_pago)
+        if fp == "EFECTIVO":
+            entry["total_efectivo"] += float(venta.total)
+            entry["num_efectivo"] += 1
+        elif fp == "TRANSFERENCIA":
+            entry["total_transferencia"] += float(venta.total)
+            entry["num_transferencia"] += 1
+        elif fp == "TARJETA":
+            entry["total_tarjeta"] += float(venta.total)
+            entry["num_tarjeta"] += 1
 
         if venta.para_llevar or venta.numero_mesa == 99:
             mesa_label = "Para llevar"
@@ -290,12 +309,17 @@ def cuentas_por_cajero(fecha: date, db: Session = Depends(get_db)):
             "para_llevar": bool(venta.para_llevar),
             "total": float(venta.total),
             "forma_pago": venta.forma_pago,
+            "forma_pago_label": etiqueta_forma_pago(venta.forma_pago),
             "cliente_nombre": cliente.nombre if cliente else None,
             "puntos_generados": int(venta.puntos_generados or 0),
         })
 
     por_cajero = sorted(por_usuario.values(), key=lambda x: -x["total"])
     for cajero in por_cajero:
+        cajero["total_efectivo"] = round(cajero["total_efectivo"], 2)
+        cajero["total_transferencia"] = round(cajero["total_transferencia"], 2)
+        cajero["total_tarjeta"] = round(cajero["total_tarjeta"], 2)
+        cajero["total"] = round(cajero["total"], 2)
         cajero["porcentaje_dia"] = round(
             (cajero["total"] / total_dia * 100) if total_dia else 0,
             1,
@@ -309,6 +333,17 @@ def cuentas_por_cajero(fecha: date, db: Session = Depends(get_db)):
         "numero_cajeros": len(por_cajero),
         "por_cajero": por_cajero,
     }
+
+
+@router.get("/desglose-pagos", dependencies=[Depends(require_admin)])
+def reporte_desglose_pagos(
+    fecha_inicio: date,
+    fecha_fin: date,
+    db: Session = Depends(get_db),
+):
+    if fecha_fin < fecha_inicio:
+        raise HTTPException(status_code=400, detail="Rango de fechas inválido")
+    return desglose_pagos_periodo(db, fecha_inicio, fecha_fin)
 
 
 # ============================

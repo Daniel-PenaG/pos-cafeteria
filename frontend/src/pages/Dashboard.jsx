@@ -12,14 +12,7 @@ function formatearHora(iso) {
   return formatearHoraMexico(iso);
 }
 
-function formatearFormaPago(forma) {
-  const map = {
-    EFECTIVO: "Efectivo",
-    TARJETA: "Tarjeta",
-    TRANSFERENCIA: "Transferencia",
-  };
-  return map[forma] || forma;
-}
+import { etiquetaFormaPago } from "../utils/formaPago";
 
 export default function Dashboard() {
   const rol = useAuthStore((state) => state.user?.rol);
@@ -234,7 +227,7 @@ export default function Dashboard() {
                         </span>
                       </td>
                     )}
-                    <td>{formatearFormaPago(c.forma_pago)}</td>
+                    <td>{etiquetaFormaPago(c.forma_pago)}</td>
                     <td>
                       <span
                         className={

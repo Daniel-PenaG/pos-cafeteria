@@ -47,9 +47,13 @@ def setup_perf_database():
     engine.dispose()
 
 
+def _uses_promo_seed(basename: str) -> bool:
+    return basename.startswith(("test_promociones", "test_pagos", "test_comandera"))
+
+
 @pytest.fixture()
 def db_session(request):
-    if "test_promociones" in request.node.fspath.basename:
+    if _uses_promo_seed(request.node.fspath.basename):
         promo_engine = _make_engine()
         PromoSession = sessionmaker(autocommit=False, autoflush=False, bind=promo_engine)
         Base.metadata.create_all(bind=promo_engine)
@@ -74,6 +78,8 @@ def db_session(request):
 
 @pytest.fixture()
 def refs(db_session):
+    if not hasattr(db_session, "_promo_refs"):
+        raise RuntimeError("Fixture refs requiere db_session con promo_seed")
     return db_session._promo_refs  # type: ignore[attr-defined]
 
 

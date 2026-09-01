@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_, and_
 from typing import List
 from datetime import datetime
 
@@ -17,6 +18,21 @@ router = APIRouter(
 )
 
 
+def _pedido_visible_en_comandera(pedido: PedidoModel) -> bool:
+    """Pedidos ABIERTO o para llevar COBRADO con preparación pendiente."""
+    if pedido.estado == "CANCELADO":
+        return False
+    if pedido.estado == "ABIERTO":
+        return True
+    if pedido.estado == "COBRADO" and bool(getattr(pedido, "para_llevar", False)):
+        return True
+    return False
+
+
+def _pedido_permite_marcar_listo(pedido: PedidoModel) -> bool:
+    return _pedido_visible_en_comandera(pedido)
+
+
 @router.get("/pendientes", response_model=List[ComandaLinea])
 def listar_pendientes(db: Session = Depends(get_db)):
     lineas = (
@@ -24,8 +40,12 @@ def listar_pendientes(db: Session = Depends(get_db)):
         .join(PedidoModel)
         .options(joinedload(DetallePedidoModel.pedido))
         .filter(
-            PedidoModel.estado == "ABIERTO",
             DetallePedidoModel.en_comanda == True,
+            PedidoModel.estado != "CANCELADO",
+            or_(
+                PedidoModel.estado == "ABIERTO",
+                and_(PedidoModel.estado == "COBRADO", PedidoModel.para_llevar == True),
+            ),
         )
         .order_by(DetallePedidoModel.fecha_envio_comanda.asc())
         .all()
@@ -42,6 +62,7 @@ def listar_pendientes(db: Session = Depends(get_db)):
                 "id_detalle_pedido": d.id_detalle_pedido,
                 "id_pedido": d.id_pedido,
                 "numero_mesa": d.pedido.numero_mesa,
+                "para_llevar": bool(getattr(d.pedido, "para_llevar", False)),
                 "nombre_producto": d.nombre_producto,
                 "cantidad": cant,
                 "cantidad_lista": lista,
@@ -66,7 +87,7 @@ def marcar_listo(id_detalle_pedido: int, data: ComandaMarcarListo, db: Session =
     )
     if not detalle:
         raise RecursoNoEncontradoException("Línea no encontrada")
-    if detalle.pedido.estado != "ABIERTO":
+    if not _pedido_permite_marcar_listo(detalle.pedido):
         raise DatosInvalidosException("Pedido ya cerrado")
 
     cant = float(detalle.cantidad)
@@ -90,6 +111,7 @@ def marcar_listo(id_detalle_pedido: int, data: ComandaMarcarListo, db: Session =
         "id_detalle_pedido": detalle.id_detalle_pedido,
         "id_pedido": detalle.id_pedido,
         "numero_mesa": detalle.pedido.numero_mesa,
+        "para_llevar": bool(getattr(detalle.pedido, "para_llevar", False)),
         "nombre_producto": detalle.nombre_producto,
         "cantidad": cant,
         "cantidad_lista": lista,

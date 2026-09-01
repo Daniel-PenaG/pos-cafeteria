@@ -37,7 +37,8 @@ import SearchField from "../components/SearchField";
 import ElapsedTimer from "../components/ElapsedTimer";
 import PrinterSettings from "../components/PrinterSettings";
 import { canUseBluetoothPrinter, printTicketSafely } from "../services/printerService";
-import { buildCobroTicket } from "../services/escposTickets";
+import { buildCobroTicket, buildPrecuentaTicket } from "../services/escposTickets";
+import { FORMAS_PAGO, esEfectivo } from "../utils/formaPago";
 import { getSavedPrinter } from "../services/printerStorage";
 import { formatDuration } from "../utils/formatDuration";
 import {
@@ -87,6 +88,8 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [tiposPosLabels, setTiposPosLabels] = useState({});
 
   const [showCobroModal, setShowCobroModal] = useState(false);
+  const [showImprimirTicketModal, setShowImprimirTicketModal] = useState(false);
+  const [cobroPendiente, setCobroPendiente] = useState(null);
   const [clienteCobro, setClienteCobro] = useState(null);
   const [busquedaCobro, setBusquedaCobro] = useState("");
   const [resultadosCobro, setResultadosCobro] = useState([]);
@@ -99,6 +102,8 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [showQrScanner, setShowQrScanner] = useState(false);
   const [clienteQrRecienCreado, setClienteQrRecienCreado] = useState(null);
   const [showPrinterSettings, setShowPrinterSettings] = useState(false);
+  const [imprimiendoPrecuenta, setImprimiendoPrecuenta] = useState(false);
+  const [precuentaImpresa, setPrecuentaImpresa] = useState(false);
   /** Cantidades en edición (id detalle → texto) antes de guardar en servidor */
   const [cantidadEdit, setCantidadEdit] = useState({});
 
@@ -119,7 +124,7 @@ export default function Ventas({ modoParaLlevar = false }) {
   const descuentoPromos = pedido?.descuento_promociones;
   const resumenPromos = pedido?.resumen_promociones ?? [];
 
-  const cobroEfectivo = formaPago === "EFECTIVO";
+  const cobroEfectivo = esEfectivo(formaPago);
   const montoRecibidoNum = parseFloat(montoRecibido);
   const cambioCobro = useMemo(() => {
     if (!cobroEfectivo || montoRecibido === "" || isNaN(montoRecibidoNum)) return null;
@@ -381,13 +386,74 @@ export default function Ventas({ modoParaLlevar = false }) {
   };
 
   const abrirCobroModal = () => {
-    if (!pedido?.id_pedido || carrito.length === 0) return;
     setClienteCobro(null);
     setBusquedaCobro("");
     setResultadosCobro([]);
     setQrCobro("");
     setMontoRecibido("");
+    setFormaPago("EFECTIVO");
     setShowCobroModal(true);
+  };
+
+  const imprimirPrecuenta = async () => {
+    if (!pedido?.id_pedido || imprimiendoPrecuenta) return { ok: false, skipped: true };
+    setImprimiendoPrecuenta(true);
+    try {
+      const printResult = await printTicketSafely(buildPrecuentaTicket, {
+        pedido,
+        usuario,
+        subtotal: subtotalNormal ?? total,
+        descuento: descuentoPromos ?? 0,
+        total,
+      });
+      if (printResult.ok) {
+        setPrecuentaImpresa(true);
+      }
+      return printResult;
+    } finally {
+      setImprimiendoPrecuenta(false);
+    }
+  };
+
+  const handleReimprimirPrecuenta = async () => {
+    const printResult = await imprimirPrecuenta();
+    if (!printResult.skipped && !printResult.ok) {
+      alert(`Precuenta: ${printResult.message || "no se pudo imprimir"}`);
+    }
+  };
+
+  const handleCerrarCuenta = async () => {
+    if (!pedido?.id_pedido || carrito.length === 0) return;
+    if (imprimiendoPrecuenta || loading || showCobroModal) return;
+
+    if (lineasPendientesConfirmar.length > 0) {
+      if (modoParaLlevar) {
+        const enviar = window.confirm(
+          `Hay ${lineasPendientesConfirmar.length} producto(s) sin enviar a comandera.\n\n¿Enviar a comandera ahora?`
+        );
+        if (!enviar) return;
+        const ok = await confirmarPedidoComanda();
+        if (!ok) return;
+      } else {
+        alert("Confirma el pedido en comanda antes de cerrar la cuenta.");
+        return;
+      }
+    }
+
+    if (modoParaLlevar) {
+      abrirCobroModal();
+      return;
+    }
+
+    setPrecuentaImpresa(false);
+    if (canUseBluetoothPrinter()) {
+      const printResult = await imprimirPrecuenta();
+      if (!printResult.skipped && !printResult.ok) {
+        alert(`Precuenta: ${printResult.message || "no se pudo imprimir"}`);
+      }
+    }
+
+    abrirCobroModal();
   };
 
   const cerrarCobroModal = () => {
@@ -397,6 +463,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     setResultadosCobro([]);
     setQrCobro("");
     setMontoRecibido("");
+    setPrecuentaImpresa(false);
   };
 
   const extrasPorTipo = useMemo(() => {
@@ -665,24 +732,43 @@ export default function Ventas({ modoParaLlevar = false }) {
   };
 
   const confirmarPedidoComanda = async () => {
-    if (!pedido?.id_pedido || modoParaLlevar) return;
+    if (!pedido?.id_pedido) return false;
     if (lineasPendientesConfirmar.length === 0) {
       alert("No hay productos pendientes de confirmar");
-      return;
+      return false;
     }
     try {
       setLoading(true);
       await confirmarComandaPedido(pedido.id_pedido);
       await cargarPedidoMesa(numeroMesa, modoParaLlevar);
-      alert("Pedido confirmado y enviado a comanda");
+      alert(
+        modoParaLlevar
+          ? "Pedido enviado a comandera"
+          : "Pedido confirmado y enviado a comanda"
+      );
+      return true;
     } catch (err) {
       alert(err.response?.data?.detail || "Error al confirmar pedido");
+      return false;
     } finally {
       setLoading(false);
     }
   };
 
-  const ejecutarCobro = async (conCliente) => {
+  const iniciarConfirmacionCobro = (conCliente) => {
+    if (cobroEfectivoInvalido) {
+      alert(`Indica cuánto paga el cliente (mínimo $${total.toFixed(2)})`);
+      return;
+    }
+    if (modoParaLlevar && canUseBluetoothPrinter()) {
+      setCobroPendiente({ conCliente });
+      setShowImprimirTicketModal(true);
+      return;
+    }
+    ejecutarCobro(conCliente, false);
+  };
+
+  const ejecutarCobro = async (conCliente, imprimirTicket = false) => {
     if (!usuario?.id_usuario || !pedido?.id_pedido) return;
 
     if (cobroEfectivoInvalido) {
@@ -702,14 +788,17 @@ export default function Ventas({ modoParaLlevar = false }) {
         id_cliente: conCliente && clienteCobro ? clienteCobro.id_cliente : null,
       });
 
-      const printResult = await printTicketSafely(buildCobroTicket, {
-        venta: res,
-        pedido: pedidoParaTicket,
-        usuario,
-        clienteNombre: conCliente && clienteCobro ? clienteCobro.nombre : null,
-        montoRecibido: pagaCon,
-        cambio,
-      });
+      let printResult = { skipped: true };
+      if (modoParaLlevar && imprimirTicket) {
+        printResult = await printTicketSafely(buildCobroTicket, {
+          venta: res,
+          pedido: pedidoParaTicket,
+          usuario,
+          clienteNombre: conCliente && clienteCobro ? clienteCobro.nombre : null,
+          montoRecibido: pagaCon,
+          cambio,
+        });
+      }
 
       let msg = modoParaLlevar
         ? `Venta para llevar — Folio: ${res.id_venta}\nTotal: $${Number(res.total).toFixed(2)}`
@@ -738,6 +827,8 @@ export default function Ventas({ modoParaLlevar = false }) {
       }
       alert(msg);
       cerrarCobroModal();
+      setShowImprimirTicketModal(false);
+      setCobroPendiente(null);
       if (modoParaLlevar) {
         setPedido(null);
         await cargarPedidoMesa(MESA_PARA_LLEVAR, true);
@@ -1083,12 +1174,24 @@ export default function Ventas({ modoParaLlevar = false }) {
               Confirmar pedido ({lineasPendientesConfirmar.length})
             </button>
           )}
+          {modoParaLlevar && lineasPendientesConfirmar.length > 0 && (
+            <button
+              type="button"
+              className="btn btn--accent inline-flex w-full items-center justify-center gap-2"
+              style={{ marginTop: "0.75rem", padding: "0.75rem" }}
+              onClick={confirmarPedidoComanda}
+              disabled={loading || carrito.length === 0 || !numeroMesa}
+            >
+              <HiOutlineCheckBadge className="size-5 shrink-0" aria-hidden />
+              Confirmar pedido / Enviar a comandera ({lineasPendientesConfirmar.length})
+            </button>
+          )}
           <button
             type="button"
             className="btn btn--success inline-flex w-full items-center justify-center gap-2"
             style={{ marginTop: "0.75rem", padding: "0.75rem" }}
-            onClick={abrirCobroModal}
-            disabled={loading || carrito.length === 0 || !numeroMesa}
+            onClick={handleCerrarCuenta}
+            disabled={loading || imprimiendoPrecuenta || showCobroModal || carrito.length === 0 || !numeroMesa}
           >
             <HiOutlineBanknotes className="size-5 shrink-0" aria-hidden />
             {modoParaLlevar ? "Cobrar para llevar" : "Cerrar cuenta / Cobrar"}
@@ -1339,7 +1442,13 @@ export default function Ventas({ modoParaLlevar = false }) {
       {showCobroModal && (
         <div className="modal-overlay" onClick={cerrarCobroModal}>
           <div className="modal-box modal-box--wide" onClick={(e) => e.stopPropagation()}>
-            <h2>{modoParaLlevar ? "Cobrar para llevar" : `Cerrar cuenta — Mesa ${numeroMesa}`}</h2>
+            <h2>{modoParaLlevar ? "Registrar pago — Para llevar" : `Registrar pago — Mesa ${numeroMesa}`}</h2>
+            {!modoParaLlevar && precuentaImpresa && (
+              <p className="hint">La precuenta ya fue impresa. Selecciona la forma de pago.</p>
+            )}
+            {(modoParaLlevar || !precuentaImpresa) && (
+              <p className="hint">Selecciona la forma de pago.</p>
+            )}
             <p className="cart-total" style={{ margin: "0.5rem 0 1rem" }}>
               Total: ${total.toFixed(2)}
             </p>
@@ -1351,14 +1460,27 @@ export default function Ventas({ modoParaLlevar = false }) {
                 value={formaPago}
                 onChange={(e) => {
                   setFormaPago(e.target.value);
-                  if (e.target.value !== "EFECTIVO") setMontoRecibido("");
+                  if (!esEfectivo(e.target.value)) setMontoRecibido("");
                 }}
               >
-                <option value="EFECTIVO">Efectivo</option>
-                <option value="TARJETA">Tarjeta</option>
-                <option value="TRANSFERENCIA">Transferencia</option>
+                {FORMAS_PAGO.map((fp) => (
+                  <option key={fp.value} value={fp.value}>
+                    {fp.label}
+                  </option>
+                ))}
               </select>
             </div>
+
+            {formaPago === "TRANSFERENCIA" && (
+              <p className="hint panel-muted" style={{ marginBottom: "1rem" }}>
+                Pago por <strong>Transferencia</strong>. No se solicita importe recibido ni cambio.
+              </p>
+            )}
+            {formaPago === "TARJETA" && (
+              <p className="hint panel-muted" style={{ marginBottom: "1rem" }}>
+                Pago con <strong>Terminal</strong>. No se solicita importe recibido ni cambio.
+              </p>
+            )}
 
             {cobroEfectivo && (
               <>
@@ -1492,13 +1614,24 @@ export default function Ventas({ modoParaLlevar = false }) {
             )}
 
             <div className="modal-footer" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
-              <button type="button" className="btn btn--secondary" onClick={cerrarCobroModal} disabled={loading}>
+              {!modoParaLlevar && canUseBluetoothPrinter() && (
+                <button
+                  type="button"
+                  className="btn btn--secondary inline-flex items-center gap-2"
+                  onClick={handleReimprimirPrecuenta}
+                  disabled={loading || imprimiendoPrecuenta}
+                >
+                  <HiOutlinePrinter className="size-5" aria-hidden />
+                  {imprimiendoPrecuenta ? "Imprimiendo…" : "Reimprimir precuenta"}
+                </button>
+              )}
+              <button type="button" className="btn btn--secondary" onClick={cerrarCobroModal} disabled={loading || imprimiendoPrecuenta}>
                 Cancelar
               </button>
               <button
                 type="button"
                 className="btn btn--secondary"
-                onClick={() => ejecutarCobro(false)}
+                onClick={() => iniciarConfirmacionCobro(false)}
                 disabled={loading || cobroEfectivoInvalido}
               >
                 Cobrar sin cliente
@@ -1506,7 +1639,7 @@ export default function Ventas({ modoParaLlevar = false }) {
               <button
                 type="button"
                 className="btn btn--success"
-                onClick={() => ejecutarCobro(true)}
+                onClick={() => iniciarConfirmacionCobro(true)}
                 disabled={loading || !clienteCobro || cobroEfectivoInvalido}
               >
                 {loading
@@ -1516,6 +1649,44 @@ export default function Ventas({ modoParaLlevar = false }) {
                       ? `Cobrar y sumar ${puntosPreviewCobro} pts`
                       : "Cobrar con cliente"
                     : "Selecciona un cliente"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showImprimirTicketModal && (
+        <div className="modal-overlay" onClick={() => setShowImprimirTicketModal(false)}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <h2>¿Deseas imprimir el ticket?</h2>
+            <p className="hint">
+              Se registrará la venta con pago{" "}
+              {FORMAS_PAGO.find((f) => f.value === formaPago)?.label ?? formaPago}.
+            </p>
+            <div className="modal-footer" style={{ marginTop: "1rem" }}>
+              <button
+                type="button"
+                className="btn btn--secondary"
+                disabled={loading}
+                onClick={() => {
+                  const { conCliente } = cobroPendiente || { conCliente: false };
+                  setShowImprimirTicketModal(false);
+                  ejecutarCobro(conCliente, false);
+                }}
+              >
+                No imprimir
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={loading}
+                onClick={() => {
+                  const { conCliente } = cobroPendiente || { conCliente: false };
+                  setShowImprimirTicketModal(false);
+                  ejecutarCobro(conCliente, true);
+                }}
+              >
+                Sí, imprimir ticket
               </button>
             </div>
           </div>

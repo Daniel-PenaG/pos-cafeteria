@@ -4,17 +4,10 @@ import PageHeader from "../components/PageHeader";
 import { getCuentasPorCajero } from "../services/reportesService";
 import { fechaMexicoISO, formatearHoraMexico } from "../utils/datetimeMx";
 
+import { FILTROS_FORMA_PAGO, coincideFiltroPago, etiquetaFormaPago } from "../utils/formaPago";
+
 function formatearHora(iso) {
   return formatearHoraMexico(iso);
-}
-
-function formatearFormaPago(forma) {
-  const map = {
-    EFECTIVO: "Efectivo",
-    TARJETA: "Tarjeta",
-    TRANSFERENCIA: "Transferencia",
-  };
-  return map[forma] || forma;
 }
 
 export default function CuentasCajero() {
@@ -23,6 +16,7 @@ export default function CuentasCajero() {
   const [reporte, setReporte] = useState(null);
   const [loading, setLoading] = useState(false);
   const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
+  const [filtroPago, setFiltroPago] = useState("TODOS");
 
   const esHoy = fecha === hoy;
 
@@ -152,6 +146,9 @@ export default function CuentasCajero() {
                       <th>Persona</th>
                       <th>Rol</th>
                       <th>Cuentas</th>
+                      <th>Efectivo</th>
+                      <th>Transferencia</th>
+                      <th>Terminal</th>
                       <th>Total</th>
                       <th>% del día</th>
                     </tr>
@@ -167,6 +164,9 @@ export default function CuentasCajero() {
                         </td>
                         <td>{c.rol}</td>
                         <td>{c.numero_ventas}</td>
+                        <td>${Number(c.total_efectivo ?? 0).toFixed(2)} ({c.num_efectivo ?? 0})</td>
+                        <td>${Number(c.total_transferencia ?? 0).toFixed(2)} ({c.num_transferencia ?? 0})</td>
+                        <td>${Number(c.total_tarjeta ?? 0).toFixed(2)} ({c.num_tarjeta ?? 0})</td>
                         <td>${Number(c.total).toFixed(2)}</td>
                         <td>{c.porcentaje_dia}%</td>
                       </tr>
@@ -184,9 +184,26 @@ export default function CuentasCajero() {
                       {c.nombre}
                     </h3>
                     <span className="cuentas-cajero__persona-meta">
-                      {c.numero_ventas} cuenta{c.numero_ventas !== 1 ? "s" : ""} · $
-                      {Number(c.total).toFixed(2)} · {c.porcentaje_dia}% del día
+                      {c.numero_ventas} cuenta{c.numero_ventas !== 1 ? "s" : ""} · EF $
+                      {Number(c.total_efectivo ?? 0).toFixed(2)} · TR $
+                      {Number(c.total_transferencia ?? 0).toFixed(2)} · TE $
+                      {Number(c.total_tarjeta ?? 0).toFixed(2)} · Total $
+                      {Number(c.total).toFixed(2)}
                     </span>
+                  </div>
+                  <div className="form-row" style={{ maxWidth: 200, marginTop: "0.5rem" }}>
+                    <label className="hint">Filtrar pago</label>
+                    <select
+                      className="select"
+                      value={filtroPago}
+                      onChange={(e) => setFiltroPago(e.target.value)}
+                    >
+                      {FILTROS_FORMA_PAGO.map((f) => (
+                        <option key={f.value} value={f.value}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
@@ -202,7 +219,9 @@ export default function CuentasCajero() {
                       </tr>
                     </thead>
                     <tbody>
-                      {c.ventas.map((v) => (
+                      {c.ventas
+                        .filter((v) => coincideFiltroPago(v.forma_pago, filtroPago))
+                        .map((v) => (
                         <tr key={v.id_venta}>
                           <td>#{v.id_venta}</td>
                           <td>{formatearHora(v.fecha_hora)}</td>
@@ -214,7 +233,7 @@ export default function CuentasCajero() {
                               </span>
                             )}
                           </td>
-                          <td>{formatearFormaPago(v.forma_pago)}</td>
+                          <td>{v.forma_pago_label ?? etiquetaFormaPago(v.forma_pago)}</td>
                           <td>
                             {v.cliente_nombre || "—"}
                             {v.puntos_generados > 0 && (

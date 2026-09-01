@@ -179,6 +179,10 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
     if not data.forma_pago or data.forma_pago.strip() == "":
         raise DatosInvalidosException("Forma de pago requerida")
 
+    from app.utils.forma_pago import normalizar_forma_pago
+
+    forma_pago = normalizar_forma_pago(data.forma_pago)
+
     lineas_entrada = []
     for item in data.detalles:
         if item.cantidad <= 0:
@@ -247,7 +251,7 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
             numero_mesa=data.numero_mesa,
             para_llevar=para_llevar,
             total=total_calculado,
-            forma_pago=data.forma_pago,
+            forma_pago=forma_pago,
             id_cliente=data.id_cliente if cliente else None,
             puntos_generados=puntos_generados,
         )

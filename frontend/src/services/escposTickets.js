@@ -1,4 +1,5 @@
 import ThermalPrinterEncoder from "thermal-printer-encoder";
+import { etiquetaFormaPago } from "../utils/formaPago";
 
 const WIDTH = 32; // 58 mm ~ 32 chars
 const BRAND_NAME = "Coffe Song";
@@ -54,18 +55,16 @@ function lineExtras(extras) {
   });
 }
 
-function formatFormaPago(forma) {
-  const map = {
-    EFECTIVO: "Efectivo",
-    TARJETA: "Tarjeta",
-    TRANSFERENCIA: "Transferencia",
-  };
-  return map[forma] || forma;
+function mesaOrigenLabel(pedido) {
+  if (pedido?.para_llevar || pedido?.numero_mesa === 99) {
+    return "Para llevar";
+  }
+  return `Mesa ${pedido?.numero_mesa ?? "—"}`;
 }
 
 export function buildComandaTicket({ pedido, lineas, usuario }) {
   const enc = encoder();
-  const mesa = pedido?.numero_mesa;
+  const paraLlevar = pedido?.para_llevar || pedido?.numero_mesa === 99;
   const hora = new Date().toLocaleTimeString("es-MX", {
     hour: "2-digit",
     minute: "2-digit",
@@ -77,10 +76,14 @@ export function buildComandaTicket({ pedido, lineas, usuario }) {
     .line("COMANDA COCINA")
     .bold(false)
     .newline()
-    .align("left")
-    .line(`Mesa: ${mesa}`)
-    .line(`Pedido: #${pedido?.id_pedido ?? "—"}`)
-    .line(`Hora: ${hora}`);
+    .align("left");
+
+  if (paraLlevar) {
+    enc.bold(true).line("PARA LLEVAR").bold(false);
+  } else {
+    enc.line(`Mesa: ${pedido?.numero_mesa}`);
+  }
+  enc.line(`Pedido: #${pedido?.id_pedido ?? "—"}`).line(`Hora: ${hora}`);
 
   if (usuario?.nombre) {
     enc.line(`Mesero: ${usuario.nombre}`);
@@ -93,6 +96,9 @@ export function buildComandaTicket({ pedido, lineas, usuario }) {
     for (const extra of lineExtras(item.extras)) {
       enc.line(extra);
     }
+    if (item.nombre_promocion) {
+      enc.line(`  Promo: ${item.nombre_promocion}`);
+    }
     if (item.comentario) {
       enc.line(`  * ${item.comentario}`);
     }
@@ -101,6 +107,68 @@ export function buildComandaTicket({ pedido, lineas, usuario }) {
 
   enc.align("center").line("---").newline().cut();
 
+  return enc.encode();
+}
+
+/** Precuenta: sin forma de pago, folio ni puntos. */
+export function buildPrecuentaTicket({ pedido, usuario, subtotal, descuento, total }) {
+  const enc = encoder();
+  appendCoffeeSongHeader(enc);
+
+  enc
+    .align("center")
+    .bold(true)
+    .line("PRECUENTA")
+    .bold(false)
+    .newline()
+    .line(mesaOrigenLabel(pedido))
+    .line(`Pedido #${pedido?.id_pedido ?? "—"}`)
+    .line(
+      new Date().toLocaleString("es-MX", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    )
+    .align("left")
+    .line("-".repeat(WIDTH))
+    .newline();
+
+  const lineas = pedido?.lineas ?? [];
+  for (const item of lineas) {
+    const sub = Number(item.cantidad) * Number(item.precio_unitario);
+    enc.line(`${item.cantidad} x ${item.nombre_producto}`);
+    enc.line(`   $${sub.toFixed(2)}`);
+    for (const extra of lineExtras(item.extras)) {
+      enc.line(extra);
+    }
+    if (item.nombre_promocion) {
+      enc.line(`  Promo: ${item.nombre_promocion}`);
+    }
+    if (item.comentario) {
+      enc.line(`  * ${item.comentario}`);
+    }
+  }
+
+  enc.line("-".repeat(WIDTH));
+  if (subtotal != null && descuento > 0) {
+    enc.line(`Subtotal: $${Number(subtotal).toFixed(2)}`);
+    enc.line(`Descuento: -$${Number(descuento).toFixed(2)}`);
+  }
+  enc.bold(true).line(`TOTAL: $${Number(total ?? 0).toFixed(2)}`).bold(false);
+  enc
+    .newline()
+    .align("center")
+    .bold(true)
+    .line("PENDIENTE DE PAGO")
+    .bold(false);
+
+  if (usuario?.nombre) {
+    enc.align("left").line(`Atendio: ${usuario.nombre}`);
+  }
+
+  enc.newline().align("center").line("---").newline().cut();
   return enc.encode();
 }
 
@@ -113,9 +181,9 @@ export function buildCobroTicket({
   cambio,
 }) {
   const enc = encoder();
-  const mesa = venta?.numero_mesa ?? pedido?.numero_mesa;
-  const mesaLabel =
-    venta?.para_llevar || mesa === 99 ? "Para llevar" : `Mesa ${mesa}`;
+  const mesaLabel = venta?.para_llevar || venta?.numero_mesa === 99
+    ? "Para llevar"
+    : `Mesa ${venta?.numero_mesa ?? pedido?.numero_mesa}`;
   const fecha = new Date(venta?.fecha_hora || Date.now()).toLocaleString("es-MX", {
     day: "2-digit",
     month: "2-digit",
@@ -154,7 +222,7 @@ export function buildCobroTicket({
 
   enc.line("-".repeat(WIDTH));
   enc.bold(true).line(`TOTAL: $${Number(venta?.total ?? 0).toFixed(2)}`).bold(false);
-  enc.line(`Pago: ${formatFormaPago(venta?.forma_pago)}`);
+  enc.line(`Pago: ${etiquetaFormaPago(venta?.forma_pago)}`);
   if (
     venta?.forma_pago === "EFECTIVO" &&
     montoRecibido != null &&
@@ -171,6 +239,9 @@ export function buildCobroTicket({
   }
   if (clienteNombre) {
     enc.line(`Cliente: ${clienteNombre}`);
+  }
+  if (venta?.puntos_generados > 0) {
+    enc.line(`Puntos: +${venta.puntos_generados}`);
   }
 
   enc
