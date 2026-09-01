@@ -13,7 +13,7 @@ Rama: [`ui/responsive-mobile`](https://github.com/Daniel-PenaG/pos-cafeteria/tre
 | `04469fa` | Capturas API local y matriz honesta |
 | `7b420e2` | Capturas API real y validaciones de ancho |
 | `21e6687` | Espera animación modal, navbar tablet 768–900 px |
-| *(HEAD)* | Rebase sobre `1a009dc`, capturas regeneradas |
+| `5a0c071` | Rebase sobre `1a009dc`, capturas regeneradas, validación 71 pruebas |
 
 **Respaldo pre-rebase:** `backup/responsive-pre-rebase-f5209bb` (local).
 
