@@ -115,6 +115,7 @@ function TablaProductos({ productos }) {
   }
 
   return (
+    <div className="table-wrap">
     <table className="table">
       <thead>
         <tr>
@@ -135,6 +136,7 @@ function TablaProductos({ productos }) {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -186,6 +188,7 @@ function TablaRendimientoDiaSemana({ data }) {
           )}
         </div>
       )}
+      <div className="table-wrap">
       <table className="table">
         <thead>
           <tr>
@@ -214,6 +217,7 @@ function TablaRendimientoDiaSemana({ data }) {
             ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -286,6 +290,7 @@ function TablaRendimientoPorHora({ rendimientoPorHora, filtroDia, onFiltroDiaCha
         </div>
       )}
 
+      <div className="table-wrap">
       <table className="table">
         <thead>
           <tr>
@@ -318,6 +323,7 @@ function TablaRendimientoPorHora({ rendimientoPorHora, filtroDia, onFiltroDiaCha
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -328,6 +334,7 @@ function TablaDesgloseDias({ filas }) {
   }
 
   return (
+    <div className="table-wrap">
     <table className="table">
       <thead>
         <tr>
@@ -352,6 +359,7 @@ function TablaDesgloseDias({ filas }) {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -361,6 +369,7 @@ function TablaRanking({ productos }) {
   }
 
   return (
+    <div className="table-wrap">
     <table className="table">
       <thead>
         <tr>
@@ -389,6 +398,7 @@ function TablaRanking({ productos }) {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -397,6 +407,7 @@ function TablaPromocionesDetalle({ promociones }) {
   return (
     <div className="card" style={{ marginTop: "1.5rem" }}>
       <h3>Detalle de promociones</h3>
+      <div className="table-wrap">
       <table className="table">
         <thead>
           <tr>
@@ -417,6 +428,7 @@ function TablaPromocionesDetalle({ promociones }) {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -787,6 +799,7 @@ export default function Reportes() {
           {tab === "anio" && reporte.desglose_meses?.length > 0 && (
             <div className="card" style={{ marginBottom: "1.5rem" }}>
               <h3>Desglose por mes</h3>
+              <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
@@ -811,6 +824,7 @@ export default function Reportes() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
 
@@ -825,6 +839,7 @@ export default function Reportes() {
         <>
           <div className="card" style={{ marginBottom: "1.5rem" }}>
             <h3>Comparación de periodos</h3>
+            <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
@@ -857,6 +872,7 @@ export default function Reportes() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </>
       )}
@@ -864,6 +880,7 @@ export default function Reportes() {
       {consumo && (
         <div className="card" style={{ marginTop: "1.5rem" }}>
           <h3>Consumo de insumos (día seleccionado)</h3>
+          <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
@@ -886,6 +903,7 @@ export default function Reportes() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -921,7 +939,8 @@ export default function Reportes() {
                     <p>
                       <strong>Pedido #{ped.id_pedido}</strong> · {ped.duracion_pedido_texto}
                     </p>
-                    <table className="table" style={{ marginTop: "0.5rem" }}>
+                    <div className="table-wrap" style={{ marginTop: "0.5rem" }}>
+                    <table className="table">
                       <thead>
                         <tr>
                           <th>Producto</th>
@@ -939,6 +958,7 @@ export default function Reportes() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -972,6 +992,7 @@ export default function Reportes() {
             {!promociones.promociones_usadas?.length ? (
               <p className="empty-state">Sin ventas con promoción en este periodo.</p>
             ) : (
+              <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
@@ -992,6 +1013,7 @@ export default function Reportes() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </>

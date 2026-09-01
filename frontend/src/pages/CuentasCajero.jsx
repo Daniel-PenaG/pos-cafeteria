@@ -145,7 +145,8 @@ export default function CuentasCajero() {
             <>
               <div className="card" style={{ marginBottom: "1.5rem" }}>
                 <h3>Resumen por persona</h3>
-                <table className="table" style={{ marginTop: "0.75rem" }}>
+                <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
+                <table className="table">
                   <thead>
                     <tr>
                       <th>Persona</th>
@@ -172,6 +173,7 @@ export default function CuentasCajero() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
 
               {reporte.por_cajero.map((c) => (
@@ -187,7 +189,8 @@ export default function CuentasCajero() {
                     </span>
                   </div>
 
-                  <table className="table" style={{ marginTop: "0.75rem" }}>
+                  <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
+                  <table className="table">
                     <thead>
                       <tr>
                         <th>Folio</th>
@@ -225,6 +228,7 @@ export default function CuentasCajero() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               ))}
             </>

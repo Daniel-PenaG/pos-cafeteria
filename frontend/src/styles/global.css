@@ -242,6 +242,25 @@ body {
   line-height: 1.5;
 }
 
+.page-header__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.page-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.page-header__actions .btn {
+  min-height: 44px;
+}
+
 .page h2 {
   font-family: var(--font-display);
   font-size: 1.15rem;
@@ -321,6 +340,18 @@ body {
 }
 
 /* ─── Tables ─── */
+.table-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+
+.table-scroll-hint {
+  display: none;
+  font-size: 0.8rem;
+  color: var(--mocha);
+  margin: 0 0 0.5rem;
+}
+
 .page table,
 .table-wrap table {
   width: 100%;

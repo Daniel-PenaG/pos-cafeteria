@@ -162,6 +162,7 @@ export default function Usuarios() {
         <p>Cargando…</p>
       ) : (
         <div className="card">
+          <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
@@ -207,6 +208,7 @@ export default function Usuarios() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
