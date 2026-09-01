@@ -37,7 +37,7 @@ import SearchField from "../components/SearchField";
 import ElapsedTimer from "../components/ElapsedTimer";
 import PrinterSettings from "../components/PrinterSettings";
 import { canUseBluetoothPrinter, printTicketSafely } from "../services/printerService";
-import { buildCobroTicket, buildPrecuentaTicket, buildComandaTicket } from "../services/escposTickets";
+import { buildCobroTicket, buildPrecuentaTicket } from "../services/escposTickets";
 import { FORMAS_PAGO, esEfectivo } from "../utils/formaPago";
 import { getSavedPrinter } from "../services/printerStorage";
 import { formatDuration } from "../utils/formatDuration";
@@ -102,6 +102,8 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [showQrScanner, setShowQrScanner] = useState(false);
   const [clienteQrRecienCreado, setClienteQrRecienCreado] = useState(null);
   const [showPrinterSettings, setShowPrinterSettings] = useState(false);
+  const [imprimiendoPrecuenta, setImprimiendoPrecuenta] = useState(false);
+  const [precuentaImpresa, setPrecuentaImpresa] = useState(false);
   /** Cantidades en edición (id detalle → texto) antes de guardar en servidor */
   const [cantidadEdit, setCantidadEdit] = useState({});
 
@@ -393,44 +395,65 @@ export default function Ventas({ modoParaLlevar = false }) {
     setShowCobroModal(true);
   };
 
+  const imprimirPrecuenta = async () => {
+    if (!pedido?.id_pedido || imprimiendoPrecuenta) return { ok: false, skipped: true };
+    setImprimiendoPrecuenta(true);
+    try {
+      const printResult = await printTicketSafely(buildPrecuentaTicket, {
+        pedido,
+        usuario,
+        subtotal: subtotalNormal ?? total,
+        descuento: descuentoPromos ?? 0,
+        total,
+      });
+      if (printResult.ok) {
+        setPrecuentaImpresa(true);
+      }
+      return printResult;
+    } finally {
+      setImprimiendoPrecuenta(false);
+    }
+  };
+
+  const handleReimprimirPrecuenta = async () => {
+    const printResult = await imprimirPrecuenta();
+    if (!printResult.skipped && !printResult.ok) {
+      alert(`Precuenta: ${printResult.message || "no se pudo imprimir"}`);
+    }
+  };
+
   const handleCerrarCuenta = async () => {
     if (!pedido?.id_pedido || carrito.length === 0) return;
+    if (imprimiendoPrecuenta || loading || showCobroModal) return;
 
     if (lineasPendientesConfirmar.length > 0) {
       if (modoParaLlevar) {
         const enviar = window.confirm(
           `Hay ${lineasPendientesConfirmar.length} producto(s) sin enviar a comandera.\n\n¿Enviar a comandera ahora?`
         );
-        if (enviar) {
-          try {
-            setLoading(true);
-            await confirmarPedidoComanda();
-          } catch {
-            return;
-          } finally {
-            setLoading(false);
-          }
-        } else {
-          return;
-        }
-      } else if (!modoParaLlevar) {
-        alert("Confirma el pedido en comanda antes de cerrar la cuenta, o continúa si es intencional.");
+        if (!enviar) return;
+        const ok = await confirmarPedidoComanda();
+        if (!ok) return;
+      } else {
+        alert("Confirma el pedido en comanda antes de cerrar la cuenta.");
+        return;
       }
     }
 
-    const printResult = await printTicketSafely(buildPrecuentaTicket, {
-      pedido,
-      usuario,
-      subtotal: subtotalNormal ?? total,
-      descuento: descuentoPromos ?? 0,
-      total,
-    });
+    if (modoParaLlevar) {
+      abrirCobroModal();
+      return;
+    }
+
+    setPrecuentaImpresa(false);
+    if (canUseBluetoothPrinter()) {
+      const printResult = await imprimirPrecuenta();
+      if (!printResult.skipped && !printResult.ok) {
+        alert(`Precuenta: ${printResult.message || "no se pudo imprimir"}`);
+      }
+    }
 
     abrirCobroModal();
-
-    if (!printResult.skipped && !printResult.ok) {
-      alert(`Precuenta: ${printResult.message || "no se pudo imprimir"}`);
-    }
   };
 
   const cerrarCobroModal = () => {
@@ -440,6 +463,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     setResultadosCobro([]);
     setQrCobro("");
     setMontoRecibido("");
+    setPrecuentaImpresa(false);
   };
 
   const extrasPorTipo = useMemo(() => {
@@ -708,28 +732,24 @@ export default function Ventas({ modoParaLlevar = false }) {
   };
 
   const confirmarPedidoComanda = async () => {
-    if (!pedido?.id_pedido) return;
+    if (!pedido?.id_pedido) return false;
     if (lineasPendientesConfirmar.length === 0) {
       alert("No hay productos pendientes de confirmar");
-      return;
+      return false;
     }
-    const lineasAEnviar = [...lineasPendientesConfirmar];
     try {
       setLoading(true);
       await confirmarComandaPedido(pedido.id_pedido);
-      await printTicketSafely(buildComandaTicket, {
-        pedido,
-        lineas: lineasAEnviar,
-        usuario,
-      });
       await cargarPedidoMesa(numeroMesa, modoParaLlevar);
       alert(
         modoParaLlevar
           ? "Pedido enviado a comandera"
           : "Pedido confirmado y enviado a comanda"
       );
+      return true;
     } catch (err) {
       alert(err.response?.data?.detail || "Error al confirmar pedido");
+      return false;
     } finally {
       setLoading(false);
     }
@@ -740,7 +760,7 @@ export default function Ventas({ modoParaLlevar = false }) {
       alert(`Indica cuánto paga el cliente (mínimo $${total.toFixed(2)})`);
       return;
     }
-    if (modoParaLlevar) {
+    if (modoParaLlevar && canUseBluetoothPrinter()) {
       setCobroPendiente({ conCliente });
       setShowImprimirTicketModal(true);
       return;
@@ -1171,7 +1191,7 @@ export default function Ventas({ modoParaLlevar = false }) {
             className="btn btn--success inline-flex w-full items-center justify-center gap-2"
             style={{ marginTop: "0.75rem", padding: "0.75rem" }}
             onClick={handleCerrarCuenta}
-            disabled={loading || carrito.length === 0 || !numeroMesa}
+            disabled={loading || imprimiendoPrecuenta || showCobroModal || carrito.length === 0 || !numeroMesa}
           >
             <HiOutlineBanknotes className="size-5 shrink-0" aria-hidden />
             {modoParaLlevar ? "Cobrar para llevar" : "Cerrar cuenta / Cobrar"}
@@ -1423,7 +1443,12 @@ export default function Ventas({ modoParaLlevar = false }) {
         <div className="modal-overlay" onClick={cerrarCobroModal}>
           <div className="modal-box modal-box--wide" onClick={(e) => e.stopPropagation()}>
             <h2>{modoParaLlevar ? "Registrar pago — Para llevar" : `Registrar pago — Mesa ${numeroMesa}`}</h2>
-            <p className="hint">La precuenta ya fue impresa. Selecciona la forma de pago.</p>
+            {!modoParaLlevar && precuentaImpresa && (
+              <p className="hint">La precuenta ya fue impresa. Selecciona la forma de pago.</p>
+            )}
+            {(modoParaLlevar || !precuentaImpresa) && (
+              <p className="hint">Selecciona la forma de pago.</p>
+            )}
             <p className="cart-total" style={{ margin: "0.5rem 0 1rem" }}>
               Total: ${total.toFixed(2)}
             </p>
@@ -1589,7 +1614,18 @@ export default function Ventas({ modoParaLlevar = false }) {
             )}
 
             <div className="modal-footer" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
-              <button type="button" className="btn btn--secondary" onClick={cerrarCobroModal} disabled={loading}>
+              {!modoParaLlevar && canUseBluetoothPrinter() && (
+                <button
+                  type="button"
+                  className="btn btn--secondary inline-flex items-center gap-2"
+                  onClick={handleReimprimirPrecuenta}
+                  disabled={loading || imprimiendoPrecuenta}
+                >
+                  <HiOutlinePrinter className="size-5" aria-hidden />
+                  {imprimiendoPrecuenta ? "Imprimiendo…" : "Reimprimir precuenta"}
+                </button>
+              )}
+              <button type="button" className="btn btn--secondary" onClick={cerrarCobroModal} disabled={loading || imprimiendoPrecuenta}>
                 Cancelar
               </button>
               <button

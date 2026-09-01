@@ -120,3 +120,32 @@ def test_desglose_reportes_respeta_fecha(db_session, refs):
     desglose_ayer = desglose_pagos_periodo(db_session, ayer, ayer)
     assert desglose_ayer["num_ventas"] == 0
     assert desglose_ayer["total_general"] == 0.0
+
+
+def test_cierre_excluye_venta_medianoche_siguiente(db_session, refs):
+    """Venta a las 00:00 MX del día siguiente no entra al cierre del día anterior."""
+    from datetime import timedelta
+
+    from app.models.models import VentaModel
+    from app.utils.timezone_mx import bounds_utc_naive_for_mx_date
+
+    hoy = today_mx()
+    manana = hoy + timedelta(days=1)
+    inicio_manana, _ = bounds_utc_naive_for_mx_date(manana)
+
+    venta = VentaModel(
+        fecha_hora=inicio_manana,
+        id_usuario=refs.id_usuario,
+        numero_mesa=5,
+        para_llevar=False,
+        total=65.0,
+        forma_pago="EFECTIVO",
+    )
+    db_session.add(venta)
+    db_session.commit()
+
+    res = resumen_ventas_usuario(db_session, refs.id_usuario, hoy)
+    assert venta.id_venta not in {v["id_venta"] for v in res["ventas"]}
+
+    res_manana = resumen_ventas_usuario(db_session, refs.id_usuario, manana)
+    assert venta.id_venta in {v["id_venta"] for v in res_manana["ventas"]}

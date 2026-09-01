@@ -43,7 +43,7 @@ def resumen_ventas_usuario(
         .filter(
             VentaModel.id_usuario == id_usuario,
             VentaModel.fecha_hora >= inicio,
-            VentaModel.fecha_hora <= fin,
+            VentaModel.fecha_hora < fin,
         )
         .order_by(VentaModel.fecha_hora.desc())
         .all()
