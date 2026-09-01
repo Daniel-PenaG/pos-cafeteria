@@ -11,7 +11,7 @@ PR base temporal: `performance/optimizar-pos`
 | `8b6b527` | Script login API local + matriz honesta |
 | `cf0192e` | Capturas API real, validaciones de ancho, modal-bottom |
 | `215da18` | Hashes de evidencia |
-| *(HEAD)* | Espera animación modal, navbar tablet 768–900 px, capturas finales en `:8000` |
+| `e817f43` | Espera animación modal, navbar tablet 768–900 px, capturas finales en `:8000` |
 
 ## Validación automatizada (2026-09-01)
 
