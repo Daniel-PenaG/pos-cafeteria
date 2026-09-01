@@ -353,8 +353,6 @@ def agregar_combo_pedido(
 def confirmar_comanda_pedido(db: Session, pedido: PedidoModel) -> int:
     if pedido.estado != "ABIERTO":
         raise DatosInvalidosException("El pedido ya está cerrado")
-    if getattr(pedido, "para_llevar", False):
-        raise DatosInvalidosException("Los pedidos para llevar no usan comanda")
 
     ahora = now_utc_naive()
     enviadas = 0
@@ -374,6 +372,9 @@ def confirmar_comanda_pedido(db: Session, pedido: PedidoModel) -> int:
 
 
 def cobrar_pedido(db: Session, pedido: PedidoModel, id_usuario: int, forma_pago: str):
+    from app.utils.forma_pago import normalizar_forma_pago
+
+    forma_pago = normalizar_forma_pago(forma_pago)
     if pedido.estado != "ABIERTO":
         raise DatosInvalidosException("El pedido ya fue cobrado o cancelado")
     if not pedido.detalles:

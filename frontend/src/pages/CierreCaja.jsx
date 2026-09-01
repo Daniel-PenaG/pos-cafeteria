@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import PageHeader from "../components/PageHeader";
 import { getResumenCierre, registrarCierre } from "../services/cierresService";
 import { fechaMexicoISO, formatearHoraMexico } from "../utils/datetimeMx";
 import { numberInputFromApi } from "../utils/numberInput";
 import { formatApiError } from "../utils/apiError";
+import { FILTROS_FORMA_PAGO, coincideFiltroPago, etiquetaFormaPago } from "../utils/formaPago";
 import { HiOutlineBanknotes } from "react-icons/hi2";
 
 function fmt(n) {
@@ -17,6 +18,7 @@ export default function CierreCaja() {
   const [efectivoContado, setEfectivoContado] = useState("");
   const [notas, setNotas] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [filtroPago, setFiltroPago] = useState("TODOS");
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -40,6 +42,11 @@ export default function CierreCaja() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  const ventasFiltradas = useMemo(() => {
+    if (!data?.ventas) return [];
+    return data.ventas.filter((v) => coincideFiltroPago(v.forma_pago, filtroPago));
+  }, [data, filtroPago]);
 
   const contadoNum = parseFloat(efectivoContado);
   const diferencia =
@@ -71,6 +78,11 @@ export default function CierreCaja() {
 
   if (loading) return <div className="loading-state">Cargando…</div>;
 
+  const sumaMetodos =
+    (data?.total_efectivo ?? 0) +
+    (data?.total_transferencia ?? 0) +
+    (data?.total_tarjeta ?? 0);
+
   return (
     <div>
       <PageHeader
@@ -95,26 +107,34 @@ export default function CierreCaja() {
         <>
           <div className="grid-stats" style={{ marginBottom: "1rem" }}>
             <div className="stat-card">
-              <p className="stat-card__label">Ventas cobradas</p>
-              <p className="stat-card__value">{data.num_ventas}</p>
-            </div>
-            <div className="stat-card">
               <p className="stat-card__label">Total del día</p>
               <p className="stat-card__value">{fmt(data.total_ventas)}</p>
             </div>
             <div className="stat-card">
-              <p className="stat-card__label">Efectivo (sistema)</p>
-              <p className="stat-card__value">{fmt(data.total_efectivo)}</p>
+              <p className="stat-card__label">Ventas</p>
+              <p className="stat-card__value">{data.num_ventas}</p>
             </div>
             <div className="stat-card">
-              <p className="stat-card__label">Tarjeta</p>
-              <p className="stat-card__value">{fmt(data.total_tarjeta)}</p>
+              <p className="stat-card__label">Efectivo</p>
+              <p className="stat-card__value">{fmt(data.total_efectivo)}</p>
+              <p className="hint">{data.num_efectivo ?? 0} ventas</p>
             </div>
             <div className="stat-card">
               <p className="stat-card__label">Transferencia</p>
               <p className="stat-card__value">{fmt(data.total_transferencia)}</p>
+              <p className="hint">{data.num_transferencia ?? 0} ventas</p>
+            </div>
+            <div className="stat-card">
+              <p className="stat-card__label">Terminal</p>
+              <p className="stat-card__value">{fmt(data.total_tarjeta)}</p>
+              <p className="hint">{data.num_tarjeta ?? 0} ventas</p>
             </div>
           </div>
+          {Math.abs(sumaMetodos - data.total_ventas) > 0.02 && (
+            <p className="hint" style={{ color: "var(--berry)", marginBottom: "1rem" }}>
+              Verifica totales: métodos = {fmt(sumaMetodos)} vs total {fmt(data.total_ventas)}
+            </p>
+          )}
 
           {data.ya_cerrado ? (
             <div className="card" style={{ borderColor: "var(--olive-light)" }}>
@@ -133,8 +153,8 @@ export default function CierreCaja() {
                 Arqueo de efectivo
               </h3>
               <p className="hint">
-                Cuenta el efectivo en caja e ingresa el total. El sistema compara con{" "}
-                {fmt(data.total_efectivo)} en ventas en efectivo.
+                Cuenta solo el efectivo en caja. Transferencias y terminal no se incluyen en el
+                arqueo ({fmt(data.total_efectivo)} registrado en efectivo).
               </p>
               <div className="form-row" style={{ maxWidth: 280 }}>
                 <label>Efectivo contado *</label>
@@ -149,12 +169,11 @@ export default function CierreCaja() {
               </div>
               {diferencia !== null && (
                 <p className="hint" style={{ marginTop: "0.5rem" }}>
-                  Diferencia:{" "}
+                  Diferencia (contado − efectivo sistema):{" "}
                   <strong style={{ color: diferencia === 0 ? "var(--olive)" : "var(--berry)" }}>
                     {diferencia >= 0 ? "+" : ""}
                     {fmt(diferencia)}
                   </strong>
-                  {diferencia > 0 ? " (sobrante)" : diferencia < 0 ? " (faltante)" : " (cuadra)"}
                 </p>
               )}
               <div className="form-row">
@@ -179,9 +198,23 @@ export default function CierreCaja() {
           )}
 
           <div className="card" style={{ marginTop: "1rem" }}>
-            <h3>Detalle de ventas</h3>
-            {data.ventas.length === 0 ? (
-              <p className="empty-state">Sin ventas en esta fecha.</p>
+            <div className="flex flex-wrap items-center justify-between gap-2" style={{ marginBottom: "0.75rem" }}>
+              <h3 style={{ margin: 0 }}>Detalle de pagos</h3>
+              <select
+                className="select"
+                style={{ maxWidth: 180 }}
+                value={filtroPago}
+                onChange={(e) => setFiltroPago(e.target.value)}
+              >
+                {FILTROS_FORMA_PAGO.map((f) => (
+                  <option key={f.value} value={f.value}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {ventasFiltradas.length === 0 ? (
+              <p className="empty-state">Sin ventas para este filtro.</p>
             ) : (
               <div className="table-wrap">
                 <table>
@@ -189,16 +222,20 @@ export default function CierreCaja() {
                     <tr>
                       <th>Folio</th>
                       <th>Hora</th>
-                      <th>Forma pago</th>
+                      <th>Origen</th>
+                      <th>Cliente</th>
+                      <th>Método</th>
                       <th>Total</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.ventas.map((v) => (
+                    {ventasFiltradas.map((v) => (
                       <tr key={v.id_venta}>
                         <td>#{v.id_venta}</td>
                         <td>{formatearHoraMexico(v.fecha_hora)}</td>
-                        <td>{v.forma_pago}</td>
+                        <td>{v.origen ?? (v.para_llevar ? "Para llevar" : `Mesa ${v.numero_mesa}`)}</td>
+                        <td>{v.cliente_nombre || "—"}</td>
+                        <td>{v.forma_pago_label ?? etiquetaFormaPago(v.forma_pago)}</td>
                         <td>{fmt(v.total)}</td>
                       </tr>
                     ))}

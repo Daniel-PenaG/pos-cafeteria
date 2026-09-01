@@ -102,6 +102,7 @@ class ComandaLinea(BaseModel):
     id_detalle_pedido: int
     id_pedido: int
     numero_mesa: int
+    para_llevar: bool = False
     nombre_producto: str
     cantidad: float
     cantidad_lista: float

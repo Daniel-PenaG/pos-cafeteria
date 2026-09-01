@@ -1633,6 +1633,14 @@ body {
   gap: 1.25rem;
 }
 
+.comandera-mesa--para-llevar {
+  border-left: 4px solid var(--olive);
+}
+
+.comandera-mesa--para-llevar .comandera-mesa__title {
+  color: var(--olive-dark);
+}
+
 .comandera-mesa__title {
   font-family: var(--font-display);
   margin: 0;

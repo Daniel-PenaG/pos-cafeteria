@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { HiOutlineArrowPath } from "react-icons/hi2";
 import { getComandaPendientes, marcarLineaListo } from "../services/pedidosService";
 import PageHeader from "../components/PageHeader";
@@ -51,16 +51,21 @@ export default function Comandera() {
     }
   };
 
-  const porMesa = lineas.reduce((acc, l) => {
-    const m = l.numero_mesa;
-    if (!acc[m]) acc[m] = [];
-    acc[m].push(l);
-    return acc;
-  }, {});
+  const porPedido = useMemo(() => {
+    const acc = {};
+    for (const l of lineas) {
+      const key = l.id_pedido;
+      if (!acc[key]) acc[key] = { id_pedido: l.id_pedido, para_llevar: l.para_llevar, numero_mesa: l.numero_mesa, lineas: [] };
+      acc[key].lineas.push(l);
+    }
+    return Object.values(acc).sort((a, b) => {
+      const ta = Math.min(...a.lineas.map((x) => new Date(x.fecha_envio_comanda || 0).getTime()));
+      const tb = Math.min(...b.lineas.map((x) => new Date(x.fecha_envio_comanda || 0).getTime()));
+      return ta - tb;
+    });
+  }, [lineas]);
 
-  const mesasOrdenadas = Object.keys(porMesa).sort((a, b) => Number(a) - Number(b));
-
-  const maxSegundosMesa = (items) =>
+  const maxSegundosPedido = (items) =>
     Math.max(...items.map((l) => l.segundos_en_preparacion ?? 0), 0);
 
   return (
@@ -85,8 +90,8 @@ export default function Comandera() {
       )}
 
       <div className="comandera-grid">
-        {mesasOrdenadas.map((mesa) => {
-          const items = porMesa[mesa];
+        {porPedido.map((grupo) => {
+          const items = grupo.lineas;
           const earliestSince = items.reduce((min, l) => {
             if (!l.fecha_envio_comanda) return min;
             if (!min) return l.fecha_envio_comanda;
@@ -94,11 +99,27 @@ export default function Comandera() {
               ? l.fecha_envio_comanda
               : min;
           }, null);
-          const mesaSegs = maxSegundosMesa(items);
+          const pedidoSegs = maxSegundosPedido(items);
+          const paraLlevar = grupo.para_llevar || grupo.numero_mesa === 99;
           return (
-            <section key={mesa} className="comandera-mesa card">
+            <section
+              key={grupo.id_pedido}
+              className={`comandera-mesa card ${paraLlevar ? "comandera-mesa--para-llevar" : ""}`}
+            >
               <div className="comandera-mesa__header">
-                <h2 className="comandera-mesa__title">Mesa {mesa}</h2>
+                <div>
+                  {paraLlevar ? (
+                    <>
+                      <span className="badge badge--ok">PARA LLEVAR</span>
+                      <h2 className="comandera-mesa__title">Pedido #{grupo.id_pedido}</h2>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="comandera-mesa__title">Mesa {grupo.numero_mesa}</h2>
+                      <p className="hint">Pedido #{grupo.id_pedido}</p>
+                    </>
+                  )}
+                </div>
                 <ElapsedTimer since={earliestSince} className="comandera-timer--mesa" />
               </div>
               <ul className="comandera-list">
@@ -135,11 +156,6 @@ export default function Comandera() {
                           {l.cantidad_lista}/{l.cantidad} listos
                         </p>
                       )}
-                      {l.fecha_envio_comanda && (
-                        <p className="hint">
-                          Enviado: {new Date(l.fecha_envio_comanda).toLocaleTimeString()}
-                        </p>
-                      )}
                     </div>
                     <div className="comandera-item__actions">
                       <button
@@ -165,7 +181,7 @@ export default function Comandera() {
                 ))}
               </ul>
               <p className="hint comandera-mesa__footer">
-                Tiempo máximo en mesa: {formatDuration(mesaSegs)}
+                Tiempo en preparación: {formatDuration(pedidoSegs)}
               </p>
             </section>
           );

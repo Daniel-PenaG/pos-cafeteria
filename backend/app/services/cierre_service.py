@@ -3,24 +3,28 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.models import VentaModel, CierreCajaModel, UsuarioModel
+from app.models.models import VentaModel, CierreCajaModel, UsuarioModel, ClienteModel
 from app.utils.timezone_mx import bounds_utc_naive_for_mx_date, today_mx, isoformat_utc, filtro_dia_mx, filtro_mes_mx, filtro_anio_mx
+from app.utils.forma_pago import agregar_por_forma_pago, etiqueta_forma_pago
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 
 
-def _filtro_dia_mx(fecha: date):
-    inicio, fin = bounds_utc_naive_for_mx_date(fecha)
-    return VentaModel.fecha_hora >= inicio, VentaModel.fecha_hora < fin
-
-
-def _venta_resumen_item(v: VentaModel) -> dict:
+def _venta_resumen_item(v: VentaModel, usuario_nombre: str | None = None, cliente_nombre: str | None = None) -> dict:
+    if v.para_llevar or v.numero_mesa == 99:
+        origen = "Para llevar"
+    else:
+        origen = f"Mesa {v.numero_mesa}"
     return {
         "id_venta": v.id_venta,
         "fecha_hora": isoformat_utc(v.fecha_hora),
         "total": float(v.total or 0),
         "forma_pago": (v.forma_pago or "EFECTIVO").upper(),
+        "forma_pago_label": etiqueta_forma_pago(v.forma_pago),
         "numero_mesa": int(v.numero_mesa) if v.numero_mesa is not None else 0,
         "para_llevar": bool(v.para_llevar),
+        "origen": origen,
+        "nombre_cajero": usuario_nombre,
+        "cliente_nombre": cliente_nombre,
     }
 
 
@@ -32,27 +36,21 @@ def resumen_ventas_usuario(
     if not usuario:
         raise RecursoNoEncontradoException("Usuario no encontrado")
 
-    inicio, fin = _filtro_dia_mx(hoy)
+    inicio, fin = bounds_utc_naive_for_mx_date(hoy)
     ventas = (
-        db.query(VentaModel)
+        db.query(VentaModel, ClienteModel)
+        .outerjoin(ClienteModel, ClienteModel.id_cliente == VentaModel.id_cliente)
         .filter(
             VentaModel.id_usuario == id_usuario,
             VentaModel.fecha_hora >= inicio,
-            VentaModel.fecha_hora < fin,
+            VentaModel.fecha_hora <= fin,
         )
         .order_by(VentaModel.fecha_hora.desc())
         .all()
     )
 
-    totales = {"EFECTIVO": 0.0, "TARJETA": 0.0, "TRANSFERENCIA": 0.0}
-    for v in ventas:
-        fp = (v.forma_pago or "").upper()
-        if fp in totales:
-            totales[fp] += float(v.total)
-        else:
-            totales["EFECTIVO"] += float(v.total)
-
-    total_ventas = sum(totales.values())
+    ventas_models = [v for v, _ in ventas]
+    agg = agregar_por_forma_pago(ventas_models)
     cierre_existente = (
         db.query(CierreCajaModel)
         .filter(
@@ -67,14 +65,21 @@ def resumen_ventas_usuario(
         "id_usuario": id_usuario,
         "nombre_usuario": usuario.nombre,
         "usuario_login": usuario.usuario_login,
-        "num_ventas": len(ventas),
-        "total_ventas": round(total_ventas, 2),
-        "total_efectivo": round(totales["EFECTIVO"], 2),
-        "total_tarjeta": round(totales["TARJETA"], 2),
-        "total_transferencia": round(totales["TRANSFERENCIA"], 2),
+        "num_ventas": agg["num_ventas"],
+        "total_ventas": agg["total_general"],
+        "total_efectivo": agg["total_efectivo"],
+        "total_tarjeta": agg["total_tarjeta"],
+        "total_transferencia": agg["total_transferencia"],
+        "num_efectivo": agg["num_efectivo"],
+        "num_tarjeta": agg["num_tarjeta"],
+        "num_transferencia": agg["num_transferencia"],
+        "por_metodo": agg["por_metodo"],
         "ya_cerrado": cierre_existente is not None,
         "cierre": _cierre_a_dict(cierre_existente) if cierre_existente else None,
-        "ventas": [_venta_resumen_item(v) for v in ventas],
+        "ventas": [
+            _venta_resumen_item(v, usuario.nombre, cliente.nombre if cliente else None)
+            for v, cliente in ventas
+        ],
     }
 
 

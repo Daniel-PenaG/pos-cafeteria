@@ -106,3 +106,14 @@ export async function getCuentasPorCajero(fecha) {
   });
   return res.data;
 }
+
+export async function getDesglosePagos(fechaInicio, fechaFin) {
+  const params = new URLSearchParams({
+    fecha_inicio: fechaInicio,
+    fecha_fin: fechaFin,
+  });
+  const res = await api.get(`/reportes/desglose-pagos?${params}`, {
+    headers: getAuthHeader(),
+  });
+  return res.data;
+}

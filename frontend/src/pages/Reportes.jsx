@@ -9,6 +9,7 @@ import {
   getTiemposPreparacion,
   getProductosRanking,
   getPromocionesVentasReporte,
+  getDesglosePagos,
 } from "../services/reportesService";
 import PageHeader from "../components/PageHeader";
 import { fechaMexicoISO } from "../utils/datetimeMx";
@@ -53,6 +54,35 @@ function fmtFecha(iso) {
   if (!iso) return "—";
   const [y, m, d] = String(iso).split("-");
   return `${d}/${m}/${y}`;
+}
+
+function DesglosePagosSection({ data }) {
+  if (!data?.por_metodo) return null;
+  const metodos = ["EFECTIVO", "TRANSFERENCIA", "TARJETA"];
+  return (
+    <div className="card" style={{ marginBottom: "1.5rem" }}>
+      <h3 style={{ marginTop: 0 }}>Métodos de pago</h3>
+      <p className="hint">
+        Periodo {fmtFecha(data.fecha_inicio)} — {fmtFecha(data.fecha_fin)} · Total ingresos{" "}
+        {fmt(data.total_general)} ({data.num_ventas} operaciones)
+      </p>
+      <div className="stats-grid">
+        {metodos.map((m) => {
+          const row = data.por_metodo[m];
+          if (!row) return null;
+          return (
+            <div key={m} className="stat-card">
+              <p className="stat-card__label">{row.etiqueta}</p>
+              <p className="stat-card__value">{fmt(row.importe)}</p>
+              <p className="hint">
+                {row.cantidad} ops · {row.porcentaje}%
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function ResumenOperaciones({ data, titulo = "Resumen del día" }) {
@@ -455,6 +485,7 @@ export default function Reportes() {
   const [ranking, setRanking] = useState(null);
   const [promociones, setPromociones] = useState(null);
   const [comparacion, setComparacion] = useState(null);
+  const [desglosePagos, setDesglosePagos] = useState(null);
   const [promocionesPeriodo, setPromocionesPeriodo] = useState("dia");
   const [rankingPeriodo, setRankingPeriodo] = useState("dia");
   const [ordenRank, setOrdenRank] = useState("cantidad");
@@ -468,6 +499,16 @@ export default function Reportes() {
     setRanking(null);
     setPromociones(null);
     setComparacion(null);
+    setDesglosePagos(null);
+  };
+
+  const cargarDesglosePagos = async (inicio, fin) => {
+    try {
+      const d = await getDesglosePagos(inicio, fin);
+      setDesglosePagos(d);
+    } catch {
+      setDesglosePagos(null);
+    }
   };
 
   const presetSemanaAnterior = () => {
@@ -520,6 +561,7 @@ export default function Reportes() {
         setRanking(null);
         setPromociones(null);
         setComparacion(null);
+        await cargarDesglosePagos(fechaInicio, fechaFin);
         return;
       }
 
@@ -580,6 +622,7 @@ export default function Reportes() {
         setRanking(null);
         setPromociones(null);
         setComparacion(null);
+        await cargarDesglosePagos(fecha, fecha);
       } else if (tab === "mes") {
         const v = await getVentasMes(anioMes, mes);
         setFiltroHoraDiaSemana("todos");
@@ -589,6 +632,10 @@ export default function Reportes() {
         setRanking(null);
         setPromociones(null);
         setComparacion(null);
+        const ultimoDia = new Date(anioMes, mes, 0).getDate();
+        const inicioMes = `${anioMes}-${String(mes).padStart(2, "0")}-01`;
+        const finMes = `${anioMes}-${String(mes).padStart(2, "0")}-${String(ultimoDia).padStart(2, "0")}`;
+        await cargarDesglosePagos(inicioMes, finMes);
       } else {
         const v = await getVentasAnio(anio);
         setReporte(v);
@@ -597,6 +644,7 @@ export default function Reportes() {
         setRanking(null);
         setPromociones(null);
         setComparacion(null);
+        await cargarDesglosePagos(`${anio}-01-01`, `${anio}-12-31`);
       }
     } catch (err) {
       alert(err.response?.data?.detail || "Error al cargar reporte");
@@ -775,6 +823,7 @@ export default function Reportes() {
       {reporte && (
         <>
           <ResumenOperaciones data={reporte} titulo={tituloResumen} />
+          <DesglosePagosSection data={desglosePagos} />
           <TablaPromocionesDetalle promociones={reporte.promociones_detalle} />
 
           {(tab === "rango" || tab === "mes") && reporte.rendimiento_dia_semana && (
