@@ -9,7 +9,7 @@ PR base temporal: `performance/optimizar-pos`
 |--------|-----------|
 | `52843c0` | Implementación responsive (focus trap, tablas, CSS, Playwright inicial) |
 | `8b6b527` | Script login API local + matriz honesta |
-| *(HEAD tras push)* | Capturas API real, validaciones automáticas de ancho, modal-bottom |
+| `cf0192e` | Capturas API real, validaciones de ancho, modal-bottom |
 
 ## Validación automatizada (2026-08-31)
 
