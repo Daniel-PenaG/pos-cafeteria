@@ -356,3 +356,52 @@
     padding: 0 1.25rem;
   }
 }
+
+/* Tablet estrecha (768–900): evitar solapamiento título / usuario en navbar */
+@media (min-width: 768px) and (max-width: 900px) {
+  .navbar {
+    gap: 0.5rem;
+  }
+
+  .navbar__start {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .navbar__actions {
+    flex-shrink: 0;
+    gap: 0.35rem;
+  }
+
+  .navbar__title-full {
+    display: none;
+  }
+
+  .navbar__title-short {
+    display: inline;
+  }
+
+  .navbar__title {
+    font-size: 1rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .navbar__user-name {
+    display: none;
+  }
+
+  .navbar__user-badge {
+    display: none;
+  }
+
+  .navbar__logout-label {
+    display: none;
+  }
+
+  .navbar__logout {
+    min-width: 44px;
+    padding: 0.5rem;
+  }
+}

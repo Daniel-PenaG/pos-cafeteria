@@ -10,17 +10,22 @@ PR base temporal: `performance/optimizar-pos`
 | `52843c0` | Implementación responsive (focus trap, tablas, CSS, Playwright inicial) |
 | `8b6b527` | Script login API local + matriz honesta |
 | `cf0192e` | Capturas API real, validaciones de ancho, modal-bottom |
+| `215da18` | Hashes de evidencia |
+| *(HEAD)* | Espera animación modal, navbar tablet 768–900 px, capturas finales en `:8000` |
 
-## Validación automatizada (2026-08-31)
+## Validación automatizada (2026-09-01)
 
 ```bash
 cd frontend
-npm ci       # OK
-npm run lint # OK — 0 errores
-npm run build # OK (con VITE_API_URL=http://127.0.0.1:8000)
+npm ci        # OK
+npm run lint  # OK — 0 errores
+npm run build # OK (VITE_API_URL=http://127.0.0.1:8000)
+npm run capture:responsive  # OK — API real: http://127.0.0.1:8000
 ```
 
 **Bundle principal:** `773.40 KB` minificado · `232.34 KB` gzip (`index-*.js`)
+
+**Validaciones de ancho (script):** todas las rutas pasaron — sin `scrollWidth` de página mayor que `innerWidth`; tablas en `.table-wrap` con scroll horizontal cuando corresponde.
 
 ## Capturas con API local real
 
@@ -45,17 +50,22 @@ npm run capture:responsive
 
 El script **falla** si la API no responde en `/health`. `CAPTURE_REAL_API=0` está prohibido. No hay fallback a mocks.
 
-**Validaciones automáticas en cada ruta:**
-- `document.documentElement.scrollWidth <= window.innerWidth` (sin scroll horizontal de página)
-- En `/reportes`, `/usuarios`, `/cuentas-cajero`: `.table-wrap` con scroll horizontal cuando la tabla es más ancha que el contenedor
+### Corrección modal (2026-09-01)
 
-**Modal promociones (320×568 y 390×844):**
-- Scroll al final del `.modal-box`
-- Botones Guardar y Cancelar visibles (no detrás de barra inferior)
-- Capturas: `promociones-modal.png` + `promociones-modal-bottom.png`
-- El scroll es del modal, no de la página
+Tras abrir el modal, el script espera `400 ms` post-animación (`fadeIn 0.2s`) antes de `promociones-modal.png`:
 
-> **Nota sesión CI local:** el puerto `:8000` tenía un listener colgado; las capturas finales se generaron con API en `:8001` (misma app SQLite). El workflow estándar usa `:8000`.
+- Fondo blanco sólido del modal
+- Título «Nueva promoción» y primeros campos visibles
+- Overlay oscuro sin mezcla con la página de Promociones
+- `promociones-modal-bottom.png` conservado (Guardar/Cancelar visibles en 320×568 y 390×844)
+
+### Navbar tablet 768–900 px
+
+En 768×1024 existía solapamiento entre «Panel de administración», nombre y rol. Ajuste CSS (`responsive.css`):
+
+- Título corto «Coffe Song» en lugar del título largo
+- Ocultos nombre de usuario, badge de rol y etiqueta «Cerrar sesión» (solo iconos)
+- Sin cambios al sidebar ni al layout principal de tablet
 
 ## Implementación (`52843c0`)
 
@@ -68,10 +78,9 @@ El script **falla** si la API no responde en `/health`. `CAPTURE_REAL_API=0` est
 | Inputs/selects/textarea ≥16px móvil | **APROBADO** |
 | Sin `cart-panel` sticky móvil | **APROBADO** |
 | Script + comando Playwright | **APROBADO** |
+| Navbar tablet 768–900 px sin solapamiento | **APROBADO** |
 
-## Matriz visual (API real)
-
-Estados: **APROBADO** | **FALLÓ** | **PENDIENTE**
+## Matriz visual (API real, `:8000`)
 
 | Resolución | Menú | Promos | Modal | Modal bottom | Ventas | Comandera | Reportes | Usuarios | Cuentas | Tablet | Escritorio | Estado |
 |------------|------|--------|-------|--------------|--------|-----------|----------|----------|---------|--------|------------|--------|
@@ -89,7 +98,7 @@ Rutas: `docs/screenshots/responsive/{320x568,…,1366x768}/`
 
 | Ítem | Estado |
 |------|--------|
-| Prueba física tablet/celular real | **PENDIENTE** (opcional, fuera de Playwright) |
+| Prueba física tablet/celular real | **PENDIENTE** (opcional) |
 | Teclado virtual en Ventas | **PENDIENTE** revisión manual |
 
 ## PR

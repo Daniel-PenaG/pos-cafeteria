@@ -180,6 +180,7 @@ async function capturePromocionesModal(page, dir, vpTag) {
   await nuevaBtn.click();
   const modal = page.locator(".modal-box");
   await modal.waitFor({ state: "visible", timeout: 10000 });
+  await page.waitForTimeout(400);
 
   await shot(page, dir, "promociones-modal", { fullPage: false });
 
