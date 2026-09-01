@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { getResumenDashboard } from "../services/dashboardService";
 import { getConfiguracion, updateConfiguracion } from "../services/configuracionService";
 import { Link } from "react-router-dom";
@@ -31,7 +31,7 @@ export default function Dashboard() {
   const [gastosEditados, setGastosEditados] = useState("");
   const [fechaConsulta, setFechaConsulta] = useState(fechaMexicoISO());
 
-  const cargarDashboard = async () => {
+  const cargarDashboard = useCallback(async () => {
     const hoy = fechaMexicoISO();
     try {
       const resumenData = await getResumenDashboard(hoy);
@@ -48,7 +48,7 @@ export default function Dashboard() {
       console.error(err);
       alert("Error al cargar el dashboard");
     }
-  };
+  }, [admin]);
 
   useEffect(() => {
     cargarDashboard();
@@ -71,7 +71,7 @@ export default function Dashboard() {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [admin, fechaConsulta]);
+  }, [admin, fechaConsulta, cargarDashboard]);
 
   const handleGuardarConfiguracion = async () => {
     const margen = parseFloat(margenEditado);

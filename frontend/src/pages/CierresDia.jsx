@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import PageHeader from "../components/PageHeader";
 import { getCierresDia } from "../services/cierresService";
 import { fechaMexicoISO, formatearHoraMexico } from "../utils/datetimeMx";
@@ -13,7 +13,7 @@ export default function CierresDia() {
   const [cierres, setCierres] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getCierresDia(fecha);
@@ -23,11 +23,11 @@ export default function CierresDia() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fecha]);
 
   useEffect(() => {
     cargar();
-  }, [fecha]);
+  }, [cargar]);
 
   const totalVentas = cierres.reduce((a, c) => a + Number(c.total_ventas), 0);
   const totalDiff = cierres.reduce((a, c) => a + Number(c.diferencia), 0);

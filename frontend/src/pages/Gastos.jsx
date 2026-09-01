@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import { getResumenDashboard } from "../services/dashboardService";
@@ -24,7 +24,7 @@ export default function Gastos() {
     [gastos]
   );
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     try {
       setLoading(true);
       const [lista, dash] = await Promise.all([
@@ -39,11 +39,11 @@ export default function Gastos() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fecha]);
 
   useEffect(() => {
     cargar();
-  }, [fecha]);
+  }, [cargar]);
 
   const registrar = async (e) => {
     e.preventDefault();

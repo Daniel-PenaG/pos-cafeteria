@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getProductos, getCategorias } from "../services/productosService";
 import { getExtrasVenta } from "../services/ventasService";
@@ -108,11 +108,12 @@ export default function Ventas({ modoParaLlevar = false }) {
   const admin = isAdmin(usuario?.rol);
   const [searchParams] = useSearchParams();
 
-  const carrito = pedido?.lineas ?? [];
+  const lineasPedido = pedido?.lineas;
+  const carrito = lineasPedido ?? [];
 
   const total = useMemo(
-    () => carrito.reduce((acc, item) => acc + item.cantidad * item.precio_unitario, 0),
-    [carrito]
+    () => (lineasPedido ?? []).reduce((acc, item) => acc + item.cantidad * item.precio_unitario, 0),
+    [lineasPedido]
   );
   const subtotalNormal = pedido?.subtotal_normal;
   const descuentoPromos = pedido?.descuento_promociones;
@@ -134,8 +135,8 @@ export default function Ventas({ modoParaLlevar = false }) {
     (montoRecibido === "" || isNaN(montoRecibidoNum) || montoRecibidoNum < total);
 
   const lineasPendientesConfirmar = useMemo(
-    () => carrito.filter((item) => !item.en_comanda),
-    [carrito]
+    () => (lineasPedido ?? []).filter((item) => !item.en_comanda),
+    [lineasPedido]
   );
 
   const refrescarMesasActivas = async () => {
@@ -198,7 +199,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     }
   };
 
-  const cargarPedidoMesa = async (mesa, paraLlevar = modoParaLlevar) => {
+  const cargarPedidoMesa = useCallback(async (mesa, paraLlevar = modoParaLlevar) => {
     if (!usuario?.id_usuario) return;
     try {
       const p = await getPedidoMesa(mesa, usuario.id_usuario, paraLlevar);
@@ -211,12 +212,12 @@ export default function Ventas({ modoParaLlevar = false }) {
       console.error(err);
       alert(paraLlevar ? "Error al cargar pedido para llevar" : "Error al cargar pedido de la mesa");
     }
-  };
+  }, [modoParaLlevar, usuario?.id_usuario]);
 
-  const seleccionarMesa = async (n) => {
+  const seleccionarMesa = useCallback(async (n) => {
     setNumeroMesa(n);
     await cargarPedidoMesa(n);
-  };
+  }, [cargarPedidoMesa]);
 
   useEffect(() => {
     const load = async () => {
@@ -248,7 +249,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     if (!modoParaLlevar || !usuario?.id_usuario) return;
     setNumeroMesa(MESA_PARA_LLEVAR);
     cargarPedidoMesa(MESA_PARA_LLEVAR, true);
-  }, [modoParaLlevar, usuario?.id_usuario]);
+  }, [modoParaLlevar, usuario?.id_usuario, cargarPedidoMesa]);
 
   useEffect(() => {
     if (modoParaLlevar || !usuario?.id_usuario) return;
@@ -258,7 +259,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     if (!isNaN(n) && n > 0) {
       seleccionarMesa(n);
     }
-  }, [searchParams, usuario?.id_usuario, modoParaLlevar]);
+  }, [searchParams, usuario?.id_usuario, modoParaLlevar, seleccionarMesa]);
 
   const productosPorCategoria = useMemo(() => {
     const q = busquedaProducto.trim().toLowerCase();

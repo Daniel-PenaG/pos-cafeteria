@@ -1,30 +1,33 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import Productos from "./pages/Productos";
-import Categorias from "./pages/Categorias";
-import Recetas from "./pages/Recetas";
 import Ventas from "./pages/Ventas";
-import VentasParaLlevar from "./pages/VentasParaLlevar";
-import ParaLlevar from "./pages/ParaLlevar";
-import Compras from "./pages/Compras";
-import Gastos from "./pages/Gastos";
-import Insumos from "./pages/Insumos";
-import ExtrasVenta from "./pages/ExtrasVenta";
-import Promociones from "./pages/Promociones";
-import Clientes from "./pages/Clientes";
-import Comandera from "./pages/Comandera";
-import Reportes from "./pages/Reportes";
-import CuentasCajero from "./pages/CuentasCajero";
-import CierreCaja from "./pages/CierreCaja";
-import CierresDia from "./pages/CierresDia";
 import MesasActivas from "./pages/MesasActivas";
-import Usuarios from "./pages/Usuarios";
+import Comandera from "./pages/Comandera";
 import MainLayout from "./layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleRoute from "./components/RoleRoute";
+import PageLoader from "./components/PageLoader";
 import { getDefaultRoute } from "./config/permissions";
 import { useAuthStore } from "./store/authStore";
+
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Productos = lazy(() => import("./pages/Productos"));
+const Categorias = lazy(() => import("./pages/Categorias"));
+const Recetas = lazy(() => import("./pages/Recetas"));
+const VentasParaLlevar = lazy(() => import("./pages/VentasParaLlevar"));
+const ParaLlevar = lazy(() => import("./pages/ParaLlevar"));
+const Compras = lazy(() => import("./pages/Compras"));
+const Gastos = lazy(() => import("./pages/Gastos"));
+const Insumos = lazy(() => import("./pages/Insumos"));
+const ExtrasVenta = lazy(() => import("./pages/ExtrasVenta"));
+const Promociones = lazy(() => import("./pages/Promociones"));
+const Clientes = lazy(() => import("./pages/Clientes"));
+const Reportes = lazy(() => import("./pages/Reportes"));
+const CuentasCajero = lazy(() => import("./pages/CuentasCajero"));
+const CierreCaja = lazy(() => import("./pages/CierreCaja"));
+const CierresDia = lazy(() => import("./pages/CierresDia"));
+const Usuarios = lazy(() => import("./pages/Usuarios"));
 
 function HomeRedirect() {
   const rol = useAuthStore((state) => state.user?.rol);
@@ -33,11 +36,11 @@ function HomeRedirect() {
 }
 
 function withRole(path, element) {
-  return (
-    <RoleRoute path={path}>
-      {element}
-    </RoleRoute>
-  );
+  return <RoleRoute path={path}>{element}</RoleRoute>;
+}
+
+function LazyPage({ children }) {
+  return <Suspense fallback={<PageLoader />}>{children}</Suspense>;
 }
 
 export default function App() {
@@ -55,26 +58,77 @@ export default function App() {
           }
         >
           <Route index element={<HomeRedirect />} />
-          <Route path="dashboard" element={withRole("/dashboard", <Dashboard />)} />
-          <Route path="categorias" element={withRole("/categorias", <Categorias />)} />
-          <Route path="productos" element={withRole("/productos", <Productos />)} />
-          <Route path="insumos" element={withRole("/insumos", <Insumos />)} />
-          <Route path="recetas" element={withRole("/recetas", <Recetas />)} />
+          <Route
+            path="dashboard"
+            element={withRole("/dashboard", <LazyPage><Dashboard /></LazyPage>)}
+          />
+          <Route
+            path="categorias"
+            element={withRole("/categorias", <LazyPage><Categorias /></LazyPage>)}
+          />
+          <Route
+            path="productos"
+            element={withRole("/productos", <LazyPage><Productos /></LazyPage>)}
+          />
+          <Route
+            path="insumos"
+            element={withRole("/insumos", <LazyPage><Insumos /></LazyPage>)}
+          />
+          <Route
+            path="recetas"
+            element={withRole("/recetas", <LazyPage><Recetas /></LazyPage>)}
+          />
           <Route path="ventas" element={withRole("/ventas", <Ventas />)} />
           <Route path="mesas-activas" element={withRole("/mesas-activas", <MesasActivas />)} />
-          <Route path="ventas-para-llevar" element={withRole("/ventas-para-llevar", <VentasParaLlevar />)} />
-          <Route path="para-llevar" element={withRole("/para-llevar", <ParaLlevar />)} />
+          <Route
+            path="ventas-para-llevar"
+            element={withRole("/ventas-para-llevar", <LazyPage><VentasParaLlevar /></LazyPage>)}
+          />
+          <Route
+            path="para-llevar"
+            element={withRole("/para-llevar", <LazyPage><ParaLlevar /></LazyPage>)}
+          />
           <Route path="comandera" element={withRole("/comandera", <Comandera />)} />
-          <Route path="extras-venta" element={withRole("/extras-venta", <ExtrasVenta />)} />
-          <Route path="promociones" element={withRole("/promociones", <Promociones />)} />
-          <Route path="clientes" element={withRole("/clientes", <Clientes />)} />
-          <Route path="compras" element={withRole("/compras", <Compras />)} />
-          <Route path="gastos" element={withRole("/gastos", <Gastos />)} />
-          <Route path="cierre-caja" element={withRole("/cierre-caja", <CierreCaja />)} />
-          <Route path="reportes" element={withRole("/reportes", <Reportes />)} />
-          <Route path="cuentas-cajero" element={withRole("/cuentas-cajero", <CuentasCajero />)} />
-          <Route path="cierres-dia" element={withRole("/cierres-dia", <CierresDia />)} />
-          <Route path="usuarios" element={withRole("/usuarios", <Usuarios />)} />
+          <Route
+            path="extras-venta"
+            element={withRole("/extras-venta", <LazyPage><ExtrasVenta /></LazyPage>)}
+          />
+          <Route
+            path="promociones"
+            element={withRole("/promociones", <LazyPage><Promociones /></LazyPage>)}
+          />
+          <Route
+            path="clientes"
+            element={withRole("/clientes", <LazyPage><Clientes /></LazyPage>)}
+          />
+          <Route
+            path="compras"
+            element={withRole("/compras", <LazyPage><Compras /></LazyPage>)}
+          />
+          <Route
+            path="gastos"
+            element={withRole("/gastos", <LazyPage><Gastos /></LazyPage>)}
+          />
+          <Route
+            path="cierre-caja"
+            element={withRole("/cierre-caja", <LazyPage><CierreCaja /></LazyPage>)}
+          />
+          <Route
+            path="reportes"
+            element={withRole("/reportes", <LazyPage><Reportes /></LazyPage>)}
+          />
+          <Route
+            path="cuentas-cajero"
+            element={withRole("/cuentas-cajero", <LazyPage><CuentasCajero /></LazyPage>)}
+          />
+          <Route
+            path="cierres-dia"
+            element={withRole("/cierres-dia", <LazyPage><CierresDia /></LazyPage>)}
+          />
+          <Route
+            path="usuarios"
+            element={withRole("/usuarios", <LazyPage><Usuarios /></LazyPage>)}
+          />
         </Route>
 
         <Route path="*" element={<Navigate to="/login" replace />} />

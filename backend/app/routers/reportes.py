@@ -91,22 +91,24 @@ def _productos_ranking(db: Session, filtro, orden: str = "cantidad"):
     total_cantidad = sum(float(d.cantidad) for d in detalles)
     total_subtotal = sum(float(d.subtotal) for d in detalles)
 
+    ids_producto = [d.id_producto for d in detalles]
+    productos_map = {
+        p.id_producto: p
+        for p in db.query(ProductoModel).filter(ProductoModel.id_producto.in_(ids_producto)).all()
+    }
+    cat_ids = {p.id_categoria for p in productos_map.values() if p.id_categoria}
+    categorias_map = {
+        c.id_categoria: c
+        for c in db.query(CategoriaModel).filter(CategoriaModel.id_categoria.in_(cat_ids)).all()
+    } if cat_ids else {}
+
     ranking = []
     for pos, d in enumerate(detalles, start=1):
-        producto = (
-            db.query(ProductoModel)
-            .options()
-            .filter(ProductoModel.id_producto == d.id_producto)
-            .first()
-        )
+        producto = productos_map.get(d.id_producto)
         if not producto:
             continue
 
-        categoria = (
-            db.query(CategoriaModel)
-            .filter(CategoriaModel.id_categoria == producto.id_categoria)
-            .first()
-        )
+        categoria = categorias_map.get(producto.id_categoria)
         cant = float(d.cantidad)
         sub = float(d.subtotal)
         pct_base = total_subtotal if orden == "subtotal" else total_cantidad
@@ -125,17 +127,8 @@ def _productos_ranking(db: Session, filtro, orden: str = "cantidad"):
     return ranking, total_cantidad, total_subtotal
 
 
-def _tiempo_comanda_pedido(db: Session, pedido_id: int) -> dict:
+def _tiempo_comanda_desde_lineas(lineas: list) -> dict:
     """Duración desde envío a comanda hasta que todas las líneas quedan listas."""
-    lineas = (
-        db.query(DetallePedidoModel)
-        .filter(
-            DetallePedidoModel.id_pedido == pedido_id,
-            DetallePedidoModel.en_comanda == True,
-            DetallePedidoModel.fecha_envio_comanda.isnot(None),
-        )
-        .all()
-    )
     if not lineas:
         return {
             "estado": "no_aplica",
@@ -168,6 +161,37 @@ def _tiempo_comanda_pedido(db: Session, pedido_id: int) -> dict:
         "inicio": inicio.isoformat(),
         "fin": fin.isoformat(),
     }
+
+
+def _tiempo_comanda_pedido(db: Session, pedido_id: int) -> dict:
+    lineas = (
+        db.query(DetallePedidoModel)
+        .filter(
+            DetallePedidoModel.id_pedido == pedido_id,
+            DetallePedidoModel.en_comanda == True,
+            DetallePedidoModel.fecha_envio_comanda.isnot(None),
+        )
+        .all()
+    )
+    return _tiempo_comanda_desde_lineas(lineas)
+
+
+def _comanda_map_por_pedidos(db: Session, pedido_ids: list[int]) -> dict[int, dict]:
+    if not pedido_ids:
+        return {}
+    lineas = (
+        db.query(DetallePedidoModel)
+        .filter(
+            DetallePedidoModel.id_pedido.in_(pedido_ids),
+            DetallePedidoModel.en_comanda == True,
+            DetallePedidoModel.fecha_envio_comanda.isnot(None),
+        )
+        .all()
+    )
+    por_pedido: dict[int, list] = {}
+    for linea in lineas:
+        por_pedido.setdefault(linea.id_pedido, []).append(linea)
+    return {pid: _tiempo_comanda_desde_lineas(grupo) for pid, grupo in por_pedido.items()}
 
 
 def _mesa_label_venta(venta: VentaModel) -> str:
@@ -448,51 +472,56 @@ def productos_ranking(
 # ============================
 @router.get("/consumo-insumos", dependencies=[Depends(require_admin)])
 def consumo_insumos(fecha: date, db: Session = Depends(get_db)):
-
-    detalles = (
+    filas = (
         db.query(
-            DetalleVentaModel.id_producto,
-            func.sum(DetalleVentaModel.cantidad).label("cantidad")
+            InsumoModel.id_insumo,
+            InsumoModel.nombre,
+            InsumoModel.unidad,
+            InsumoModel.stock_actual,
+            InsumoModel.stock_minimo,
+            func.coalesce(
+                func.sum(RecetaInsumoModel.cantidad * DetalleVentaModel.cantidad),
+                0,
+            ).label("cantidad_consumida"),
         )
+        .select_from(DetalleVentaModel)
         .join(VentaModel, VentaModel.id_venta == DetalleVentaModel.id_venta)
+        .join(
+            RecetaModel,
+            and_(
+                RecetaModel.id_producto == DetalleVentaModel.id_producto,
+                RecetaModel.activo == True,
+            ),
+        )
+        .join(RecetaInsumoModel, RecetaInsumoModel.id_receta == RecetaModel.id_receta)
+        .join(InsumoModel, InsumoModel.id_insumo == RecetaInsumoModel.id_insumo)
         .filter(*filtro_dia_mx(VentaModel.fecha_hora, fecha))
-        .group_by(DetalleVentaModel.id_producto)
+        .group_by(
+            InsumoModel.id_insumo,
+            InsumoModel.nombre,
+            InsumoModel.unidad,
+            InsumoModel.stock_actual,
+            InsumoModel.stock_minimo,
+        )
         .all()
     )
 
-    consumo = []
-
-    for d in detalles:
-        receta = db.query(RecetaModel).filter(
-            RecetaModel.id_producto == d.id_producto,
-            RecetaModel.activo == True
-        ).first()
-
-        if not receta:
-            continue
-
-        receta_insumos = db.query(RecetaInsumoModel).filter(
-            RecetaInsumoModel.id_receta == receta.id_receta
-        ).all()
-
-        for ri in receta_insumos:
-            insumo = db.query(InsumoModel).filter(InsumoModel.id_insumo == ri.id_insumo).first()
-
-            cantidad_total = float(ri.cantidad) * float(d.cantidad)
-
-            consumo.append({
-                "id_insumo": insumo.id_insumo,
-                "nombre": insumo.nombre,
-                "unidad": insumo.unidad,
-                "cantidad_consumida": cantidad_total,
-                "stock_actual": float(insumo.stock_actual),
-                "stock_minimo": float(insumo.stock_minimo),
-                "alerta": cantidad_total >= float(insumo.stock_actual)
-            })
+    consumo = [
+        {
+            "id_insumo": r.id_insumo,
+            "nombre": r.nombre,
+            "unidad": r.unidad,
+            "cantidad_consumida": float(r.cantidad_consumida),
+            "stock_actual": float(r.stock_actual),
+            "stock_minimo": float(r.stock_minimo),
+            "alerta": float(r.cantidad_consumida) >= float(r.stock_actual),
+        }
+        for r in filas
+    ]
 
     return {
         "fecha": fecha,
-        "consumo": consumo
+        "consumo": consumo,
     }
 
 
@@ -603,36 +632,21 @@ def resumen_dashboard(
     hoy = fecha or today_mx()
     es_admin = normalizar_rol(current.rol) == ADMIN
     filtro_dia = _filtro_fecha_hora_mx(VentaModel.fecha_hora, hoy)
+    filtros_hoy = list(filtro_dia)
+    if not es_admin:
+        filtros_hoy.append(VentaModel.id_usuario == current.id_usuario)
 
     total_hoy = (
         db.query(func.coalesce(func.sum(VentaModel.total), 0))
-        .filter(*filtro_dia)
+        .filter(*filtros_hoy)
         .scalar()
     )
 
     num_ventas_hoy = (
         db.query(func.count(VentaModel.id_venta))
-        .filter(*filtro_dia)
+        .filter(*filtros_hoy)
         .scalar()
     )
-
-    if not es_admin:
-        total_hoy = (
-            db.query(func.coalesce(func.sum(VentaModel.total), 0))
-            .filter(
-                *filtro_dia,
-                VentaModel.id_usuario == current.id_usuario,
-            )
-            .scalar()
-        )
-        num_ventas_hoy = (
-            db.query(func.count(VentaModel.id_venta))
-            .filter(
-                *filtro_dia,
-                VentaModel.id_usuario == current.id_usuario,
-            )
-            .scalar()
-        )
 
     total_general = (
         db.query(func.coalesce(func.sum(VentaModel.total), 0))
@@ -643,20 +657,24 @@ def resumen_dashboard(
         db.query(VentaModel, UsuarioModel, ClienteModel)
         .join(UsuarioModel, UsuarioModel.id_usuario == VentaModel.id_usuario)
         .outerjoin(ClienteModel, ClienteModel.id_cliente == VentaModel.id_cliente)
-        .filter(*_filtro_fecha_hora_mx(VentaModel.fecha_hora, hoy))
+        .filter(*filtros_hoy)
         .order_by(VentaModel.fecha_hora.desc())
     )
-    if not es_admin:
-        ventas_query = ventas_query.filter(VentaModel.id_usuario == current.id_usuario)
+
+    ventas_rows = ventas_query.all()
+    venta_ids = [venta.id_venta for venta, _, _ in ventas_rows]
+    pedidos_map = {
+        p.id_venta: p
+        for p in db.query(PedidoModel).filter(PedidoModel.id_venta.in_(venta_ids)).all()
+    } if venta_ids else {}
+    comanda_map = _comanda_map_por_pedidos(
+        db, [p.id_pedido for p in pedidos_map.values()]
+    )
 
     cuentas_hoy = []
     segundos_comanda = []
-    for venta, usuario, cliente in ventas_query.all():
-        pedido = (
-            db.query(PedidoModel)
-            .filter(PedidoModel.id_venta == venta.id_venta)
-            .first()
-        )
+    for venta, usuario, cliente in ventas_rows:
+        pedido = pedidos_map.get(venta.id_venta)
         if venta.para_llevar or not pedido:
             comanda = {
                 "estado": "no_aplica",
@@ -666,7 +684,16 @@ def resumen_dashboard(
                 "fin": None,
             }
         else:
-            comanda = _tiempo_comanda_pedido(db, pedido.id_pedido)
+            comanda = comanda_map.get(
+                pedido.id_pedido,
+                {
+                    "estado": "no_aplica",
+                    "segundos": None,
+                    "texto": "—",
+                    "inicio": None,
+                    "fin": None,
+                },
+            )
             if comanda["estado"] == "completada" and comanda["segundos"] is not None:
                 segundos_comanda.append(comanda["segundos"])
 
@@ -708,14 +735,22 @@ def resumen_dashboard(
     )
 
     productos_data = []
-    for p in top_productos:
-        prod = db.query(ProductoModel).filter(ProductoModel.id_producto == p.id_producto).first()
-        productos_data.append({
-            "id_producto": prod.id_producto,
-            "nombre": prod.nombre,
-            "cantidad": float(p.cantidad),
-            "subtotal": float(p.subtotal),
-        })
+    if top_productos:
+        ids_top = [p.id_producto for p in top_productos]
+        prods_map = {
+            pr.id_producto: pr
+            for pr in db.query(ProductoModel).filter(ProductoModel.id_producto.in_(ids_top)).all()
+        }
+        for p in top_productos:
+            prod = prods_map.get(p.id_producto)
+            if not prod:
+                continue
+            productos_data.append({
+                "id_producto": prod.id_producto,
+                "nombre": prod.nombre,
+                "cantidad": float(p.cantidad),
+                "subtotal": float(p.subtotal),
+            })
 
     filtro_gastos = _filtro_fecha_hora_mx(GastoModel.fecha_hora, hoy)
     total_gastos_hoy = (

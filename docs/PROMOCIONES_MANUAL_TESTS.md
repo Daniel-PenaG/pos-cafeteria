@@ -78,4 +78,4 @@ Fórmula: `unidades_pagadas = ceil(cantidad / 2)`; total = unidades_pagadas × p
 LOCAL_SEED_PROMO=true
 ```
 
-Solo SQLite. Crea promo demo **INACTIVA** «Lunes de Malteadas». No usar en Render/producción.
+Solo SQLite. Reiniciar API local. Crea promo demo **INACTIVA** «Lunes de Malteadas» si existe categoría Malteadas. **No usar en Render/producción.**
