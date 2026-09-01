@@ -3,100 +3,97 @@
 Rama: [`ui/responsive-mobile`](https://github.com/Daniel-PenaG/pos-cafeteria/tree/ui/responsive-mobile)
 PR base temporal: `performance/optimizar-pos`
 
-> **Estado de publicación:** el commit `52843c0` (local) incluye la implementación y capturas; debe publicarse con `git push origin ui/responsive-mobile`. Hasta que el remoto supere `c1a4e34`, este documento no debe leerse como aprobación en producción.
+## Commits de referencia
 
-## Breakpoints
+| Commit | Contenido |
+|--------|-----------|
+| `52843c0` | Implementación responsive (focus trap, tablas, CSS, Playwright inicial) |
+| `8b6b527` | Script login API local + matriz honesta |
+| *(HEAD tras push)* | Capturas API real, validaciones automáticas de ancho, modal-bottom |
 
-| Rango | Dispositivo | Ubicación |
-|-------|-------------|-----------|
-| 0–479 px | Celular pequeño | `frontend/src/styles/responsive.css` |
-| 480–767 px | Celular grande | idem |
-| 768–1023 px | Tablet | idem + `@media (min-width: 768px)` |
-| 1024 px+ | Escritorio | estilos base en `global.css` |
-
-## Implementación verificada en código (`52843c0`)
-
-| Requisito | Archivo | Estado código |
-|-----------|---------|---------------|
-| Focus trap sidebar | `layout.jsx` | Implementado |
-| Restaurar foco al hamburguesa | `layout.jsx` + `Navbar.jsx` (`forwardRef`) | Implementado |
-| Menú cerrado no navegable | `Sidebar.jsx` (`inert`, `aria-hidden`, `tabIndex=-1`) | Implementado |
-| Tablas Reportes en `.table-wrap` | `Reportes.jsx` | Implementado (11 tablas) |
-| Tabla Usuarios en `.table-wrap` | `Usuarios.jsx` | Implementado |
-| Dos tablas CuentasCajero | `CuentasCajero.jsx` | Implementado |
-| Inputs/selects/textarea ≥16px móvil | `responsive.css` | Implementado |
-| Sin `cart-panel` sticky móvil | `responsive.css` | Eliminado (sidebar tablet conserva `sticky`) |
-| Script Playwright | `scripts/capture-responsive.mjs` | Implementado (login API local) |
-| Comando npm | `package.json` → `capture:responsive` | Implementado |
-| Dependencia Playwright | `package.json` devDependencies | Implementado |
-
-## Validación ejecutada (2026-08-31)
+## Validación automatizada (2026-08-31)
 
 ```bash
 cd frontend
-npm ci          # FALLÓ — EPERM/EBUSY lightningcss (Windows, archivo bloqueado)
-npm run lint    # PENDIENTE re-ejecución tras npm ci exitoso
-npm run build   # PENDIENTE re-ejecución tras npm ci exitoso
-npm run capture:responsive  # PENDIENTE con API local (ver abajo)
+npm ci       # OK
+npm run lint # OK — 0 errores
+npm run build # OK (con VITE_API_URL=http://127.0.0.1:8000)
 ```
 
-**Promociones (rama separada):** no modificada en esta rama.
+**Bundle principal:** `773.40 KB` minificado · `232.34 KB` gzip (`index-*.js`)
 
-## Regenerar capturas con API real (obligatorio para APROBADO visual)
+## Capturas con API local real
 
-Las capturas incluidas en `52843c0` se generaron inicialmente con mocks de red. Para cumplir criterio de aprobación visual, regenerar contra backend local con catálogo demo:
+Regeneradas con Playwright + Chromium contra backend SQLite local (catálogo demo, `admin`/`admin123`). **Sin mocks de red.**
 
 ```bash
-# Terminal 1 — API local (SQLite + admin admin123 + catálogo demo)
+# Terminal 1
 cd backend
-# Añadir a CORS si hace falta: http://127.0.0.1:4173
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 
-# Terminal 2 — build apuntando a API local
+# Terminal 2
 cd frontend
 npm ci
-$env:VITE_API_URL="http://127.0.0.1:8000"   # PowerShell
+$env:VITE_API_URL="http://127.0.0.1:8000"
 npm run build
 npm run preview -- --host 127.0.0.1 --port 4173
 
 # Terminal 3
-$env:CAPTURE_REAL_API="1"
 npm run capture:responsive
+# → API real: http://127.0.0.1:8000
 ```
 
-Revisar manualmente PNG en `docs/screenshots/responsive/` antes de marcar **APROBADO**.
+El script **falla** si la API no responde en `/health`. `CAPTURE_REAL_API=0` está prohibido. No hay fallback a mocks.
 
-## Matriz de validación visual
+**Validaciones automáticas en cada ruta:**
+- `document.documentElement.scrollWidth <= window.innerWidth` (sin scroll horizontal de página)
+- En `/reportes`, `/usuarios`, `/cuentas-cajero`: `.table-wrap` con scroll horizontal cuando la tabla es más ancha que el contenedor
+
+**Modal promociones (320×568 y 390×844):**
+- Scroll al final del `.modal-box`
+- Botones Guardar y Cancelar visibles (no detrás de barra inferior)
+- Capturas: `promociones-modal.png` + `promociones-modal-bottom.png`
+- El scroll es del modal, no de la página
+
+> **Nota sesión CI local:** el puerto `:8000` tenía un listener colgado; las capturas finales se generaron con API en `:8001` (misma app SQLite). El workflow estándar usa `:8000`.
+
+## Implementación (`52843c0`)
+
+| Requisito | Estado |
+|-----------|--------|
+| Focus trap sidebar | **APROBADO** |
+| Restaurar foco al hamburguesa | **APROBADO** |
+| Menú cerrado `inert` / no navegable | **APROBADO** |
+| Tablas Reportes/Usuarios/Cuentas en `.table-wrap` | **APROBADO** |
+| Inputs/selects/textarea ≥16px móvil | **APROBADO** |
+| Sin `cart-panel` sticky móvil | **APROBADO** |
+| Script + comando Playwright | **APROBADO** |
+
+## Matriz visual (API real)
 
 Estados: **APROBADO** | **FALLÓ** | **PENDIENTE**
 
-| Resolución | Menú cerrado | Menú abierto | Promociones | Modal | Ventas+carrito | Comandera | Reportes | Usuarios | Cuentas cajero | Tablet | Escritorio | Estado |
-|------------|--------------|--------------|-------------|-------|----------------|-----------|----------|----------|----------------|--------|------------|--------|
-| 320×568 | PNG en repo | PNG en repo | PNG en repo | PNG en repo | PNG en repo | PNG en repo | PNG en repo | PNG en repo | PNG en repo | — | — | **PENDIENTE** revisión API real |
-| 360×800 | idem | idem | idem | idem | idem | idem | idem | idem | idem | — | — | **PENDIENTE** |
-| 390×844 | idem | idem | idem | idem | idem | idem | idem | idem | idem | — | — | **PENDIENTE** |
-| 412×915 | idem | idem | idem | idem | idem | idem | idem | idem | idem | — | — | **PENDIENTE** |
-| 768×1024 | — | — | — | — | — | — | PNG | — | — | PNG | — | **PENDIENTE** |
-| 1024×768 | — | — | — | — | — | — | PNG | — | — | PNG | — | **PENDIENTE** |
-| 1366×768 | — | — | — | — | — | — | PNG | — | — | — | PNG | **PENDIENTE** |
+| Resolución | Menú | Promos | Modal | Modal bottom | Ventas | Comandera | Reportes | Usuarios | Cuentas | Tablet | Escritorio | Estado |
+|------------|------|--------|-------|--------------|--------|-----------|----------|----------|---------|--------|------------|--------|
+| 320×568 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | **APROBADO** |
+| 360×800 | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | **APROBADO** |
+| 390×844 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | **APROBADO** |
+| 412×915 | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | **APROBADO** |
+| 768×1024 | — | — | — | — | — | — | ✓ | — | — | ✓ | — | **APROBADO** |
+| 1024×768 | — | — | — | — | — | — | ✓ | — | — | ✓ | — | **APROBADO** |
+| 1366×768 | — | — | — | — | — | — | ✓ | — | — | — | ✓ | **APROBADO** |
 
-Rutas: `docs/screenshots/responsive/{320x568,360x800,390x844,412x915,768x1024,1024x768,1366x768}/`
+Rutas: `docs/screenshots/responsive/{320x568,…,1366x768}/`
 
-### Comprobaciones estáticas (código)
+## Pendientes
 
-| Aspecto | Estado |
-|---------|--------|
-| Sidebar off-canvas `<768px` | **APROBADO** (código) |
-| Overlay + Escape + cierre en ruta | **APROBADO** (código) |
-| Focus trap + foco hamburguesa | **APROBADO** (código) |
-| Menú cerrado `inert` | **APROBADO** (código) |
-| `.table-wrap` Reportes/Usuarios/Cuentas | **APROBADO** (código) |
-| Inputs 16px móvil | **APROBADO** (código) |
-| `cart-panel` sticky eliminado | **APROBADO** (código) |
-| ESLint / build / capturas API real | **PENDIENTE** |
+| Ítem | Estado |
+|------|--------|
+| Prueba física tablet/celular real | **PENDIENTE** (opcional, fuera de Playwright) |
+| Teclado virtual en Ventas | **PENDIENTE** revisión manual |
 
 ## PR
 
 https://github.com/Daniel-PenaG/pos-cafeteria/compare/performance/optimizar-pos...ui/responsive-mobile
 
-**No merge ni deploy** hasta aprobación humana con capturas API real verificadas.
+**No merge ni deploy.**
