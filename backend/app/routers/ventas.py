@@ -4,8 +4,9 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from app.database import get_db
-from app.schemas.ventas import VentaCreate, VentaResponse, ExtraVenta
+from app.schemas.ventas import VentaCreate, VentaResponse, ExtraVenta, ProductoContextoResponse
 from app.services.extras_venta_service import extras_para_producto, extras_para_categoria
+from app.services.producto_contexto_service import obtener_contexto_producto
 from app.services.venta_service import registrar_venta
 from app.exceptions import DatosInvalidosException
 from app.utils.deps import require_pos
@@ -28,6 +29,11 @@ def listar_extras_venta(
     if id_categoria:
         return extras_para_categoria(db, id_categoria)
     raise DatosInvalidosException("Indica id_producto o id_categoria")
+
+
+@router.get("/productos/{id_producto}/contexto", response_model=ProductoContextoResponse)
+def producto_contexto(id_producto: int, db: Session = Depends(get_db)):
+    return obtener_contexto_producto(db, id_producto)
 
 
 @router.post("/", response_model=VentaResponse)

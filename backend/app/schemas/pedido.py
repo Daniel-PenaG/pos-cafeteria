@@ -52,6 +52,9 @@ class Pedido(BaseModel):
     total: float
     lineas: List[DetallePedidoLinea] = []
     cliente_nombre: Optional[str] = None
+    subtotal_normal: Optional[float] = None
+    descuento_promociones: Optional[float] = None
+    resumen_promociones: List[dict] = []
 
 
 class PedidoResumen(BaseModel):

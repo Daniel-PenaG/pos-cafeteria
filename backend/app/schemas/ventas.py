@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Any
 from datetime import datetime
 
 
@@ -61,3 +61,19 @@ class VentaResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ProductoContextoItem(BaseModel):
+    id_producto: int
+    nombre: str
+    precio: float
+    id_categoria: Optional[int] = None
+    activo: bool = True
+
+
+class ProductoContextoResponse(BaseModel):
+    producto: ProductoContextoItem
+    extras: List[ExtraVenta] = []
+    promociones: List[Any] = []
+    paquetes: List[Any] = []
+    calculo_inicial: Any
