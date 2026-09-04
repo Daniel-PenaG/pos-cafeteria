@@ -48,7 +48,7 @@ def setup_perf_database():
 
 
 def _uses_promo_seed(basename: str) -> bool:
-    return basename.startswith(("test_promociones", "test_pagos", "test_comandera"))
+    return basename.startswith(("test_promociones", "test_pagos", "test_comandera", "test_agregar_producto"))
 
 
 @pytest.fixture()

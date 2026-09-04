@@ -1,8 +1,11 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getProductos, getCategorias } from "../services/productosService";
-import { getExtrasVenta } from "../services/ventasService";
 import { getExtraTiposPos } from "../services/extrasVentaService";
+import {
+  getProductoContexto,
+  invalidateProductoContextoCache,
+} from "../services/productoContextoService";
 import {
   getPedidosActivos,
   getPedidoMesa,
@@ -18,8 +21,6 @@ import {
 } from "../services/pedidosService";
 import {
   calcularPromocion,
-  getPromocionesAplicables,
-  getOpcionesPromoProducto,
 } from "../services/promocionesService";
 import {
   buscarClientes,
@@ -108,6 +109,10 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [cantidadEdit, setCantidadEdit] = useState({});
 
   const [promoConfirm, setPromoConfirm] = useState(null);
+  const [calculoInicialModal, setCalculoInicialModal] = useState(null);
+
+  const calcRequestRef = useRef(0);
+  const contextoAbortRef = useRef(null);
 
   const usuario = useAuthStore((s) => s.user);
   const admin = isAdmin(usuario?.rol);
@@ -144,7 +149,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     [lineasPedido]
   );
 
-  const refrescarMesasActivas = async () => {
+  const refrescarMesasActivas = useCallback(async () => {
     try {
       const list = await getPedidosActivos();
       const map = {};
@@ -155,7 +160,26 @@ export default function Ventas({ modoParaLlevar = false }) {
     } catch (err) {
       console.error(err);
     }
-  };
+  }, []);
+
+  const actualizarMesasTrasAgregar = useCallback(
+    (pedidoActualizado) => {
+      if (modoParaLlevar || !numeroMesa) return;
+      setMesasActivas((prev) => ({
+        ...prev,
+        [numeroMesa]: {
+          ...(prev[numeroMesa] || {}),
+          id_pedido: pedidoActualizado.id_pedido,
+          numero_mesa: numeroMesa,
+          total: pedidoActualizado.total,
+          num_lineas: pedidoActualizado.lineas?.length ?? 0,
+          lineas: pedidoActualizado.lineas,
+        },
+      }));
+      refrescarMesasActivas().catch(console.error);
+    },
+    [modoParaLlevar, numeroMesa, refrescarMesasActivas]
+  );
 
   const cargarMesasConfig = async () => {
     try {
@@ -211,13 +235,13 @@ export default function Ventas({ modoParaLlevar = false }) {
       setPedido(p);
       setCantidadEdit({});
       if (!paraLlevar) {
-        await refrescarMesasActivas();
+        refrescarMesasActivas().catch(console.error);
       }
     } catch (err) {
       console.error(err);
       alert(paraLlevar ? "Error al cargar pedido para llevar" : "Error al cargar pedido de la mesa");
     }
-  }, [modoParaLlevar, usuario?.id_usuario]);
+  }, [modoParaLlevar, usuario, refrescarMesasActivas]);
 
   const seleccionarMesa = useCallback(async (n) => {
     setNumeroMesa(n);
@@ -234,6 +258,7 @@ export default function Ventas({ modoParaLlevar = false }) {
         ]);
         const activos = prods.filter((p) => p.activo !== false);
         setProductos(activos);
+        invalidateProductoContextoCache();
         setCategorias(
           [...cats].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
         );
@@ -248,7 +273,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     load();
     cargarMesasConfig();
     refrescarMesasActivas();
-  }, [modoParaLlevar]);
+  }, [modoParaLlevar, refrescarMesasActivas]);
 
   useEffect(() => {
     if (!modoParaLlevar || !usuario?.id_usuario) return;
@@ -476,11 +501,20 @@ export default function Ventas({ modoParaLlevar = false }) {
     return grupos;
   }, [extrasModal]);
 
-  const recalcularPromoModal = async (producto, modoPromo, extras, cantidad) => {
+  const recalcularPromoModal = useCallback(async (producto, modoPromo, extras, cantidad, requestId) => {
     if (!producto) return;
     const cant = Number(cantidad);
     if (!cantidad || isNaN(cant) || cant < 1) {
-      setCalculoPromo(null);
+      if (requestId === calcRequestRef.current) setCalculoPromo(null);
+      return;
+    }
+    if (
+      modoPromo === "auto" &&
+      extras.length === 0 &&
+      cant === 1 &&
+      calculoInicialModal
+    ) {
+      if (requestId === calcRequestRef.current) setCalculoPromo(calculoInicialModal);
       return;
     }
     try {
@@ -495,27 +529,37 @@ export default function Ventas({ modoParaLlevar = false }) {
         payload.id_promocion = modoPromo;
       }
       const calc = await calcularPromocion(payload);
+      if (requestId !== calcRequestRef.current) return;
       setCalculoPromo(calc);
     } catch (err) {
+      if (requestId !== calcRequestRef.current) return;
       console.error(err);
       setCalculoPromo(null);
     }
-  };
+  }, [calculoInicialModal]);
 
   useEffect(() => {
-    if (!productoModal) return;
-    recalcularPromoModal(
-      productoModal,
-      promoModo,
-      extrasSeleccionados,
-      cantidadModal
-    );
-  }, [productoModal, promoModo, extrasSeleccionados, cantidadModal]);
+    if (!productoModal) return undefined;
+    const requestId = ++calcRequestRef.current;
+    const timer = setTimeout(() => {
+      recalcularPromoModal(
+        productoModal,
+        promoModo,
+        extrasSeleccionados,
+        cantidadModal,
+        requestId
+      );
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [productoModal, promoModo, extrasSeleccionados, cantidadModal, recalcularPromoModal]);
 
   const abrirModalProducto = async (producto, opts = {}) => {
     if (!numeroMesa) {
       alert(modoParaLlevar ? "Espera a que cargue el pedido" : "Primero selecciona el número de mesa");
       return;
+    }
+    if (contextoAbortRef.current) {
+      contextoAbortRef.current.abort();
     }
     setProductoModal(producto);
     setExtrasSeleccionados([]);
@@ -524,20 +568,23 @@ export default function Ventas({ modoParaLlevar = false }) {
     setPromoModo(opts.promoModo ?? "auto");
     setMostrarOpcionesPromo(false);
     setCalculoPromo(null);
+    setCalculoInicialModal(null);
     setCantidadModal("1");
     setComentarioModal("");
+    setCargandoExtras(true);
     try {
-      setCargandoExtras(true);
-      const [extras, promos] = await Promise.all([
-        getExtrasVenta(producto.id_producto),
-        getPromocionesAplicables(producto.id_producto),
-      ]);
-      setExtrasModal(extras);
-      setPromosDisponibles(promos);
+      const ctx = await getProductoContexto(producto.id_producto);
+      setExtrasModal(ctx.extras ?? []);
+      setPromosDisponibles(ctx.promociones ?? []);
+      setCalculoInicialModal(ctx.calculo_inicial ?? null);
+      const modo = opts.promoModo ?? "auto";
+      if (modo === "auto" && ctx.calculo_inicial) {
+        setCalculoPromo(ctx.calculo_inicial);
+      }
     } catch (err) {
       console.error(err);
-      alert("Error al cargar extras del producto");
-      return;
+      alert("Error al cargar opciones del producto");
+      setProductoModal(null);
     } finally {
       setCargandoExtras(false);
     }
@@ -550,25 +597,59 @@ export default function Ventas({ modoParaLlevar = false }) {
     }
     if (!usuario?.id_usuario) return;
 
+    if (contextoAbortRef.current) {
+      contextoAbortRef.current.abort();
+    }
+    const ac = new AbortController();
+    contextoAbortRef.current = ac;
+
+    setProductoModal(producto);
+    setExtrasSeleccionados([]);
+    setExtrasModal([]);
+    setPromosDisponibles([]);
+    setPromoModo("auto");
+    setMostrarOpcionesPromo(false);
+    setCalculoPromo(null);
+    setCalculoInicialModal(null);
+    setCantidadModal("1");
+    setComentarioModal("");
+    setCargandoExtras(true);
+
     try {
-      const opciones = await getOpcionesPromoProducto(producto.id_producto);
-      const paquetes = opciones?.paquetes ?? [];
-      const promos = opciones?.promos ?? [];
+      const ctx = await getProductoContexto(producto.id_producto, { signal: ac.signal });
+      if (ac.signal.aborted) return;
+
+      const paquetes = ctx.paquetes ?? [];
+      const promos = ctx.promociones ?? [];
 
       if (paquetes.length > 0) {
+        setProductoModal(null);
         setPromoConfirm({ kind: "combo", combo: paquetes[0], producto });
         return;
       }
 
       if (promos.length > 0) {
+        setProductoModal(null);
         setPromoConfirm({ kind: "promo", promo: promos[0], producto });
         return;
       }
-    } catch (err) {
-      console.error("Opciones de promoción:", err.response?.status, err.response?.data?.detail);
-    }
 
-    abrirModalProducto(producto);
+      setExtrasModal(ctx.extras ?? []);
+      setPromosDisponibles(ctx.promociones ?? []);
+      setCalculoInicialModal(ctx.calculo_inicial ?? null);
+      if (ctx.calculo_inicial) {
+        setCalculoPromo(ctx.calculo_inicial);
+      }
+    } catch (err) {
+      if (err?.code === "ERR_CANCELED" || ac.signal.aborted) return;
+      console.error("Contexto producto:", err.response?.status, err.response?.data?.detail);
+      setProductoModal(null);
+      alert("Error al cargar opciones del producto");
+    } finally {
+      if (!ac.signal.aborted) {
+        setCargandoExtras(false);
+      }
+    }
   };
 
   const cerrarPromoConfirm = () => setPromoConfirm(null);
@@ -587,20 +668,20 @@ export default function Ventas({ modoParaLlevar = false }) {
       const { combo, producto } = promoConfirm;
       cerrarPromoConfirm();
       setGuardandoLinea(true);
-      setLoading(true);
       try {
-        await agregarComboPedido(
+        const pedidoActualizado = await agregarComboPedido(
           numeroMesa,
           usuario.id_usuario,
           { id_promocion: combo.id_promocion, cantidad: 1, enviar_comanda: false },
           modoParaLlevar
         );
-        await cargarPedidoMesa(numeroMesa, modoParaLlevar);
+        setPedido(pedidoActualizado);
+        setCantidadEdit({});
+        actualizarMesasTrasAgregar(pedidoActualizado);
       } catch (err) {
         alert(err.response?.data?.detail || "Error al agregar combo");
         abrirModalProducto(producto, { promoModo: "none" });
       } finally {
-        setLoading(false);
         setGuardandoLinea(false);
       }
       return;
@@ -633,6 +714,7 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const confirmarAgregarAlCarrito = async () => {
     if (!productoModal || !calculoPromo || !numeroMesa || !usuario?.id_usuario) return;
+    if (guardandoLinea) return;
     const cant = parseInt(cantidadModal, 10);
     if (!cantidadModal || isNaN(cant) || cant < 1) {
       alert("Indica una cantidad mayor a 0");
@@ -645,8 +727,7 @@ export default function Ventas({ modoParaLlevar = false }) {
 
     try {
       setGuardandoLinea(true);
-      setLoading(true);
-      await agregarLineaPedido(numeroMesa, usuario.id_usuario, {
+      const pedidoActualizado = await agregarLineaPedido(numeroMesa, usuario.id_usuario, {
         id_producto: productoModal.id_producto,
         cantidad: cant,
         precio_unitario: Number(calculoPromo.precio_unitario),
@@ -656,12 +737,13 @@ export default function Ventas({ modoParaLlevar = false }) {
         enviar_comanda: false,
         comentario: comentarioModal.trim() || null,
       }, modoParaLlevar);
-      await cargarPedidoMesa(numeroMesa, modoParaLlevar);
+      setPedido(pedidoActualizado);
+      setCantidadEdit({});
+      actualizarMesasTrasAgregar(pedidoActualizado);
     } catch (err) {
       alert(err.response?.data?.detail || "Error al agregar al pedido");
       return;
     } finally {
-      setLoading(false);
       setGuardandoLinea(false);
     }
 
@@ -672,6 +754,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     setPromoModo("auto");
     setMostrarOpcionesPromo(false);
     setCalculoPromo(null);
+    setCalculoInicialModal(null);
     setCantidadModal("");
     setComentarioModal("");
   };
@@ -1350,7 +1433,7 @@ export default function Ventas({ modoParaLlevar = false }) {
 
             <p style={{ fontSize: "0.9rem" }}>Extras opcionales:</p>
 
-            {cargandoExtras && <p className="hint">Cargando extras…</p>}
+            {cargandoExtras && <p className="hint">Cargando opciones…</p>}
             {!cargandoExtras && extrasModal.length === 0 && (
               <p className="empty-state" style={{ textAlign: "left", padding: "0.5rem 0" }}>
                 Sin extras para esta categoría. Configúralos en Extras de venta.

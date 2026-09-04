@@ -17,14 +17,13 @@ from app.schemas.pedido import (
 from app.schemas.ventas import VentaResponse
 from app.services.pedido_service import (
     obtener_pedido_abierto_mesa,
-    agregar_linea_pedido,
+    agregar_linea_pedido_con_respuesta,
     agregar_combo_pedido,
     cobrar_pedido,
     confirmar_comanda_pedido,
     listar_pedidos_activos_resumen,
-    recalcular_promociones_pedido,
     pedido_respuesta,
-    _pedido_a_dict,
+    pedido_respuesta_lectura,
     _detalle_a_dict,
 )
 from app.services.venta_service import MESA_PARA_LLEVAR
@@ -83,10 +82,10 @@ def obtener_pedido_mesa(
         .filter(PedidoModel.id_pedido == pedido.id_pedido)
         .first()
     )
-    return pedido_respuesta(db, pedido)
+    return pedido_respuesta_lectura(db, pedido)
 
 
-@router.post("/mesa/{numero_mesa}/lineas", response_model=DetallePedidoLinea)
+@router.post("/mesa/{numero_mesa}/lineas", response_model=Pedido)
 def agregar_linea(
     numero_mesa: int,
     data: PedidoLineaCreate,
@@ -100,11 +99,11 @@ def agregar_linea(
     else:
         validar_mesa_operacion(db, numero_mesa, para_llevar=False)
     pedido = obtener_pedido_abierto_mesa(db, numero_mesa, id_usuario, para_llevar=para_llevar)
-    detalle = agregar_linea_pedido(db, pedido, data)
-    return _detalle_a_dict(detalle)
+    pedido_resp, _ = agregar_linea_pedido_con_respuesta(db, pedido, data)
+    return pedido_resp
 
 
-@router.post("/mesa/{numero_mesa}/combo", response_model=List[DetallePedidoLinea])
+@router.post("/mesa/{numero_mesa}/combo", response_model=Pedido)
 def agregar_combo(
     numero_mesa: int,
     data: ComboPedidoCreate,
@@ -118,10 +117,9 @@ def agregar_combo(
     else:
         validar_mesa_operacion(db, numero_mesa, para_llevar=False)
     pedido = obtener_pedido_abierto_mesa(db, numero_mesa, id_usuario, para_llevar=para_llevar)
-    detalles = agregar_combo_pedido(
+    return agregar_combo_pedido(
         db, pedido, data.id_promocion, data.cantidad, data.enviar_comanda
     )
-    return [_detalle_a_dict(d) for d in detalles]
 
 
 @router.patch("/lineas/{id_detalle_pedido}", response_model=DetallePedidoLinea)
