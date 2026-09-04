@@ -11,7 +11,8 @@
     "cap:open": "npx cap open android",
     "lint": "eslint .",
     "preview": "vite preview",
-    "capture:responsive": "node scripts/capture-responsive.mjs"
+    "capture:responsive": "node scripts/capture-responsive.mjs",
+    "verify:sidebar-scroll": "node scripts/verify-sidebar-scroll.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
