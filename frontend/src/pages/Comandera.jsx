@@ -4,11 +4,12 @@ import { getComandaPendientes, marcarLineaListo } from "../services/pedidosServi
 import PageHeader from "../components/PageHeader";
 import ElapsedTimer from "../components/ElapsedTimer";
 import { formatDuration } from "../utils/formatDuration";
+import { elapsedSecondsUtc, parseUtcDate } from "../utils/parseUtcDate";
 
 export default function Comandera() {
   const [lineas, setLineas] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [, setTick] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const load = useCallback(async () => {
     try {
@@ -29,7 +30,7 @@ export default function Comandera() {
   }, [load]);
 
   useEffect(() => {
-    const t = setInterval(() => setTick((n) => n + 1), 1000);
+    const t = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -59,8 +60,8 @@ export default function Comandera() {
       acc[key].lineas.push(l);
     }
     return Object.values(acc).sort((a, b) => {
-      const ta = Math.min(...a.lineas.map((x) => new Date(x.fecha_envio_comanda || 0).getTime()));
-      const tb = Math.min(...b.lineas.map((x) => new Date(x.fecha_envio_comanda || 0).getTime()));
+      const ta = Math.min(...a.lineas.map((x) => parseUtcDate(x.fecha_envio_comanda)?.getTime() ?? Infinity));
+      const tb = Math.min(...b.lineas.map((x) => parseUtcDate(x.fecha_envio_comanda)?.getTime() ?? Infinity));
       return ta - tb;
     });
   }, [lineas]);
@@ -95,11 +96,17 @@ export default function Comandera() {
           const earliestSince = items.reduce((min, l) => {
             if (!l.fecha_envio_comanda) return min;
             if (!min) return l.fecha_envio_comanda;
-            return new Date(l.fecha_envio_comanda) < new Date(min)
-              ? l.fecha_envio_comanda
-              : min;
+            const a = parseUtcDate(l.fecha_envio_comanda);
+            const b = parseUtcDate(min);
+            if (!a) return min;
+            if (!b) return l.fecha_envio_comanda;
+            return a.getTime() < b.getTime() ? l.fecha_envio_comanda : min;
           }, null);
-          const pedidoSegs = maxSegundosPedido(items);
+          const pedidoSegs = elapsedSecondsUtc(
+            earliestSince,
+            nowMs,
+            maxSegundosPedido(items)
+          );
           const paraLlevar = grupo.para_llevar || grupo.numero_mesa === 99;
           return (
             <section

@@ -60,10 +60,14 @@ def filtro_rango_mx(column, fecha_inicio: date, fecha_fin: date):
 
 
 def isoformat_utc(dt: datetime | None) -> str | None:
-    """Serializa datetime UTC naive con sufijo Z para el frontend."""
+    """Serializa datetime UTC con sufijo Z. No envía UTC naive sin zona."""
     if dt is None:
         return None
-    return dt.isoformat() + "Z"
+    if dt.tzinfo is None:
+        aware = dt.replace(tzinfo=timezone.utc)
+    else:
+        aware = dt.astimezone(timezone.utc)
+    return aware.isoformat().replace("+00:00", "Z")
 
 
 def fecha_mx_desde_utc_naive(dt: datetime) -> date:

@@ -7,6 +7,7 @@ from sqlalchemy import (
     Date,
     Boolean,
     ForeignKey,
+    UniqueConstraint,
 )
 from datetime import datetime
 from sqlalchemy.orm import relationship
@@ -409,6 +410,21 @@ class DetallePedidoModel(Base):
 
     pedido = relationship("PedidoModel", back_populates="detalles")
     producto = relationship("ProductoModel")
+
+
+class PedidoOperacionModel(Base):
+    """Idempotencia de agregado de producto/combo. operation_id único global."""
+
+    __tablename__ = "pedido_operaciones"
+    __table_args__ = (UniqueConstraint("operation_id", name="uq_pedido_operaciones_operation_id"),)
+
+    id_operacion = Column(Integer, primary_key=True, index=True)
+    operation_id = Column(String(64), nullable=False)
+    id_pedido = Column(Integer, ForeignKey("pedidos.id_pedido"), nullable=False)
+    tipo = Column(String(20), nullable=False, default="linea")
+    fecha = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    pedido = relationship("PedidoModel")
 
 
 # ============================

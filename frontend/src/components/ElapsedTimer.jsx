@@ -1,20 +1,19 @@
 import { useEffect, useState } from "react";
 import { formatDuration } from "../utils/formatDuration";
+import { elapsedSecondsUtc } from "../utils/parseUtcDate";
 
 export default function ElapsedTimer({ since, initialSeconds, className = "" }) {
-  const [secs, setSecs] = useState(initialSeconds ?? 0);
+  const [secs, setSecs] = useState(() =>
+    elapsedSecondsUtc(since, Date.now(), initialSeconds ?? 0)
+  );
 
   useEffect(() => {
-    if (since) {
-      const start = new Date(since).getTime();
-      const tick = () => setSecs(Math.max(0, Math.floor((Date.now() - start) / 1000)));
-      tick();
-      const id = setInterval(tick, 1000);
-      return () => clearInterval(id);
-    }
-    if (initialSeconds != null) {
-      setSecs(initialSeconds);
-    }
+    const tick = () => {
+      setSecs(elapsedSecondsUtc(since, Date.now(), initialSeconds ?? 0));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
   }, [since, initialSeconds]);
 
   let urgency = "";

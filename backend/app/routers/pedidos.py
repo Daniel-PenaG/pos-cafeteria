@@ -17,6 +17,8 @@ from app.schemas.pedido import (
 from app.schemas.ventas import VentaResponse
 from app.services.pedido_service import (
     obtener_pedido_abierto_mesa,
+    buscar_pedido_abierto_mesa,
+    pedido_vacio_mesa,
     agregar_linea_pedido_con_respuesta,
     agregar_combo_pedido,
     cobrar_pedido,
@@ -25,6 +27,8 @@ from app.services.pedido_service import (
     pedido_respuesta,
     pedido_respuesta_lectura,
     _detalle_a_dict,
+    _line_key,
+    _parse_extras,
 )
 from app.services.venta_service import MESA_PARA_LLEVAR
 from app.services.promocion_service import calcular_linea, es_promo_paquete
@@ -75,13 +79,9 @@ def obtener_pedido_mesa(
             raise DatosInvalidosException("Mesa inválida para venta para llevar")
     else:
         validar_mesa_operacion(db, numero_mesa, para_llevar=False)
-    pedido = obtener_pedido_abierto_mesa(db, numero_mesa, id_usuario, para_llevar=para_llevar)
-    pedido = (
-        db.query(PedidoModel)
-        .options(joinedload(PedidoModel.detalles), joinedload(PedidoModel.cliente))
-        .filter(PedidoModel.id_pedido == pedido.id_pedido)
-        .first()
-    )
+    pedido = buscar_pedido_abierto_mesa(db, numero_mesa, para_llevar=para_llevar)
+    if not pedido:
+        return pedido_vacio_mesa(numero_mesa, id_usuario, para_llevar=para_llevar)
     return pedido_respuesta_lectura(db, pedido)
 
 
@@ -118,7 +118,12 @@ def agregar_combo(
         validar_mesa_operacion(db, numero_mesa, para_llevar=False)
     pedido = obtener_pedido_abierto_mesa(db, numero_mesa, id_usuario, para_llevar=para_llevar)
     return agregar_combo_pedido(
-        db, pedido, data.id_promocion, data.cantidad, data.enviar_comanda
+        db,
+        pedido,
+        data.id_promocion,
+        data.cantidad,
+        data.enviar_comanda,
+        operation_id=data.operation_id,
     )
 
 
@@ -130,9 +135,31 @@ def actualizar_linea(id_detalle_pedido: int, data: PedidoLineaUpdate, db: Sessio
     pedido = db.query(PedidoModel).filter(PedidoModel.id_pedido == detalle.id_pedido).first()
     if pedido.estado != "ABIERTO":
         raise DatosInvalidosException("Pedido cerrado")
+    if data.cantidad is None and data.comentario is None:
+        raise DatosInvalidosException("Indica cantidad o comentario")
 
-    if data.cantidad < 1:
-        raise DatosInvalidosException("Cantidad inválida")
+    if data.cantidad is not None:
+        if data.cantidad < 1:
+            raise DatosInvalidosException("Cantidad inválida")
+
+    if data.comentario is not None:
+        comentario = (data.comentario or "").strip() or None
+        detalle.comentario = comentario
+        extras = _parse_extras(detalle.extras_json)
+        class _Extra:
+            def __init__(self, e):
+                self.id_extra = e.get("id_extra")
+        detalle.line_key = _line_key(
+            detalle.id_producto,
+            [_Extra(e) for e in extras],
+            detalle.id_promocion,
+            comentario,
+        )
+
+    if data.cantidad is None:
+        db.commit()
+        db.refresh(detalle)
+        return _detalle_a_dict(detalle)
 
     if detalle.id_promocion:
         promo = (

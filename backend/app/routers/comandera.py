@@ -2,14 +2,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, and_
 from typing import List
-from datetime import datetime
-
 from app.database import get_db
 from app.models.models import DetallePedidoModel, PedidoModel
-from app.schemas.pedido import ComandaLinea, ComandaMarcarListo, _segundos_transcurridos
+from app.schemas.pedido import ComandaLinea, ComandaMarcarListo
 from app.services.pedido_service import _parse_extras
 from app.exceptions import RecursoNoEncontradoException, DatosInvalidosException
 from app.utils.deps import require_kitchen
+from app.utils.timezone_mx import isoformat_utc, now_utc_naive, segundos_desde
 
 router = APIRouter(
     prefix="/comandera",
@@ -70,8 +69,8 @@ def listar_pendientes(db: Session = Depends(get_db)):
                 "extras": _parse_extras(d.extras_json),
                 "nombre_promocion": d.nombre_promocion,
                 "comentario": d.comentario,
-                "fecha_envio_comanda": d.fecha_envio_comanda,
-                "segundos_en_preparacion": _segundos_transcurridos(d.fecha_envio_comanda),
+                "fecha_envio_comanda": isoformat_utc(d.fecha_envio_comanda),
+                "segundos_en_preparacion": segundos_desde(d.fecha_envio_comanda),
             }
         )
     return res
@@ -102,7 +101,7 @@ def marcar_listo(id_detalle_pedido: int, data: ComandaMarcarListo, db: Session =
 
     detalle.cantidad_lista = lista + avanzar
     if float(detalle.cantidad_lista) >= cant:
-        detalle.fecha_listo_comanda = datetime.now()
+        detalle.fecha_listo_comanda = now_utc_naive()
     db.commit()
     db.refresh(detalle)
 
@@ -119,6 +118,6 @@ def marcar_listo(id_detalle_pedido: int, data: ComandaMarcarListo, db: Session =
         "extras": _parse_extras(detalle.extras_json),
         "nombre_promocion": detalle.nombre_promocion,
         "comentario": detalle.comentario,
-        "fecha_envio_comanda": detalle.fecha_envio_comanda,
-        "segundos_en_preparacion": _segundos_transcurridos(detalle.fecha_envio_comanda),
+        "fecha_envio_comanda": isoformat_utc(detalle.fecha_envio_comanda),
+        "segundos_en_preparacion": segundos_desde(detalle.fecha_envio_comanda),
     }

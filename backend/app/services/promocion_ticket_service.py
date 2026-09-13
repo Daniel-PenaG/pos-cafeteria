@@ -237,7 +237,7 @@ def recalcular_lineas_ticket(
     unidades = _expandir_unidades(trabajo, db)
     unidades, desc_ticket, resumen = _simular_ticket_promos(unidades, promos_ticket)
 
-    for item in trabajo:
+    for li, item in enumerate(trabajo):
         if item.get("es_paquete"):
             producto = item["_producto"]
             precio_extras = _precio_extras_linea(item)
@@ -248,7 +248,6 @@ def recalcular_lineas_ticket(
             item.update(_calc_a_linea(calc))
             continue
 
-        li = trabajo.index(item)
         units_line = [u for u in unidades if u["line_index"] == li]
         if units_line:
             precio_orig = units_line[0]["precio_full"]

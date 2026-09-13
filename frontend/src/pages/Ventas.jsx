@@ -52,7 +52,10 @@ import {
   HiOutlinePlus,
   HiOutlineXMark,
   HiOutlineQrCode,
+  HiOutlinePencilSquare,
 } from "react-icons/hi2";
+import { createOperationId, isNetworkRetryError } from "../utils/operationId";
+import { puedeAgregarRapido } from "../utils/agregadoRapido";
 
 const MESA_PARA_LLEVAR = 99;
 
@@ -113,7 +116,10 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const calcRequestRef = useRef(0);
   const contextoAbortRef = useRef(null);
+  const addLockRef = useRef(false);
+  const pendingOpRef = useRef(null);
   const [productoAgregandoId, setProductoAgregandoId] = useState(null);
+  const [comentarioEdit, setComentarioEdit] = useState({});
 
   const usuario = useAuthStore((s) => s.user);
   const admin = isAdmin(usuario?.rol);
@@ -184,25 +190,36 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const agregarLineaConCalculo = useCallback(
     async (producto, calculo, extras = [], cantidad = 1, comentario = null) => {
-      const pedidoActualizado = await agregarLineaPedido(
-        numeroMesa,
-        usuario.id_usuario,
-        {
-          id_producto: producto.id_producto,
-          cantidad,
-          precio_unitario: Number(calculo.precio_unitario),
-          precio_original: Number(calculo.precio_original_unitario),
-          id_promocion: calculo.id_promocion,
-          extras,
-          enviar_comanda: false,
-          comentario: comentario?.trim() || null,
-        },
-        modoParaLlevar
-      );
-      setPedido(pedidoActualizado);
-      setCantidadEdit({});
-      actualizarMesasTrasAgregar(pedidoActualizado);
-      return pedidoActualizado;
+      const operationId = pendingOpRef.current || createOperationId();
+      pendingOpRef.current = operationId;
+      try {
+        const pedidoActualizado = await agregarLineaPedido(
+          numeroMesa,
+          usuario.id_usuario,
+          {
+            id_producto: producto.id_producto,
+            cantidad,
+            precio_unitario: Number(calculo.precio_unitario),
+            precio_original: Number(calculo.precio_original_unitario),
+            id_promocion: calculo.id_promocion,
+            extras,
+            enviar_comanda: false,
+            comentario: comentario?.trim() || null,
+            operation_id: operationId,
+          },
+          modoParaLlevar
+        );
+        pendingOpRef.current = null;
+        setPedido(pedidoActualizado);
+        setCantidadEdit({});
+        actualizarMesasTrasAgregar(pedidoActualizado);
+        return pedidoActualizado;
+      } catch (err) {
+        if (!isNetworkRetryError(err)) {
+          pendingOpRef.current = null;
+        }
+        throw err;
+      }
     },
     [numeroMesa, usuario, modoParaLlevar, actualizarMesasTrasAgregar]
   );
@@ -616,13 +633,20 @@ export default function Ventas({ modoParaLlevar = false }) {
     }
   };
 
+  const handlePersonalizar = (producto, e) => {
+    e?.stopPropagation?.();
+    e?.preventDefault?.();
+    abrirModalProducto(producto);
+  };
+
   const handleProductoClick = async (producto) => {
     if (!numeroMesa) {
       alert(modoParaLlevar ? "Espera a que cargue el pedido" : "Primero selecciona el número de mesa");
       return;
     }
     if (!usuario?.id_usuario) return;
-    if (productoAgregandoId === producto.id_producto || guardandoLinea) return;
+    if (addLockRef.current || productoAgregandoId === producto.id_producto || guardandoLinea) return;
+    addLockRef.current = true;
 
     if (contextoAbortRef.current) {
       contextoAbortRef.current.abort();
@@ -650,7 +674,7 @@ export default function Ventas({ modoParaLlevar = false }) {
         return;
       }
 
-      if (extras.length === 0 && ctx.calculo_inicial?.margen_ok) {
+      if (puedeAgregarRapido({ ...ctx, extras, promociones: promos, paquetes })) {
         setGuardandoLinea(true);
         try {
           await agregarLineaConCalculo(producto, ctx.calculo_inicial);
@@ -678,6 +702,7 @@ export default function Ventas({ modoParaLlevar = false }) {
       console.error("Contexto producto:", err.response?.status, err.response?.data?.detail);
       alert("Error al cargar opciones del producto");
     } finally {
+      addLockRef.current = false;
       if (!ac.signal.aborted) {
         setProductoAgregandoId(null);
       }
@@ -700,17 +725,28 @@ export default function Ventas({ modoParaLlevar = false }) {
       const { combo, producto } = promoConfirm;
       cerrarPromoConfirm();
       setGuardandoLinea(true);
+      const operationId = pendingOpRef.current || createOperationId();
+      pendingOpRef.current = operationId;
       try {
         const pedidoActualizado = await agregarComboPedido(
           numeroMesa,
           usuario.id_usuario,
-          { id_promocion: combo.id_promocion, cantidad: 1, enviar_comanda: false },
+          {
+            id_promocion: combo.id_promocion,
+            cantidad: 1,
+            enviar_comanda: false,
+            operation_id: operationId,
+          },
           modoParaLlevar
         );
+        pendingOpRef.current = null;
         setPedido(pedidoActualizado);
         setCantidadEdit({});
         actualizarMesasTrasAgregar(pedidoActualizado);
       } catch (err) {
+        if (!isNetworkRetryError(err)) {
+          pendingOpRef.current = null;
+        }
         alert(err.response?.data?.detail || "Error al agregar combo");
         abrirModalProducto(producto, { promoModo: "none" });
       } finally {
@@ -828,6 +864,25 @@ export default function Ventas({ modoParaLlevar = false }) {
     }
 
     await cambiarCantidad(idDetalle, cant);
+  };
+
+  const guardarComentarioLinea = async (idDetalle) => {
+    const raw = comentarioEdit[idDetalle];
+    setComentarioEdit((prev) => {
+      const next = { ...prev };
+      delete next[idDetalle];
+      return next;
+    });
+    const linea = carrito.find((item) => item.id_detalle_pedido === idDetalle);
+    const nuevo = (raw ?? "").trim() || null;
+    const actual = (linea?.comentario || "").trim() || null;
+    if (nuevo === actual) return;
+    try {
+      await actualizarLineaPedido(idDetalle, { comentario: nuevo });
+      await cargarPedidoMesa(numeroMesa, modoParaLlevar);
+    } catch (err) {
+      alert(err.response?.data?.detail || "Error al actualizar comentario");
+    }
   };
 
   const eliminarDelCarrito = async (idDetalle) => {
@@ -1119,27 +1174,38 @@ export default function Ventas({ modoParaLlevar = false }) {
                       {abierta && (
                         <div className="ventas-productos-list">
                           {grupo.productos.map((p) => (
-                            <button
-                              key={p.id_producto}
-                              type="button"
-                              className="ventas-producto-item"
-                              onClick={() => handleProductoClick(p)}
-                              disabled={
-                                !ventasHabilitadas ||
-                                productoAgregandoId === p.id_producto ||
-                                guardandoLinea
-                              }
-                            >
-                              <span className="ventas-producto-item__main">
-                                <span className="ventas-producto-item__dot" aria-hidden />
-                                <span className="ventas-producto-item__nombre">
-                                  {productoAgregandoId === p.id_producto ? "Agregando…" : p.nombre}
+                            <div key={p.id_producto} className="ventas-producto-row">
+                              <button
+                                type="button"
+                                className="ventas-producto-item"
+                                onClick={() => handleProductoClick(p)}
+                                disabled={
+                                  !ventasHabilitadas ||
+                                  productoAgregandoId === p.id_producto ||
+                                  guardandoLinea
+                                }
+                              >
+                                <span className="ventas-producto-item__main">
+                                  <span className="ventas-producto-item__dot" aria-hidden />
+                                  <span className="ventas-producto-item__nombre">
+                                    {productoAgregandoId === p.id_producto ? "Agregando…" : p.nombre}
+                                  </span>
                                 </span>
-                              </span>
-                              <span className="ventas-producto-item__precio">
-                                ${Number(p.precio_venta).toFixed(2)}
-                              </span>
-                            </button>
+                                <span className="ventas-producto-item__precio">
+                                  ${Number(p.precio_venta).toFixed(2)}
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                className="ventas-producto-item__personalizar"
+                                onClick={(e) => handlePersonalizar(p, e)}
+                                disabled={!ventasHabilitadas || guardandoLinea}
+                                aria-label={`Personalizar ${p.nombre}`}
+                                title="Cantidad y comentario"
+                              >
+                                Personalizar
+                              </button>
+                            </div>
                           ))}
                         </div>
                       )}
@@ -1203,8 +1269,56 @@ export default function Ventas({ modoParaLlevar = false }) {
                         ))}
                       </ul>
                     )}
-                    {item.comentario && (
-                      <p className="cart-item__comentario">📝 {item.comentario}</p>
+                    {comentarioEdit[item.id_detalle_pedido] !== undefined ? (
+                      <div className="cart-item__comentario-edit">
+                        <textarea
+                          className="input"
+                          rows={2}
+                          maxLength={300}
+                          value={comentarioEdit[item.id_detalle_pedido]}
+                          onChange={(e) =>
+                            setComentarioEdit((prev) => ({
+                              ...prev,
+                              [item.id_detalle_pedido]: e.target.value,
+                            }))
+                          }
+                          onBlur={() => guardarComentarioLinea(item.id_detalle_pedido)}
+                          placeholder="Comentario para cocina"
+                        />
+                      </div>
+                    ) : (
+                      <p className="cart-item__comentario">
+                        {item.comentario ? `📝 ${item.comentario}` : (
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm cart-item__nota-btn"
+                            onClick={() =>
+                              setComentarioEdit((prev) => ({
+                                ...prev,
+                                [item.id_detalle_pedido]: item.comentario || "",
+                              }))
+                            }
+                          >
+                            <HiOutlinePencilSquare className="size-4" aria-hidden />
+                            Nota
+                          </button>
+                        )}
+                        {item.comentario && (
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm cart-item__nota-btn"
+                            onClick={() =>
+                              setComentarioEdit((prev) => ({
+                                ...prev,
+                                [item.id_detalle_pedido]: item.comentario || "",
+                              }))
+                            }
+                            aria-label="Editar comentario"
+                          >
+                            <HiOutlinePencilSquare className="size-4" aria-hidden />
+                          </button>
+                        )}
+                      </p>
                     )}
                     <div className="hint" style={{ marginTop: "0.25rem" }}>
                       {(item.descuento_unitario ?? 0) > 0 ? (

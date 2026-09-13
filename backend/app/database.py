@@ -304,6 +304,26 @@ def aplicar_migraciones_sqlite():
         "ALTER TABLE detalle_pedido ADD COLUMN fecha_listo_comanda TIMESTAMP",
         "ALTER TABLE detalle_pedido ADD COLUMN comentario VARCHAR(300)",
     ]
+    migraciones_operaciones_pg = [
+        """CREATE TABLE IF NOT EXISTS pedido_operaciones (
+            id_operacion SERIAL PRIMARY KEY,
+            operation_id VARCHAR(64) NOT NULL,
+            id_pedido INTEGER NOT NULL REFERENCES pedidos(id_pedido) ON DELETE CASCADE,
+            tipo VARCHAR(20) NOT NULL DEFAULT 'linea',
+            fecha TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_pedido_operaciones_operation_id ON pedido_operaciones (operation_id)",
+    ]
+    migraciones_operaciones_sqlite = [
+        """CREATE TABLE IF NOT EXISTS pedido_operaciones (
+            id_operacion INTEGER PRIMARY KEY AUTOINCREMENT,
+            operation_id VARCHAR(64) NOT NULL,
+            id_pedido INTEGER NOT NULL REFERENCES pedidos(id_pedido),
+            tipo VARCHAR(20) NOT NULL DEFAULT 'linea',
+            fecha TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_pedido_operaciones_operation_id ON pedido_operaciones (operation_id)",
+    ]
     # Esquema nuevo: recetas (cabecera) + receta_insumos (detalle).
     # Producción puede tener aún id_insumo/cantidad en recetas (NOT NULL) → falla el INSERT.
     migraciones_recetas_pg = [
@@ -473,12 +493,12 @@ def aplicar_migraciones_sqlite():
         migraciones_postgres + migraciones_sqlite_extras + migraciones_promos
         + migraciones_fidelidad_pg + migraciones_pedidos_pg + migraciones_comanda_tiempos_pg
         + migraciones_recetas_pg + migraciones_extra_tipos_pg + migraciones_para_llevar_pg
-        + migraciones_mesas_pg + migraciones_cierres_modulos_pg
+        + migraciones_mesas_pg + migraciones_cierres_modulos_pg + migraciones_operaciones_pg
         if dialect == "postgresql"
         else migraciones_sqlite + migraciones_sqlite_extras + migraciones_sqlite_promos
         + migraciones_fidelidad_sqlite + migraciones_pedidos_sqlite + migraciones_comanda_tiempos_sqlite
         + migraciones_extra_tipos_sqlite + migraciones_para_llevar_sqlite
-        + migraciones_mesas_sqlite + migraciones_cierres_modulos_sqlite
+        + migraciones_mesas_sqlite + migraciones_cierres_modulos_sqlite + migraciones_operaciones_sqlite
     )
     for sql in migraciones:
         try:
