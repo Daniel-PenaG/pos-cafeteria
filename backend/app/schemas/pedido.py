@@ -1,13 +1,12 @@
-import json
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import datetime
+
+from app.utils.timezone_mx import segundos_desde
 
 
-def _segundos_transcurridos(inicio: datetime | None) -> int | None:
-    if not inicio:
-        return None
-    return max(0, int((datetime.now() - inicio).total_seconds()))
+def _segundos_transcurridos(inicio) -> int | None:
+    """Segundos transcurridos en UTC. Nunca negativo."""
+    return segundos_desde(inicio)
 
 
 class ExtraLineaPedido(BaseModel):
@@ -41,12 +40,12 @@ class DetallePedidoLinea(BaseModel):
 
 
 class Pedido(BaseModel):
-    id_pedido: int
+    id_pedido: Optional[int] = None
     numero_mesa: int
     para_llevar: bool = False
     estado: str
     id_cliente: Optional[int] = None
-    id_usuario: int
+    id_usuario: Optional[int] = None
     id_venta: Optional[int] = None
     fecha_apertura: Optional[str] = None
     total: float
@@ -55,6 +54,7 @@ class Pedido(BaseModel):
     subtotal_normal: Optional[float] = None
     descuento_promociones: Optional[float] = None
     resumen_promociones: List[dict] = []
+    sin_pedido: bool = False
 
 
 class PedidoResumen(BaseModel):
@@ -79,10 +79,12 @@ class PedidoLineaCreate(BaseModel):
     extras: List[ExtraLineaPedido] = []
     enviar_comanda: bool = False
     comentario: Optional[str] = Field(None, max_length=300)
+    operation_id: Optional[str] = Field(None, max_length=64)
 
 
 class PedidoLineaUpdate(BaseModel):
-    cantidad: float
+    cantidad: Optional[float] = None
+    comentario: Optional[str] = Field(None, max_length=300)
 
 
 class PedidoClienteUpdate(BaseModel):
@@ -99,6 +101,7 @@ class ComboPedidoCreate(BaseModel):
     id_promocion: int
     cantidad: float = Field(1, gt=0)
     enviar_comanda: bool = False
+    operation_id: Optional[str] = Field(None, max_length=64)
 
 
 class ComandaLinea(BaseModel):
@@ -113,7 +116,7 @@ class ComandaLinea(BaseModel):
     extras: List[ExtraLineaPedido] = []
     nombre_promocion: Optional[str] = None
     comentario: Optional[str] = None
-    fecha_envio_comanda: Optional[datetime] = None
+    fecha_envio_comanda: Optional[str] = None
     segundos_en_preparacion: Optional[int] = None
 
 

@@ -10,9 +10,11 @@
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
     "lint": "eslint .",
+    "test": "node --test src/utils/*.test.js src/services/*.test.js",
     "preview": "vite preview",
     "capture:responsive": "node scripts/capture-responsive.mjs",
-    "verify:sidebar-scroll": "node scripts/verify-sidebar-scroll.mjs"
+    "verify:sidebar-scroll": "node scripts/verify-sidebar-scroll.mjs",
+    "test:estabilidad-critico": "node scripts/test-estabilidad-critico.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",

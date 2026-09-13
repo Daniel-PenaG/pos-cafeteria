@@ -7,6 +7,9 @@ from sqlalchemy import (
     Date,
     Boolean,
     ForeignKey,
+    Index,
+    UniqueConstraint,
+    text,
 )
 from datetime import datetime
 from sqlalchemy.orm import relationship
@@ -369,6 +372,16 @@ class ConfiguracionModel(Base):
 # ============================
 class PedidoModel(Base):
     __tablename__ = "pedidos"
+    __table_args__ = (
+        Index(
+            "uq_pedidos_abierto_mesa",
+            "numero_mesa",
+            "para_llevar",
+            unique=True,
+            sqlite_where=text("estado = 'ABIERTO'"),
+            postgresql_where=text("estado = 'ABIERTO'"),
+        ),
+    )
 
     id_pedido = Column(Integer, primary_key=True, index=True)
     numero_mesa = Column(Integer, nullable=False, index=True)
@@ -409,6 +422,24 @@ class DetallePedidoModel(Base):
 
     pedido = relationship("PedidoModel", back_populates="detalles")
     producto = relationship("ProductoModel")
+
+
+class PedidoOperacionModel(Base):
+    """Idempotencia de agregado. operation_id único; replay solo si coincide la huella."""
+
+    __tablename__ = "pedido_operaciones"
+    __table_args__ = (UniqueConstraint("operation_id", name="uq_pedido_operaciones_operation_id"),)
+
+    id_operacion = Column(Integer, primary_key=True, index=True)
+    operation_id = Column(String(64), nullable=False)
+    id_pedido = Column(Integer, ForeignKey("pedidos.id_pedido"), nullable=False)
+    tipo = Column(String(20), nullable=False, default="linea")
+    payload_hash = Column(String(64), nullable=False, default="")
+    id_detalle_pedido = Column(Integer, ForeignKey("detalle_pedido.id_detalle_pedido"), nullable=True)
+    detalle_ids_json = Column(String(500), nullable=True)
+    fecha = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    pedido = relationship("PedidoModel")
 
 
 # ============================

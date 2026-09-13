@@ -17,6 +17,14 @@ class RecursoYaExisteException(HTTPException):
         )
 
 
+class ConflictoOperacionException(HTTPException):
+    def __init__(self, detalle: str = "La clave de operación no corresponde a esta solicitud"):
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=detalle,
+        )
+
+
 class DatosInvalidosException(HTTPException):
     def __init__(self, detalle: str):
         super().__init__(
