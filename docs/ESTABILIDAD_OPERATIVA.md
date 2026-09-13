@@ -45,22 +45,34 @@ Se publica en esta rama el conjunto de cambios de la fase (ver `git log origin/m
 
 ---
 
-## 5. Migraciones
+## 5. Migraciones (un solo mecanismo)
 
-| Archivo | Uso |
-|---------|-----|
-| `backend/migrations/002_pedido_operaciones.up.sql` | PostgreSQL: tabla + índice único |
-| `backend/migrations/002_pedido_operaciones.down.sql` | Revierte solo esa tabla |
-| `aplicar_migraciones_sqlite()` | `CREATE TABLE IF NOT EXISTS` en local/SQLite y Postgres de desarrollo |
+Hay **un** esquema canónico: `backend/migrations/002_pedido_operaciones.{up,down}.sql`.
 
-**No ejecutar en producción hasta revisión.**
+`aplicar_migraciones_sqlite()` en el arranque **no es otra migración**. Aplica las mismas sentencias de forma idempotente (`IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`) para bases locales y para el arranque del backend. No hay que elegir entre “manual XOR automático”: el SQL versionado es la fuente; el arranque la replica si falta.
+
+**No se aplicó nada en producción en esta corrección.**
+
+### Qué incluye 002
+
+- Tabla `pedido_operaciones`: `operation_id` único, `tipo`, `payload_hash`, `id_detalle_pedido`, `detalle_ids_json`.
+- Índice `uq_pedido_operaciones_operation_id`.
+- Índice único parcial `uq_pedidos_abierto_mesa` sobre `(numero_mesa, para_llevar) WHERE estado = 'ABIERTO'`.
+
+### Qué se ejecutará al desplegar (después de merge; no ahora)
+
+1. Arranque del backend: `Base.metadata.create_all()` + `aplicar_migraciones_sqlite()` → crea/altera si falta (idempotente).
+2. Ops puede aplicar también el SQL explícito (seguro de repetir):
 
 ```bash
-# Después de aprobar:
+# Antes: comprobar que no hay dos ABIERTO en la misma mesa/tipo
+# SELECT numero_mesa, para_llevar, COUNT(*) FROM pedidos
+# WHERE estado = 'ABIERTO' GROUP BY 1, 2 HAVING COUNT(*) > 1;
+
 psql "$DATABASE_URL" -f backend/migrations/002_pedido_operaciones.up.sql
 ```
 
-La tabla es nueva: no hay filas históricas ni `operation_id` NULL. El índice único es `uq_pedido_operaciones_operation_id`.
+Si ya existen dos pedidos `ABIERTO` para la misma mesa, el índice único **falla** hasta consolidarlos.
 
 Revertir:
 
@@ -70,18 +82,27 @@ psql "$DATABASE_URL" -f backend/migrations/002_pedido_operaciones.down.sql
 
 ---
 
-## 6. Estrategia de idempotencia
+## 6. Diseño final de idempotencia
 
-1. El frontend genera un UUID (`operation_id`) por intención de agregado.
-2. Si la petición falla por red, se reutiliza la misma clave. Si termina bien (o es error 4xx), la siguiente pulsación genera otra.
-3. El backend, si recibe `operation_id`:
-   - Si ya existe → devuelve el pedido actual **sin** volver a sumar.
-   - Si no existe → inserta la fila (`UNIQUE`) en un savepoint y luego agrega.
-   - Si dos concurrentes chocan en el único → `IntegrityError` → replay del pedido ganador (200, no error confuso).
-4. Si el cliente no envía `operation_id` (APK/web viejo), el comportamiento anterior se mantiene.
-5. Aplica a producto simple, extras y combo. La respuesta sigue siendo el pedido completo.
+Una clave pertenece a **una** intención (mismo tipo + misma huella de payload). Producto y combo no comparten `pendingOpRef`.
 
-No basta `isLoading`: el candado React es adicional.
+**Frontend** (`operationIntent.js` + `Ventas.jsx`):
+
+1. Huella estable por payload (`tipo`, mesa, para_llevar, producto/combo, cantidad, precio, extras, comentario).
+2. `beginIntent(huella)` reutiliza el UUID **solo** si esa huella sigue pendiente (timeout/red).
+3. Una selección nueva (otro producto, combo o datos) genera UUID nuevo.
+4. Tras timeout: un reintento automático con la **misma** clave y los **mismos** datos (`withIntentRetry`).
+5. Éxito o error 4xx/409 libera la clave. Doble toque: candado React + misma clave si es el mismo payload.
+
+**Backend**:
+
+1. Guarda `tipo` + `payload_hash` (SHA-256 canónico) + `id_detalle_pedido` / `detalle_ids_json`.
+2. Misma clave + misma huella → replay del resultado **de esa operación** (no `lineas[0]`).
+3. Misma clave + otro producto, combo, mesa o payload → **409 Conflict**. No se devuelve el resultado de otra operación.
+4. Combo: `detalle_ids_json` identifica todas las líneas de esa operación.
+5. Sin `operation_id` (cliente viejo): comportamiento previo.
+
+**Un pedido ABIERTO por mesa y tipo:** índice único parcial. Si dos dispositivos crean el primero a la vez, uno inserta y el otro reutiliza el abierto. No 500. No pedido vacío extra. Productos distintos quedan en el mismo pedido.
 
 ---
 
@@ -145,13 +166,13 @@ TTL caché contexto: **30 segundos**. Documentado en `productoContextoCache.js`.
 
 ```text
 cd backend && python -m pytest -q
-# 140 passed
+# 149 passed, 2 skipped (test_estabilidad_postgres.py sin POSTGRES_TEST_URL)
 
 cd frontend && npm test
-# 19 passed (node:test)
+# 25 passed (node:test)
 
 cd frontend && npm run lint
-# OK (ignore de node_modules.bak; no se desactivó ESLint)
+# OK
 
 cd frontend && npm run build
 # OK
@@ -187,6 +208,7 @@ Salida: `docs/screenshots/estabilidad/` (Ventas/Personalizar, Comandera, sidebar
 - `validar_mesa_operacion` puede crear fila de `configuracion` si no existe (comportamiento previo, no es pedido).
 - Editar nota de una línea ya enviada a cocina no reimprime comanda.
 - Playwright crítico no corre en CI sin API.
+- SQLite no reproduce bloqueos de PostgreSQL. `tests/test_estabilidad_postgres.py` queda **preparada** y se omite sin `POSTGRES_TEST_URL`. **Pendiente ejecutarla contra PostgreSQL antes del despliegue.**
 
 ---
 
@@ -205,10 +227,11 @@ Salida: `docs/screenshots/estabilidad/` (Ventas/Personalizar, Comandera, sidebar
 ## 14. Despliegue futuro (después de revisión)
 
 1. Merge a `main` (no en esta entrega).
-2. Aplicar `002_pedido_operaciones.up.sql` en PostgreSQL de Render.
-3. Desplegar backend y frontend en el orden habitual.
-4. Publicar APK solo si se decide en otra fase.
-5. No reactivar ni modificar Elastic Beanstalk.
+2. Ejecutar `tests/test_estabilidad_postgres.py` con `POSTGRES_TEST_URL` de un entorno de prueba (no producción).
+3. Comprobar que no hay dos pedidos `ABIERTO` por mesa/tipo; luego el arranque aplicará 002 de forma idempotente (ops puede lanzar el `.up.sql` explícito).
+4. Desplegar backend y frontend en el orden habitual.
+5. Publicar APK solo si se decide en otra fase.
+6. No reactivar ni modificar Elastic Beanstalk.
 
 ---
 

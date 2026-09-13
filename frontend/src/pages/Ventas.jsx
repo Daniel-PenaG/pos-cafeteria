@@ -54,7 +54,13 @@ import {
   HiOutlineQrCode,
   HiOutlinePencilSquare,
 } from "react-icons/hi2";
-import { createOperationId, isNetworkRetryError } from "../utils/operationId";
+import {
+  createIntentStore,
+  fingerprintCombo,
+  fingerprintLinea,
+  shouldKeepPendingKey,
+  withIntentRetry,
+} from "../utils/operationIntent";
 import { puedeAgregarRapido } from "../utils/agregadoRapido";
 
 const MESA_PARA_LLEVAR = 99;
@@ -117,7 +123,7 @@ export default function Ventas({ modoParaLlevar = false }) {
   const calcRequestRef = useRef(0);
   const contextoAbortRef = useRef(null);
   const addLockRef = useRef(false);
-  const pendingOpRef = useRef(null);
+  const intentStoreRef = useRef(createIntentStore());
   const [productoAgregandoId, setProductoAgregandoId] = useState(null);
   const [comentarioEdit, setComentarioEdit] = useState({});
 
@@ -190,33 +196,40 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const agregarLineaConCalculo = useCallback(
     async (producto, calculo, extras = [], cantidad = 1, comentario = null) => {
-      const operationId = pendingOpRef.current || createOperationId();
-      pendingOpRef.current = operationId;
+      const payload = {
+        id_producto: producto.id_producto,
+        cantidad,
+        precio_unitario: Number(calculo.precio_unitario),
+        precio_original: Number(calculo.precio_original_unitario),
+        id_promocion: calculo.id_promocion,
+        extras,
+        enviar_comanda: false,
+        comentario: comentario?.trim() || null,
+      };
+      const fingerprint = fingerprintLinea({
+        numeroMesa,
+        paraLlevar: modoParaLlevar,
+        ...payload,
+      });
+      const store = intentStoreRef.current;
+      const operationId = store.beginIntent(fingerprint);
       try {
-        const pedidoActualizado = await agregarLineaPedido(
-          numeroMesa,
-          usuario.id_usuario,
-          {
-            id_producto: producto.id_producto,
-            cantidad,
-            precio_unitario: Number(calculo.precio_unitario),
-            precio_original: Number(calculo.precio_original_unitario),
-            id_promocion: calculo.id_promocion,
-            extras,
-            enviar_comanda: false,
-            comentario: comentario?.trim() || null,
-            operation_id: operationId,
-          },
-          modoParaLlevar
+        const pedidoActualizado = await withIntentRetry(() =>
+          agregarLineaPedido(
+            numeroMesa,
+            usuario.id_usuario,
+            { ...payload, operation_id: operationId },
+            modoParaLlevar
+          )
         );
-        pendingOpRef.current = null;
+        store.completeIntent(fingerprint);
         setPedido(pedidoActualizado);
         setCantidadEdit({});
         actualizarMesasTrasAgregar(pedidoActualizado);
         return pedidoActualizado;
       } catch (err) {
-        if (!isNetworkRetryError(err)) {
-          pendingOpRef.current = null;
+        if (!shouldKeepPendingKey(err)) {
+          store.completeIntent(fingerprint);
         }
         throw err;
       }
@@ -725,27 +738,34 @@ export default function Ventas({ modoParaLlevar = false }) {
       const { combo, producto } = promoConfirm;
       cerrarPromoConfirm();
       setGuardandoLinea(true);
-      const operationId = pendingOpRef.current || createOperationId();
-      pendingOpRef.current = operationId;
+      const comboPayload = {
+        id_promocion: combo.id_promocion,
+        cantidad: 1,
+        enviar_comanda: false,
+      };
+      const fingerprint = fingerprintCombo({
+        numeroMesa,
+        paraLlevar: modoParaLlevar,
+        ...comboPayload,
+      });
+      const store = intentStoreRef.current;
+      const operationId = store.beginIntent(fingerprint);
       try {
-        const pedidoActualizado = await agregarComboPedido(
-          numeroMesa,
-          usuario.id_usuario,
-          {
-            id_promocion: combo.id_promocion,
-            cantidad: 1,
-            enviar_comanda: false,
-            operation_id: operationId,
-          },
-          modoParaLlevar
+        const pedidoActualizado = await withIntentRetry(() =>
+          agregarComboPedido(
+            numeroMesa,
+            usuario.id_usuario,
+            { ...comboPayload, operation_id: operationId },
+            modoParaLlevar
+          )
         );
-        pendingOpRef.current = null;
+        store.completeIntent(fingerprint);
         setPedido(pedidoActualizado);
         setCantidadEdit({});
         actualizarMesasTrasAgregar(pedidoActualizado);
       } catch (err) {
-        if (!isNetworkRetryError(err)) {
-          pendingOpRef.current = null;
+        if (!shouldKeepPendingKey(err)) {
+          store.completeIntent(fingerprint);
         }
         alert(err.response?.data?.detail || "Error al agregar combo");
         abrirModalProducto(producto, { promoModo: "none" });

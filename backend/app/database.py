@@ -304,15 +304,28 @@ def aplicar_migraciones_sqlite():
         "ALTER TABLE detalle_pedido ADD COLUMN fecha_listo_comanda TIMESTAMP",
         "ALTER TABLE detalle_pedido ADD COLUMN comentario VARCHAR(300)",
     ]
+    # Misma 002 que backend/migrations/002_pedido_operaciones.up.sql (idempotente).
+    # No es una migración distinta: arranque aplica el esquema canónico si falta.
     migraciones_operaciones_pg = [
+        "UPDATE pedidos SET para_llevar = FALSE WHERE para_llevar IS NULL",
         """CREATE TABLE IF NOT EXISTS pedido_operaciones (
             id_operacion SERIAL PRIMARY KEY,
             operation_id VARCHAR(64) NOT NULL,
             id_pedido INTEGER NOT NULL REFERENCES pedidos(id_pedido) ON DELETE CASCADE,
             tipo VARCHAR(20) NOT NULL DEFAULT 'linea',
+            payload_hash VARCHAR(64) NOT NULL DEFAULT '',
+            id_detalle_pedido INTEGER REFERENCES detalle_pedido(id_detalle_pedido),
+            detalle_ids_json VARCHAR(500),
             fecha TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""",
+        "ALTER TABLE pedido_operaciones ADD COLUMN IF NOT EXISTS payload_hash VARCHAR(64) NOT NULL DEFAULT ''",
+        "ALTER TABLE pedido_operaciones ADD COLUMN IF NOT EXISTS id_detalle_pedido INTEGER REFERENCES detalle_pedido(id_detalle_pedido)",
+        "ALTER TABLE pedido_operaciones ADD COLUMN IF NOT EXISTS detalle_ids_json VARCHAR(500)",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_pedido_operaciones_operation_id ON pedido_operaciones (operation_id)",
+        "CREATE INDEX IF NOT EXISTS idx_pedido_operaciones_id_pedido ON pedido_operaciones (id_pedido)",
+        """CREATE UNIQUE INDEX IF NOT EXISTS uq_pedidos_abierto_mesa
+            ON pedidos (numero_mesa, para_llevar)
+            WHERE estado = 'ABIERTO'""",
     ]
     migraciones_operaciones_sqlite = [
         """CREATE TABLE IF NOT EXISTS pedido_operaciones (
@@ -320,9 +333,19 @@ def aplicar_migraciones_sqlite():
             operation_id VARCHAR(64) NOT NULL,
             id_pedido INTEGER NOT NULL REFERENCES pedidos(id_pedido),
             tipo VARCHAR(20) NOT NULL DEFAULT 'linea',
+            payload_hash VARCHAR(64) NOT NULL DEFAULT '',
+            id_detalle_pedido INTEGER REFERENCES detalle_pedido(id_detalle_pedido),
+            detalle_ids_json VARCHAR(500),
             fecha TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""",
+        "ALTER TABLE pedido_operaciones ADD COLUMN payload_hash VARCHAR(64) DEFAULT ''",
+        "ALTER TABLE pedido_operaciones ADD COLUMN id_detalle_pedido INTEGER REFERENCES detalle_pedido(id_detalle_pedido)",
+        "ALTER TABLE pedido_operaciones ADD COLUMN detalle_ids_json VARCHAR(500)",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_pedido_operaciones_operation_id ON pedido_operaciones (operation_id)",
+        "CREATE INDEX IF NOT EXISTS idx_pedido_operaciones_id_pedido ON pedido_operaciones (id_pedido)",
+        """CREATE UNIQUE INDEX IF NOT EXISTS uq_pedidos_abierto_mesa
+            ON pedidos (numero_mesa, para_llevar)
+            WHERE estado = 'ABIERTO'""",
     ]
     # Esquema nuevo: recetas (cabecera) + receta_insumos (detalle).
     # Producción puede tener aún id_insumo/cantidad en recetas (NOT NULL) → falla el INSERT.

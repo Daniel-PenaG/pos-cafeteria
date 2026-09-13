@@ -1,6 +1,10 @@
+import hashlib
+import json
+import time
+
 from app.utils.timezone_mx import now_utc_naive, isoformat_utc, segundos_desde
 
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.models import (
@@ -22,7 +26,11 @@ from app.services.extras_validacion_service import (
 from app.services.promocion_service import calcular_linea, calcular_combo, es_promo_paquete
 from app.services.promocion_ticket_service import recalcular_lineas_ticket
 from app.services.venta_service import registrar_venta, MESA_PARA_LLEVAR
-from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
+from app.exceptions import (
+    ConflictoOperacionException,
+    DatosInvalidosException,
+    RecursoNoEncontradoException,
+)
 
 
 def _line_key(id_producto: int, extras: list, id_promocion, comentario: str | None = None) -> str:
@@ -151,11 +159,25 @@ def obtener_pedido_abierto_mesa(
     """Obtiene el pedido abierto o lo crea en sesión sin commit.
 
     GET no debe usar esta función: usar buscar_pedido_abierto_mesa.
+    Si otra transacción crea el único ABIERTO de la mesa, se reutiliza.
     """
+    for _ in range(20):
+        db.expire_all()
+        pedido = buscar_pedido_abierto_mesa(db, numero_mesa, para_llevar=para_llevar)
+        if pedido:
+            return pedido
+        try:
+            # Sin SAVEPOINT: en SQLite begin_nested + RELEASE puede dejar el INSERT
+            # persistido y un rollback posterior no borra el pedido vacío.
+            return crear_pedido_abierto(db, numero_mesa, id_usuario, para_llevar=para_llevar)
+        except (IntegrityError, OperationalError):
+            db.rollback()
+            time.sleep(0.05)
+    db.expire_all()
     pedido = buscar_pedido_abierto_mesa(db, numero_mesa, para_llevar=para_llevar)
     if pedido:
         return pedido
-    return crear_pedido_abierto(db, numero_mesa, id_usuario, para_llevar=para_llevar)
+    raise DatosInvalidosException("No se pudo abrir el pedido de la mesa. Reintenta.")
 
 
 def _normalizar_operation_id(raw: str | None) -> str | None:
@@ -165,35 +187,112 @@ def _normalizar_operation_id(raw: str | None) -> str | None:
     return key[:64] if key else None
 
 
-def _replay_operacion(db: Session, operation_id: str) -> dict | None:
-    op = (
+def _canon_extras(extras) -> list:
+    out = []
+    for e in extras or []:
+        extra = e.model_dump() if hasattr(e, "model_dump") else dict(e)
+        out.append(
+            {
+                "id_extra": extra.get("id_extra"),
+                "precio": round(float(extra.get("precio") or 0), 2),
+            }
+        )
+    return sorted(out, key=lambda x: (x["id_extra"] is None, x["id_extra"]))
+
+
+def huella_operacion_linea(pedido: PedidoModel, data) -> str:
+    payload = {
+        "tipo": "linea",
+        "numero_mesa": pedido.numero_mesa,
+        "para_llevar": bool(getattr(pedido, "para_llevar", False)),
+        "id_producto": data.id_producto,
+        "cantidad": float(data.cantidad),
+        "precio_unitario": round(float(data.precio_unitario), 2),
+        "id_promocion": data.id_promocion,
+        "comentario": (data.comentario or "").strip() or None,
+        "enviar_comanda": bool(data.enviar_comanda),
+        "extras": _canon_extras(data.extras),
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def huella_operacion_combo(
+    pedido: PedidoModel, id_promocion: int, cantidad: float, enviar_comanda: bool
+) -> str:
+    payload = {
+        "tipo": "combo",
+        "numero_mesa": pedido.numero_mesa,
+        "para_llevar": bool(getattr(pedido, "para_llevar", False)),
+        "id_promocion": id_promocion,
+        "cantidad": float(cantidad),
+        "enviar_comanda": bool(enviar_comanda),
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _cargar_operacion(db: Session, operation_id: str) -> PedidoOperacionModel | None:
+    return (
         db.query(PedidoOperacionModel)
         .filter(PedidoOperacionModel.operation_id == operation_id)
         .first()
     )
-    if not op:
-        return None
-    pedido = (
+
+
+def _pedido_de_operacion(db: Session, op: PedidoOperacionModel) -> PedidoModel | None:
+    return (
         db.query(PedidoModel)
         .options(joinedload(PedidoModel.detalles), joinedload(PedidoModel.cliente))
         .filter(PedidoModel.id_pedido == op.id_pedido)
         .first()
     )
+
+
+def _detalle_de_operacion(db: Session, op: PedidoOperacionModel) -> DetallePedidoModel | None:
+    if not op.id_detalle_pedido:
+        return None
+    return db.get(DetallePedidoModel, op.id_detalle_pedido)
+
+
+def _asegurar_huella(op: PedidoOperacionModel, payload_hash: str, tipo: str) -> None:
+    if (op.payload_hash or "") != payload_hash or op.tipo != tipo:
+        raise ConflictoOperacionException(
+            "Esta clave de operación ya se usó con otro producto, combo, mesa o datos"
+        )
+
+
+def _replay_operacion(
+    db: Session, operation_id: str, payload_hash: str | None = None, tipo: str | None = None
+) -> tuple[dict, DetallePedidoModel | None] | None:
+    op = _cargar_operacion(db, operation_id)
+    if not op:
+        return None
+    if payload_hash is not None or tipo is not None:
+        _asegurar_huella(op, payload_hash or op.payload_hash, tipo or op.tipo)
+    pedido = _pedido_de_operacion(db, op)
     if not pedido:
         return None
-    return pedido_respuesta_lectura(db, pedido)
+    return pedido_respuesta_lectura(db, pedido), _detalle_de_operacion(db, op)
 
 
-def _registrar_operacion(db: Session, operation_id: str, id_pedido: int, tipo: str) -> None:
-    db.add(
-        PedidoOperacionModel(
-            operation_id=operation_id,
-            id_pedido=id_pedido,
-            tipo=tipo,
-            fecha=now_utc_naive(),
-        )
+def _registrar_operacion(
+    db: Session,
+    operation_id: str,
+    id_pedido: int,
+    tipo: str,
+    payload_hash: str,
+) -> PedidoOperacionModel:
+    op = PedidoOperacionModel(
+        operation_id=operation_id,
+        id_pedido=id_pedido,
+        tipo=tipo,
+        payload_hash=payload_hash,
+        fecha=now_utc_naive(),
     )
+    db.add(op)
     db.flush()
+    return op
 
 
 def _lineas_desde_pedido(db: Session, pedido: PedidoModel) -> list:
@@ -330,11 +429,11 @@ def agregar_linea_pedido_con_respuesta(
 ) -> tuple[dict, DetallePedidoModel]:
     """Inserta/actualiza línea, recalcula promociones y hace un único commit."""
     operation_id = _normalizar_operation_id(getattr(data, "operation_id", None))
+    payload_hash = huella_operacion_linea(pedido, data) if operation_id else None
     if operation_id:
-        replay = _replay_operacion(db, operation_id)
+        replay = _replay_operacion(db, operation_id, payload_hash, "linea")
         if replay is not None:
-            detalle = replay["lineas"][0] if replay.get("lineas") else None
-            return replay, detalle
+            return replay
 
     try:
         if pedido.estado != "ABIERTO":
@@ -368,15 +467,17 @@ def agregar_linea_pedido_con_respuesta(
         extras_json = extras_json_desde_normalizados(extras_normalizados)
         ahora = now_utc_naive()
 
+        op = None
         if operation_id:
             try:
                 with db.begin_nested():
-                    _registrar_operacion(db, operation_id, pedido.id_pedido, "linea")
+                    op = _registrar_operacion(
+                        db, operation_id, pedido.id_pedido, "linea", payload_hash
+                    )
             except IntegrityError:
-                replay = _replay_operacion(db, operation_id)
+                replay = _replay_operacion(db, operation_id, payload_hash, "linea")
                 if replay is not None:
-                    detalle = replay["lineas"][0] if replay.get("lineas") else None
-                    return replay, detalle
+                    return replay
                 raise
         existente = (
             db.query(DetallePedidoModel)
@@ -419,6 +520,9 @@ def agregar_linea_pedido_con_respuesta(
 
         db.flush()
         detalle_id = detalle.id_detalle_pedido
+        if op is not None:
+            op.id_detalle_pedido = detalle_id
+            op.detalle_ids_json = json.dumps([detalle_id])
         recalc = _recalcular_promociones_sin_commit(db, pedido)
         db.commit()
         pedido = _reload_pedido(db, pedido)
@@ -427,10 +531,9 @@ def agregar_linea_pedido_con_respuesta(
     except IntegrityError:
         db.rollback()
         if operation_id:
-            replay = _replay_operacion(db, operation_id)
+            replay = _replay_operacion(db, operation_id, payload_hash, "linea")
             if replay is not None:
-                detalle = replay["lineas"][0] if replay.get("lineas") else None
-                return replay, detalle
+                return replay
         raise
     except Exception:
         db.rollback()
@@ -509,21 +612,30 @@ def agregar_combo_pedido(
     operation_id: str | None = None,
 ) -> dict:
     operation_id = _normalizar_operation_id(operation_id)
+    payload_hash = (
+        huella_operacion_combo(pedido, id_promocion, cantidad, enviar_comanda)
+        if operation_id
+        else None
+    )
     if operation_id:
-        replay = _replay_operacion(db, operation_id)
+        replay = _replay_operacion(db, operation_id, payload_hash, "combo")
         if replay is not None:
-            return replay
+            return replay[0]
     try:
+        op = None
         if operation_id:
             try:
                 with db.begin_nested():
-                    _registrar_operacion(db, operation_id, pedido.id_pedido, "combo")
+                    op = _registrar_operacion(
+                        db, operation_id, pedido.id_pedido, "combo", payload_hash
+                    )
             except IntegrityError:
-                replay = _replay_operacion(db, operation_id)
+                replay = _replay_operacion(db, operation_id, payload_hash, "combo")
                 if replay is not None:
-                    return replay
+                    return replay[0]
                 raise
         combo = calcular_combo(db, id_promocion, cantidad)
+        detalle_ids = []
         for item in combo["items"]:
             data = PedidoLineaCreate(
                 id_producto=item["id_producto"],
@@ -534,7 +646,7 @@ def agregar_combo_pedido(
                 extras=[],
                 enviar_comanda=enviar_comanda,
             )
-            agregar_linea_combo(
+            det = agregar_linea_combo(
                 db,
                 pedido,
                 data,
@@ -542,6 +654,10 @@ def agregar_combo_pedido(
                 item["precio_original"],
                 item["descuento_unitario"],
             )
+            detalle_ids.append(det.id_detalle_pedido)
+        if op is not None:
+            op.id_detalle_pedido = detalle_ids[0] if detalle_ids else None
+            op.detalle_ids_json = json.dumps(detalle_ids)
         recalc = _recalcular_promociones_sin_commit(db, pedido)
         db.commit()
         pedido = _reload_pedido(db, pedido)
@@ -549,9 +665,9 @@ def agregar_combo_pedido(
     except IntegrityError:
         db.rollback()
         if operation_id:
-            replay = _replay_operacion(db, operation_id)
+            replay = _replay_operacion(db, operation_id, payload_hash, "combo")
             if replay is not None:
-                return replay
+                return replay[0]
         raise
     except Exception:
         db.rollback()
