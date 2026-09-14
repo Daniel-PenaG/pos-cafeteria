@@ -63,7 +63,7 @@ class ClienteDetalle(Cliente):
 class AjustePuntosRequest(BaseModel):
     puntos: int = Field(..., description="Positivo suma, negativo resta")
     notas: str = Field(..., min_length=1, max_length=300)
-    id_usuario: int
+    id_usuario: Optional[int] = None
 
 
 class PuntosPreview(BaseModel):

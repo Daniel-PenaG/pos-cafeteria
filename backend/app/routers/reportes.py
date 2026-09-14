@@ -21,6 +21,7 @@ from app.models.models import (
 )
 from app.services.comanda_tiempo_service import formatear_duracion, segundos_entre
 from app.utils.deps import get_current_user, require_admin
+from app.utils.permisos import require_module
 from app.constants.roles import ADMIN, normalizar_rol
 from app.utils.timezone_mx import (
     today_mx,
@@ -49,7 +50,7 @@ from app.services.reporte_ventas_service import (
 router = APIRouter(
     prefix="/reportes",
     tags=["Reportes"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(require_module("/dashboard", "/reportes", "/cuentas-cajero", "/cierres-dia"))],
 )
 
 MESES = [

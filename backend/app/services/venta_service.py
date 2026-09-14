@@ -254,6 +254,7 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
             forma_pago=forma_pago,
             id_cliente=data.id_cliente if cliente else None,
             puntos_generados=puntos_generados,
+            origen_cobro=getattr(data, "origen_cobro", None),
         )
         db.add(venta)
         db.flush()

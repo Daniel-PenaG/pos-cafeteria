@@ -92,9 +92,10 @@ class PedidoClienteUpdate(BaseModel):
 
 
 class PedidoCobrar(BaseModel):
-    id_usuario: int
+    id_usuario: Optional[int] = None
     forma_pago: str
     id_cliente: Optional[int] = None
+    origen: Optional[str] = "VENTAS"
 
 
 class ComboPedidoCreate(BaseModel):

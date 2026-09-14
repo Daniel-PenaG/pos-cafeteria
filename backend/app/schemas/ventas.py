@@ -42,6 +42,7 @@ class VentaCreate(BaseModel):
     id_cliente: Optional[int] = None
     para_llevar: bool = False
     id_pedido: Optional[int] = None
+    origen_cobro: Optional[str] = None
     detalles: List[DetalleVentaItem]
 
 

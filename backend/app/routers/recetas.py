@@ -16,11 +16,12 @@ from app.schemas.receta import (
 )
 from app.services import RecetaService
 from app.utils.deps import require_admin
+from app.utils.permisos import require_module
 
 router = APIRouter(
     prefix="/recetas",
     tags=["Recetas"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_admin), Depends(require_module("/recetas"))],
 )
 
 

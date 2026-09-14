@@ -11,11 +11,12 @@ from app.models.models import (
 )
 from app.schemas.compra import CompraCreate, CompraResponse
 from app.utils.deps import require_admin
+from app.utils.permisos import require_module
 
 router = APIRouter(
     prefix="/compras",
     tags=["Compras"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_admin), Depends(require_module("/compras"))],
 )
 
 

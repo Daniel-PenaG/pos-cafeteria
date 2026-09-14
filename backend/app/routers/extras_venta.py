@@ -20,12 +20,13 @@ from app.schemas.extras import (
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 from app.services.extras_precio import extra_a_catalogo, sincronizar_precio_guardado
 from app.services.extras_tipo_service import listar_tipos, crear_tipo, validar_tipo_codigo
-from app.utils.deps import require_admin, require_pos
+from app.utils.deps import require_admin
+from app.utils.permisos import require_module
 
 router = APIRouter(
     prefix="/extras-venta",
     tags=["Extras de venta"],
-    dependencies=[Depends(require_pos)],
+    dependencies=[Depends(require_module("/extras-venta", "/ventas"))],
 )
 
 

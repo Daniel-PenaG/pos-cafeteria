@@ -14,12 +14,15 @@ from app.exceptions import (
     RecursoYaExisteException,
     DatosInvalidosException,
 )
-from app.utils.deps import require_admin, require_pos
+from app.utils.deps import require_admin
+from app.utils.permisos import require_module
 
 router = APIRouter(
     prefix="/catalogo",
     tags=["Catálogo"],
-    dependencies=[Depends(require_pos)],
+    dependencies=[Depends(require_module(
+        "/ventas", "/productos", "/categorias", "/insumos", "/para-llevar", "/recetas", "/extras-venta"
+    ))],
 )
 
 # ============================

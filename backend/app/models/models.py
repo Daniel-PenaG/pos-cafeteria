@@ -113,6 +113,8 @@ class UsuarioModel(Base):
     hash_password = Column(String(255), nullable=False)
     rol = Column(String(30), nullable=False)
     modulos_json = Column(String(1000))  # JSON: ["/ventas", ...] null = defaults del rol
+    activo = Column(Boolean, nullable=False, default=True)
+    permisos_acciones_json = Column(String(500))  # JSON: ["COBRAR_DESDE_COMANDERA"]
 
     ventas = relationship("VentaModel", back_populates="usuario")
     gastos = relationship("GastoModel", back_populates="usuario")
@@ -134,6 +136,7 @@ class VentaModel(Base):
     forma_pago = Column(String(30), nullable=False)
     id_cliente = Column(Integer, ForeignKey("clientes.id_cliente"), nullable=True)
     puntos_generados = Column(Integer, nullable=False, default=0)
+    origen_cobro = Column(String(20), nullable=True)
 
     usuario = relationship("UsuarioModel", back_populates="ventas")
     cliente = relationship("ClienteModel", back_populates="ventas")
@@ -485,3 +488,31 @@ class FidelidadConfigModel(Base):
     pesos_por_punto = Column(Numeric(10, 2), nullable=False, default=10.0)
     minimo_compra_acumular = Column(Numeric(10, 2), nullable=False, default=0)
     fecha_actualizacion = Column(DateTime, default=datetime.utcnow)
+
+
+class AuditoriaModel(Base):
+    __tablename__ = "auditoria"
+
+    id_auditoria = Column(Integer, primary_key=True, index=True)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=True, index=True)
+    usuario_login_intentado = Column(String(80), nullable=True, index=True)
+    accion = Column(String(40), nullable=False, index=True)
+    entidad = Column(String(40), nullable=True)
+    entidad_id = Column(Integer, nullable=True)
+    detalles_json = Column(String(2000), nullable=True)
+    origen = Column(String(40), nullable=True)
+    fecha_hora = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    ip = Column(String(64), nullable=True)
+    user_agent = Column(String(300), nullable=True)
+
+
+class LoginBloqueoModel(Base):
+    __tablename__ = "login_bloqueos"
+    __table_args__ = (UniqueConstraint("usuario_login", "ip", name="uq_login_bloqueos_usuario_ip"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_login = Column(String(80), nullable=False)
+    ip = Column(String(64), nullable=False, default="")
+    intentos = Column(Integer, nullable=False, default=0)
+    bloqueado_hasta = Column(DateTime, nullable=True)
+    actualizado = Column(DateTime, nullable=False, default=datetime.utcnow)

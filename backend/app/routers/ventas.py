@@ -9,12 +9,15 @@ from app.services.extras_venta_service import extras_para_producto, extras_para_
 from app.services.producto_contexto_service import obtener_contexto_producto
 from app.services.venta_service import registrar_venta
 from app.exceptions import DatosInvalidosException
-from app.utils.deps import require_pos
+from app.models.models import UsuarioModel
+from app.utils.deps import get_current_user
+from app.utils.identidad import id_usuario_autenticado
+from app.utils.permisos import require_module
 
 router = APIRouter(
     prefix="/ventas",
     tags=["Ventas"],
-    dependencies=[Depends(require_pos)],
+    dependencies=[Depends(require_module("/ventas", "/mesas-activas", "/ventas-para-llevar"))],
 )
 
 
@@ -37,5 +40,11 @@ def producto_contexto(id_producto: int, db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=VentaResponse)
-def registrar_venta_endpoint(data: VentaCreate, db: Session = Depends(get_db)):
+def registrar_venta_endpoint(
+    data: VentaCreate,
+    db: Session = Depends(get_db),
+    current: UsuarioModel = Depends(get_current_user),
+):
+    data.id_usuario = id_usuario_autenticado(db, current, data.id_usuario, "ventas.registrar")
+    data.origen_cobro = data.origen_cobro or "VENTAS"
     return registrar_venta(db, data)

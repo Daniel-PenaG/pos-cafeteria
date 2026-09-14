@@ -512,16 +512,78 @@ def aplicar_migraciones_sqlite():
         )""",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_cierres_usuario_fecha ON cierres_caja(id_usuario, fecha)",
     ]
+    # Misma 003 que backend/migrations/003_usuarios_permisos_auditoria.up.sql
+    migraciones_seguridad_pg = [
+        "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS activo BOOLEAN NOT NULL DEFAULT TRUE",
+        "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS permisos_acciones_json TEXT",
+        "UPDATE usuarios SET activo = TRUE WHERE activo IS NULL",
+        "ALTER TABLE ventas ADD COLUMN IF NOT EXISTS origen_cobro VARCHAR(20)",
+        """CREATE TABLE IF NOT EXISTS auditoria (
+            id_auditoria SERIAL PRIMARY KEY,
+            id_usuario INTEGER REFERENCES usuarios(id_usuario),
+            usuario_login_intentado VARCHAR(80),
+            accion VARCHAR(40) NOT NULL,
+            entidad VARCHAR(40),
+            entidad_id INTEGER,
+            detalles_json VARCHAR(2000),
+            origen VARCHAR(40),
+            fecha_hora TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            ip VARCHAR(64),
+            user_agent VARCHAR(300)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_auditoria_fecha ON auditoria (fecha_hora)",
+        "CREATE INDEX IF NOT EXISTS idx_auditoria_accion ON auditoria (accion)",
+        "CREATE INDEX IF NOT EXISTS idx_auditoria_usuario ON auditoria (id_usuario)",
+        """CREATE TABLE IF NOT EXISTS login_bloqueos (
+            id SERIAL PRIMARY KEY,
+            usuario_login VARCHAR(80) NOT NULL,
+            ip VARCHAR(64) NOT NULL DEFAULT '',
+            intentos INTEGER NOT NULL DEFAULT 0,
+            bloqueado_hasta TIMESTAMP,
+            actualizado TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_login_bloqueos_usuario_ip ON login_bloqueos (usuario_login, ip)",
+    ]
+    migraciones_seguridad_sqlite = [
+        "ALTER TABLE usuarios ADD COLUMN activo BOOLEAN DEFAULT 1",
+        "ALTER TABLE usuarios ADD COLUMN permisos_acciones_json TEXT",
+        "ALTER TABLE ventas ADD COLUMN origen_cobro VARCHAR(20)",
+        """CREATE TABLE IF NOT EXISTS auditoria (
+            id_auditoria INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_usuario INTEGER REFERENCES usuarios(id_usuario),
+            usuario_login_intentado VARCHAR(80),
+            accion VARCHAR(40) NOT NULL,
+            entidad VARCHAR(40),
+            entidad_id INTEGER,
+            detalles_json VARCHAR(2000),
+            origen VARCHAR(40),
+            fecha_hora TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            ip VARCHAR(64),
+            user_agent VARCHAR(300)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_auditoria_fecha ON auditoria (fecha_hora)",
+        """CREATE TABLE IF NOT EXISTS login_bloqueos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_login VARCHAR(80) NOT NULL,
+            ip VARCHAR(64) NOT NULL DEFAULT '',
+            intentos INTEGER NOT NULL DEFAULT 0,
+            bloqueado_hasta TIMESTAMP,
+            actualizado TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_login_bloqueos_usuario_ip ON login_bloqueos (usuario_login, ip)",
+    ]
     migraciones = (
         migraciones_postgres + migraciones_sqlite_extras + migraciones_promos
         + migraciones_fidelidad_pg + migraciones_pedidos_pg + migraciones_comanda_tiempos_pg
         + migraciones_recetas_pg + migraciones_extra_tipos_pg + migraciones_para_llevar_pg
         + migraciones_mesas_pg + migraciones_cierres_modulos_pg + migraciones_operaciones_pg
+        + migraciones_seguridad_pg
         if dialect == "postgresql"
         else migraciones_sqlite + migraciones_sqlite_extras + migraciones_sqlite_promos
         + migraciones_fidelidad_sqlite + migraciones_pedidos_sqlite + migraciones_comanda_tiempos_sqlite
         + migraciones_extra_tipos_sqlite + migraciones_para_llevar_sqlite
         + migraciones_mesas_sqlite + migraciones_cierres_modulos_sqlite + migraciones_operaciones_sqlite
+        + migraciones_seguridad_sqlite
     )
     for sql in migraciones:
         try:

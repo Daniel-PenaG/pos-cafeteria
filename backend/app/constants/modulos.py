@@ -21,6 +21,7 @@ MODULOS_CATALOGO = [
     {"path": "/cuentas-cajero", "label": "Cuentas por cajero", "grupo": "Administración"},
     {"path": "/cierres-dia", "label": "Cierres del día", "grupo": "Administración"},
     {"path": "/usuarios", "label": "Usuarios", "grupo": "Administración"},
+    {"path": "/auditoria", "label": "Auditoría", "grupo": "Administración"},
 ]
 
 ALL_MODULE_PATHS = [m["path"] for m in MODULOS_CATALOGO]

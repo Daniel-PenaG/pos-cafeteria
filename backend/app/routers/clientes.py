@@ -25,12 +25,17 @@ from app.services.fidelidad_service import (
     ajustar_puntos,
 )
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException, RecursoYaExisteException
-from app.utils.deps import require_admin, require_pos
+from app.constants import auditoria as A
+from app.models.models import UsuarioModel
+from app.services.auditoria_service import registrar_auditoria
+from app.utils.deps import get_current_user, require_admin
+from app.utils.identidad import id_usuario_autenticado
+from app.utils.permisos import require_module
 
 router = APIRouter(
     prefix="/clientes",
     tags=["Clientes / Fidelidad"],
-    dependencies=[Depends(require_pos)],
+    dependencies=[Depends(require_module("/clientes", "/ventas"))],
 )
 
 
@@ -239,6 +244,7 @@ def ajustar_puntos_cliente(
     id_cliente: int,
     data: AjustePuntosRequest,
     db: Session = Depends(get_db),
+    current: UsuarioModel = Depends(get_current_user),
 ):
     if data.puntos == 0:
         raise DatosInvalidosException("Indica puntos distintos de cero")
@@ -247,8 +253,18 @@ def ajustar_puntos_cliente(
     if not cliente:
         raise RecursoNoEncontradoException("Cliente no encontrado")
 
+    uid = id_usuario_autenticado(db, current, data.id_usuario, "clientes.ajustar_puntos")
     try:
-        mov = ajustar_puntos(db, cliente, data.puntos, data.notas.strip(), data.id_usuario)
+        mov = ajustar_puntos(db, cliente, data.puntos, data.notas.strip(), uid)
+        registrar_auditoria(
+            db,
+            usuario=current,
+            accion=A.PUNTOS_AJUSTE,
+            entidad="cliente",
+            entidad_id=id_cliente,
+            detalles={"puntos": data.puntos},
+            origen="clientes",
+        )
         db.commit()
         db.refresh(mov)
     except ValueError as e:

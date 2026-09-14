@@ -11,14 +11,15 @@ from app.services.cierre_service import (
     registrar_cierre,
     listar_cierres_dia,
 )
-from app.utils.deps import get_current_user, require_admin, require_pos
+from app.utils.deps import get_current_user, require_admin
+from app.utils.permisos import require_module
 from app.constants.roles import ADMIN, normalizar_rol
 from app.exceptions import DatosInvalidosException
 
 router = APIRouter(prefix="/cierres", tags=["Cierre de caja"])
 
 
-@router.get("/resumen", response_model=ResumenCierreUsuario, dependencies=[Depends(require_pos)])
+@router.get("/resumen", response_model=ResumenCierreUsuario, dependencies=[Depends(require_module("/cierre-caja"))])
 def obtener_resumen_cierre(
     fecha: Optional[date] = None,
     id_usuario: Optional[int] = None,
@@ -40,7 +41,7 @@ def obtener_resumen_cierre(
         ) from exc
 
 
-@router.post("/", dependencies=[Depends(require_pos)])
+@router.post("/", dependencies=[Depends(require_module("/cierre-caja"))])
 def crear_cierre(
     data: CierreCajaCreate,
     db: Session = Depends(get_db),
@@ -55,7 +56,7 @@ def crear_cierre(
     )
 
 
-@router.get("/", dependencies=[Depends(require_admin)])
+@router.get("/", dependencies=[Depends(require_admin), Depends(require_module("/cierres-dia"))])
 def listar_cierres(
     fecha: Optional[date] = None,
     db: Session = Depends(get_db),
