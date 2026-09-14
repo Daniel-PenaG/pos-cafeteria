@@ -18,6 +18,21 @@ describe("permisos frontend", () => {
   it("defaults de rol si no hay módulos", () => {
     assert.equal(canAccessRoute("COCINA", "/comandera"), true);
     assert.equal(canAccessRoute("COCINA", "/ventas"), false);
+    assert.deepEqual(getEffectiveRoutes("CAJERO", null), [
+      "/dashboard",
+      "/ventas",
+      "/mesas-activas",
+      "/ventas-para-llevar",
+      "/comandera",
+      "/clientes",
+      "/cierre-caja",
+    ]);
+  });
+
+  it("lista vacía no usa defaults del rol", () => {
+    assert.deepEqual(getEffectiveRoutes("CAJERO", []), []);
+    assert.equal(canAccessRoute("CAJERO", "/ventas", []), false);
+    assert.equal(canAccessRoute("COCINA", "/comandera", []), false);
   });
 
   it("cobro desde comandera según acción", () => {

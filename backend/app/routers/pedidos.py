@@ -40,11 +40,9 @@ from app.services.auditoria_service import registrar_auditoria
 from app.utils.cobro_auth import autorizar_cobro
 from app.utils.deps import get_current_user, require_admin
 from app.utils.identidad import id_usuario_autenticado
-from app.utils.permisos import require_module
+from app.utils.permisos import exigir_modulo_pedido, require_module
 from app.services.mesas_service import obtener_mesas, agregar_mesa, quitar_mesa, validar_mesa_operacion
 from app.schemas.mesas import MesasConfigResponse, MesaAgregarRequest
-
-_mod_ventas = Depends(require_module("/ventas", "/mesas-activas", "/ventas-para-llevar"))
 
 router = APIRouter(
     prefix="/pedidos",
@@ -60,12 +58,20 @@ def _meta(request: Request) -> dict:
     }
 
 
-@router.get("/activos", response_model=List[PedidoResumen], dependencies=[_mod_ventas])
+@router.get(
+    "/activos",
+    response_model=List[PedidoResumen],
+    dependencies=[Depends(require_module("/mesas-activas", "/ventas"))],
+)
 def listar_pedidos_activos(db: Session = Depends(get_db)):
     return listar_pedidos_activos_resumen(db)
 
 
-@router.get("/mesas", response_model=MesasConfigResponse, dependencies=[_mod_ventas])
+@router.get(
+    "/mesas",
+    response_model=MesasConfigResponse,
+    dependencies=[Depends(require_module("/ventas"))],
+)
 def listar_mesas_configuradas(db: Session = Depends(get_db)):
     return {"mesas": obtener_mesas(db)}
 
@@ -82,7 +88,7 @@ def quitar_mesa_config(numero_mesa: int, db: Session = Depends(get_db)):
     return {"mesas": mesas}
 
 
-@router.get("/mesa/{numero_mesa}", response_model=Pedido, dependencies=[_mod_ventas])
+@router.get("/mesa/{numero_mesa}", response_model=Pedido)
 def obtener_pedido_mesa(
     numero_mesa: int,
     para_llevar: bool = False,
@@ -90,6 +96,7 @@ def obtener_pedido_mesa(
     db: Session = Depends(get_db),
     current: UsuarioModel = Depends(get_current_user),
 ):
+    exigir_modulo_pedido(current, para_llevar)
     uid = id_usuario_autenticado(db, current, id_usuario, "pedidos.get_mesa")
     if para_llevar:
         if numero_mesa != MESA_PARA_LLEVAR:
@@ -102,7 +109,7 @@ def obtener_pedido_mesa(
     return pedido_respuesta_lectura(db, pedido)
 
 
-@router.post("/mesa/{numero_mesa}/lineas", response_model=Pedido, dependencies=[_mod_ventas])
+@router.post("/mesa/{numero_mesa}/lineas", response_model=Pedido)
 def agregar_linea(
     numero_mesa: int,
     data: PedidoLineaCreate,
@@ -111,6 +118,7 @@ def agregar_linea(
     db: Session = Depends(get_db),
     current: UsuarioModel = Depends(get_current_user),
 ):
+    exigir_modulo_pedido(current, para_llevar)
     uid = id_usuario_autenticado(db, current, id_usuario, "pedidos.agregar_linea")
     if para_llevar:
         if numero_mesa != MESA_PARA_LLEVAR:
@@ -133,7 +141,7 @@ def agregar_linea(
     return pedido_resp
 
 
-@router.post("/mesa/{numero_mesa}/combo", response_model=Pedido, dependencies=[_mod_ventas])
+@router.post("/mesa/{numero_mesa}/combo", response_model=Pedido)
 def agregar_combo(
     numero_mesa: int,
     data: ComboPedidoCreate,
@@ -142,6 +150,7 @@ def agregar_combo(
     db: Session = Depends(get_db),
     current: UsuarioModel = Depends(get_current_user),
 ):
+    exigir_modulo_pedido(current, para_llevar)
     uid = id_usuario_autenticado(db, current, id_usuario, "pedidos.agregar_combo")
     if para_llevar:
         if numero_mesa != MESA_PARA_LLEVAR:
@@ -170,12 +179,20 @@ def agregar_combo(
     )
 
 
-@router.patch("/lineas/{id_detalle_pedido}", response_model=DetallePedidoLinea, dependencies=[_mod_ventas])
-def actualizar_linea(id_detalle_pedido: int, data: PedidoLineaUpdate, db: Session = Depends(get_db)):
+@router.patch("/lineas/{id_detalle_pedido}", response_model=DetallePedidoLinea)
+def actualizar_linea(
+    id_detalle_pedido: int,
+    data: PedidoLineaUpdate,
+    db: Session = Depends(get_db),
+    current: UsuarioModel = Depends(get_current_user),
+):
     detalle = db.query(DetallePedidoModel).filter(DetallePedidoModel.id_detalle_pedido == id_detalle_pedido).first()
     if not detalle:
         raise RecursoNoEncontradoException("Línea no encontrada")
     pedido = db.query(PedidoModel).filter(PedidoModel.id_pedido == detalle.id_pedido).first()
+    if not pedido:
+        raise RecursoNoEncontradoException("Pedido no encontrado")
+    exigir_modulo_pedido(current, bool(pedido.para_llevar))
     if pedido.estado != "ABIERTO":
         raise DatosInvalidosException("Pedido cerrado")
     if data.cantidad is None and data.comentario is None:
@@ -235,12 +252,19 @@ def actualizar_linea(id_detalle_pedido: int, data: PedidoLineaUpdate, db: Sessio
     return _detalle_a_dict(detalle)
 
 
-@router.delete("/lineas/{id_detalle_pedido}", dependencies=[_mod_ventas])
-def eliminar_linea(id_detalle_pedido: int, db: Session = Depends(get_db)):
+@router.delete("/lineas/{id_detalle_pedido}")
+def eliminar_linea(
+    id_detalle_pedido: int,
+    db: Session = Depends(get_db),
+    current: UsuarioModel = Depends(get_current_user),
+):
     detalle = db.query(DetallePedidoModel).filter(DetallePedidoModel.id_detalle_pedido == id_detalle_pedido).first()
     if not detalle:
         raise RecursoNoEncontradoException("Línea no encontrada")
     pedido = db.query(PedidoModel).filter(PedidoModel.id_pedido == detalle.id_pedido).first()
+    if not pedido:
+        raise RecursoNoEncontradoException("Pedido no encontrado")
+    exigir_modulo_pedido(current, bool(pedido.para_llevar))
     if pedido.estado != "ABIERTO":
         raise DatosInvalidosException("Pedido cerrado")
     db.delete(detalle)
@@ -248,8 +272,13 @@ def eliminar_linea(id_detalle_pedido: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
-@router.put("/{id_pedido}/cliente", response_model=Pedido, dependencies=[_mod_ventas])
-def asignar_cliente(id_pedido: int, data: PedidoClienteUpdate, db: Session = Depends(get_db)):
+@router.put("/{id_pedido}/cliente", response_model=Pedido)
+def asignar_cliente(
+    id_pedido: int,
+    data: PedidoClienteUpdate,
+    db: Session = Depends(get_db),
+    current: UsuarioModel = Depends(get_current_user),
+):
     pedido = (
         db.query(PedidoModel)
         .options(joinedload(PedidoModel.detalles), joinedload(PedidoModel.cliente))
@@ -258,6 +287,7 @@ def asignar_cliente(id_pedido: int, data: PedidoClienteUpdate, db: Session = Dep
     )
     if not pedido:
         raise RecursoNoEncontradoException("Pedido no encontrado")
+    exigir_modulo_pedido(current, bool(pedido.para_llevar))
     if pedido.estado != "ABIERTO":
         raise DatosInvalidosException("Pedido cerrado")
 
@@ -274,7 +304,7 @@ def asignar_cliente(id_pedido: int, data: PedidoClienteUpdate, db: Session = Dep
     return pedido_respuesta(db, pedido)
 
 
-@router.post("/{id_pedido}/confirmar-comanda", response_model=Pedido, dependencies=[_mod_ventas])
+@router.post("/{id_pedido}/confirmar-comanda", response_model=Pedido)
 def confirmar_comanda(
     id_pedido: int,
     request: Request,
@@ -289,6 +319,7 @@ def confirmar_comanda(
     )
     if not pedido:
         raise RecursoNoEncontradoException("Pedido no encontrado")
+    exigir_modulo_pedido(current, bool(pedido.para_llevar))
     enviadas = confirmar_comanda_pedido(db, pedido)
     registrar_auditoria(
         db,
@@ -314,7 +345,6 @@ def cobrar(
     current: UsuarioModel = Depends(get_current_user),
 ):
     uid = id_usuario_autenticado(db, current, data.id_usuario, "pedidos.cobrar")
-    origen = autorizar_cobro(current, data.origen)
     pedido = (
         db.query(PedidoModel)
         .options(joinedload(PedidoModel.detalles))
@@ -323,6 +353,7 @@ def cobrar(
     )
     if not pedido:
         raise RecursoNoEncontradoException("Pedido no encontrado")
+    origen = autorizar_cobro(current, data.origen, para_llevar=bool(pedido.para_llevar))
 
     if data.id_cliente:
         cliente = db.query(ClienteModel).filter(

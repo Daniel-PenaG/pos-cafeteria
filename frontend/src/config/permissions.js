@@ -64,11 +64,11 @@ export function normalizeRole(rol) {
   return upper;
 }
 
-/** Rutas efectivas: modulos del usuario (API) o defaults del rol */
+/** Rutas efectivas: null = defaults del rol; [] = sin módulos. */
 export function getEffectiveRoutes(rol, modulos) {
   const r = normalizeRole(rol);
   if (r === ROLES.ADMIN) return ALL_ROUTES;
-  if (Array.isArray(modulos) && modulos.length > 0) {
+  if (Array.isArray(modulos)) {
     return modulos.filter((p) => ALL_ROUTES.includes(p));
   }
   return ROLE_ROUTES[r] || [];

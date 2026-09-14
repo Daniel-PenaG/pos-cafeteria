@@ -140,7 +140,8 @@ def actualizar_usuario(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         usuario.hash_password = hash_password(password)
 
-    if data.modulos is not None:
+    campos = getattr(data, "model_fields_set", None) or getattr(data, "__fields_set__", set())
+    if "modulos" in campos:
         aplicar_modulos(usuario, data.modulos)
 
     if data.permisos_acciones is not None:

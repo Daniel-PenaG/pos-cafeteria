@@ -122,7 +122,7 @@ export default function Usuarios() {
       return;
     }
 
-    const modulosPayload = usarPersonalizado ? modulosSel : [];
+    const modulosPayload = usarPersonalizado ? modulosSel : null;
 
     try {
       if (editing) {

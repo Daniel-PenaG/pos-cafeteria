@@ -8,7 +8,7 @@ from app.constants.acciones import (
 )
 from app.models.models import UsuarioModel
 from app.utils.acciones import tiene_accion
-from app.utils.modulos import modulos_efectivos
+from app.utils.permisos import exigir_modulo, exigir_modulo_pedido
 
 
 def normalizar_origen_cobro(origen: str | None) -> str:
@@ -21,25 +21,20 @@ def normalizar_origen_cobro(origen: str | None) -> str:
     return valor
 
 
-def autorizar_cobro(usuario: UsuarioModel, origen: str | None) -> str:
-    """Cobro desde Ventas requiere módulo de ventas. Desde Comandera, la acción."""
+def autorizar_cobro(
+    usuario: UsuarioModel,
+    origen: str | None,
+    para_llevar: bool = False,
+) -> str:
+    """VENTAS: módulo según tipo de pedido. COMANDERA: /comandera + acción."""
     origen_n = normalizar_origen_cobro(origen)
-    mods = set(modulos_efectivos(usuario))
     if origen_n == ORIGEN_COMANDERA:
         if not tiene_accion(usuario, COBRAR_DESDE_COMANDERA):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes permiso para esta acción",
             )
-        if "/comandera" not in mods:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tienes permiso para esta acción",
-            )
+        exigir_modulo(usuario, "/comandera")
         return origen_n
-    if not mods.intersection({"/ventas", "/mesas-activas", "/ventas-para-llevar"}):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para esta acción",
-        )
+    exigir_modulo_pedido(usuario, para_llevar)
     return origen_n

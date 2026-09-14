@@ -44,7 +44,7 @@ from app.utils.permisos import require_module
 router = APIRouter(
     prefix="/promociones",
     tags=["Promociones"],
-    dependencies=[Depends(require_module("/promociones", "/ventas"))],
+    dependencies=[Depends(require_module("/promociones", "/ventas", "/ventas-para-llevar"))],
 )
 
 

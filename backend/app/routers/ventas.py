@@ -12,16 +12,18 @@ from app.exceptions import DatosInvalidosException
 from app.models.models import UsuarioModel
 from app.utils.deps import get_current_user
 from app.utils.identidad import id_usuario_autenticado
-from app.utils.permisos import require_module
+from app.utils.permisos import exigir_modulo_pedido, require_module
+
+_mod_pos = Depends(require_module("/ventas", "/ventas-para-llevar"))
 
 router = APIRouter(
     prefix="/ventas",
     tags=["Ventas"],
-    dependencies=[Depends(require_module("/ventas", "/mesas-activas", "/ventas-para-llevar"))],
+    dependencies=[Depends(get_current_user)],
 )
 
 
-@router.get("/extras", response_model=List[ExtraVenta])
+@router.get("/extras", response_model=List[ExtraVenta], dependencies=[_mod_pos])
 def listar_extras_venta(
     id_producto: Optional[int] = None,
     id_categoria: Optional[int] = None,
@@ -34,7 +36,11 @@ def listar_extras_venta(
     raise DatosInvalidosException("Indica id_producto o id_categoria")
 
 
-@router.get("/productos/{id_producto}/contexto", response_model=ProductoContextoResponse)
+@router.get(
+    "/productos/{id_producto}/contexto",
+    response_model=ProductoContextoResponse,
+    dependencies=[_mod_pos],
+)
 def producto_contexto(id_producto: int, db: Session = Depends(get_db)):
     return obtener_contexto_producto(db, id_producto)
 
@@ -45,6 +51,7 @@ def registrar_venta_endpoint(
     db: Session = Depends(get_db),
     current: UsuarioModel = Depends(get_current_user),
 ):
+    exigir_modulo_pedido(current, bool(data.para_llevar))
     data.id_usuario = id_usuario_autenticado(db, current, data.id_usuario, "ventas.registrar")
     data.origen_cobro = data.origen_cobro or "VENTAS"
     return registrar_venta(db, data)

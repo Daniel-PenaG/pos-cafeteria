@@ -32,25 +32,45 @@ CAJERO/COCINA no pueden operar en nombre de otro. No hay impersonación de ADMIN
 
 ## 3. Matriz de módulos
 
-| Módulo | Endpoints principales | Default rol | Lectura | Escritura / admin |
-|--------|----------------------|-------------|---------|-------------------|
-| /ventas, /mesas-activas, /ventas-para-llevar | `/pedidos/*` (salvo cobro comandera), `/ventas/*` | ADMIN, CAJERO | Pedidos y cobro origen VENTAS | Mesas config: ADMIN |
-| /comandera | `/comandera/*` | ADMIN, CAJERO, COCINA | Pendientes, marcar listo | Cobro solo con acción |
-| /clientes | `/clientes/*` | ADMIN, CAJERO | CRUD clientes | Ajuste puntos y config: ADMIN |
-| /productos /categorias /insumos /para-llevar /recetas | `/catalogo/*`, `/recetas/*` | ADMIN (menú) | Quien tenga el módulo o /ventas | Mutaciones: ADMIN |
-| /promociones | `/promociones/*` | ADMIN | También /ventas (contexto POS) | CRUD: ADMIN |
-| /extras-venta | `/extras-venta/*` | ADMIN | También /ventas | Mutaciones: ADMIN |
-| /compras | `/compras/*` | ADMIN | — | ADMIN + módulo |
-| /gastos | `/gastos/*` | ADMIN | — | ADMIN + módulo |
-| /cierre-caja | `/cierres/resumen`, POST | ADMIN, CAJERO | Propio | Cajero no publica cierre de otro |
-| /cierres-dia | `/cierres/` lista | ADMIN | ADMIN | — |
-| /reportes /cuentas-cajero /dashboard | `/reportes/*` | según rol | Dashboard cajero (sus ventas) | Reportes admin: ADMIN |
-| /usuarios | `/usuarios/*` | ADMIN | — | ADMIN |
-| /auditoria | `/auditoria/` | ADMIN | Paginada | Solo lectura |
+La autorización es **por operación**, no por router. Tener uno de varios módulos no abre el resto.
 
-ADMIN tiene todos los módulos y acciones. Sin `modulos_json` se usan defaults del rol. Frontend y backend usan el mismo catálogo.
+| Operación | Módulo exigido |
+|-----------|----------------|
+| GET `/pedidos/activos` | `/mesas-activas` **o** `/ventas` |
+| GET `/pedidos/mesas` | `/ventas` |
+| GET/POST mesa o línea (normal) | `/ventas` |
+| GET/POST mesa o línea (para llevar) | `/ventas-para-llevar` |
+| PATCH/DELETE línea, cliente, confirmar comanda | Según tipo del pedido ya cargado |
+| Cobrar origen VENTAS | `/ventas` o `/ventas-para-llevar` según el pedido |
+| Cobrar origen COMANDERA | `/comandera` **y** `COBRAR_DESDE_COMANDERA` |
+| POST `/ventas/` | `/ventas` si `para_llevar=false`; `/ventas-para-llevar` si `true` |
+| GET `/ventas/extras`, contexto producto | `/ventas` o `/ventas-para-llevar` (sin costos) |
+| GET `/catalogo/categorias` | Módulos que necesitan catálogo (ventas, productos, etc.). No `/mesas-activas` |
+| Mutar categorías | ADMIN + `/categorias` |
+| GET `/catalogo/productos` | `/ventas`, `/ventas-para-llevar` o `/productos` |
+| Mutar productos | ADMIN + `/productos` |
+| GET/mutar insumos y costos | ADMIN + `/insumos` |
+| Productos para llevar | `/para-llevar` (lectura también `/ventas-para-llevar`) |
+| Recetas | ADMIN + `/recetas` |
+| GET `/extras-venta/tipos` | `/extras-venta`, `/ventas` o `/ventas-para-llevar` |
+| Catálogo extras, insumos-importables, configs y costos | ADMIN + `/extras-venta` |
+| `/reportes/resumen-dashboard` | `/dashboard` |
+| Cuentas por cajero | ADMIN + `/cuentas-cajero` |
+| Cierres del día | ADMIN + `/cierres-dia` |
+| Resto de `/reportes/*` | ADMIN + `/reportes` |
 
-**Tener el módulo no implica editar catálogo.** Productos/comandera/ventas: ver matriz.
+`/mesas-activas` solo lista pedidos activos. No agrega, edita, elimina ni cobra.
+
+### Semántica de `modulos_json`
+
+| Valor | Efecto |
+|-------|--------|
+| `null` | Defaults del rol |
+| `[]` | Usuario sin módulos (no se convierte a defaults) |
+
+El API **rechaza `[]` con 422** al crear o editar. Para volver a defaults se envía `null`. Frontend y backend usan la misma regla.
+
+ADMIN tiene todos los módulos y acciones. Frontend y backend usan el mismo catálogo.
 
 ---
 

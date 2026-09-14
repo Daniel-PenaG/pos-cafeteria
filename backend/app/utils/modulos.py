@@ -6,26 +6,38 @@ from app.constants.roles import ADMIN, normalizar_rol
 from app.models.models import UsuarioModel
 
 
+def modulos_personalizados(usuario: UsuarioModel) -> List[str] | None:
+    """Lista guardada o None si no hay personalización (usar defaults).
+
+    null / ausente → None (defaults del rol).
+    [] → lista vacía (sin módulos).
+    """
+    raw = usuario.modulos_json
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        data = json.loads(raw)
+        if isinstance(data, list):
+            return [p for p in data if p in ALL_MODULE_PATHS]
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return None
+
+
 def modulos_efectivos(usuario: UsuarioModel) -> List[str]:
     rol = normalizar_rol(usuario.rol)
     if rol == ADMIN:
         return list(ALL_MODULE_PATHS)
 
-    if usuario.modulos_json:
-        try:
-            data = json.loads(usuario.modulos_json)
-            if isinstance(data, list) and data:
-                valid = [p for p in data if p in ALL_MODULE_PATHS]
-                if valid:
-                    return valid
-        except (json.JSONDecodeError, TypeError):
-            pass
+    personalizados = modulos_personalizados(usuario)
+    if personalizados is not None:
+        return personalizados
 
     return list(ROLE_DEFAULT_MODULES.get(rol, []))
 
 
 def serializar_modulos(modulos: List[str] | None) -> str | None:
-    if not modulos:
+    if modulos is None:
         return None
     valid = [p for p in modulos if p in ALL_MODULE_PATHS]
-    return json.dumps(valid) if valid else None
+    return json.dumps(valid)

@@ -12,13 +12,11 @@ def acciones_efectivas(usuario: UsuarioModel) -> List[str]:
         return list(ALL_ACCIONES)
 
     raw = getattr(usuario, "permisos_acciones_json", None)
-    if raw:
+    if raw is not None and str(raw).strip() != "":
         try:
             data = json.loads(raw)
-            if isinstance(data, list) and data:
-                valid = [p for p in data if p in ALL_ACCIONES]
-                if valid:
-                    return valid
+            if isinstance(data, list):
+                return [p for p in data if p in ALL_ACCIONES]
         except (json.JSONDecodeError, TypeError):
             pass
     return list(ROLE_DEFAULT_ACCIONES.get(rol, []))
