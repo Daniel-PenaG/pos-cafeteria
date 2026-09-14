@@ -40,6 +40,7 @@ const ICONS = {
   "/cuentas-cajero": HiOutlineIdentification,
   "/cierres-dia": HiOutlineClipboardDocumentList,
   "/usuarios": HiOutlineUsers,
+  "/auditoria": HiOutlineClipboardDocumentList,
 };
 
 export default function NavIcon({ to, className = "" }) {

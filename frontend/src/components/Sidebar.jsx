@@ -44,6 +44,7 @@ const NAV = [
       { to: "/cuentas-cajero", label: "Cuentas por cajero", roles: ["ADMIN"] },
       { to: "/cierres-dia", label: "Cierres del día", roles: ["ADMIN"] },
       { to: "/usuarios", label: "Usuarios", roles: ["ADMIN"] },
+      { to: "/auditoria", label: "Auditoría", roles: ["ADMIN"] },
     ],
   },
 ];

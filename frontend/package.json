@@ -10,7 +10,7 @@
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
     "lint": "eslint .",
-    "test": "node --test src/utils/*.test.js src/services/*.test.js",
+    "test": "node --test src/utils/*.test.js src/services/*.test.js src/config/*.test.js",
     "preview": "vite preview",
     "capture:responsive": "node scripts/capture-responsive.mjs",
     "verify:sidebar-scroll": "node scripts/verify-sidebar-scroll.mjs",

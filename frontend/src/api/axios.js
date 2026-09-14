@@ -32,6 +32,12 @@ api.interceptors.response.use(
       if (window.location.pathname !== "/login") {
         window.location.assign("/login");
       }
+    } else if (error.response?.status === 403) {
+      const mensaje =
+        typeof error.response?.data?.detail === "string"
+          ? error.response.data.detail
+          : "No tienes permiso para esta acción";
+      window.dispatchEvent(new CustomEvent("pos:forbidden", { detail: mensaje }));
     }
     return Promise.reject(error);
   }

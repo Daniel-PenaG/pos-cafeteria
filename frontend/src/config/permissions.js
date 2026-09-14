@@ -32,6 +32,7 @@ export const MODULE_CATALOG = [
   { path: "/cuentas-cajero", label: "Cuentas por cajero", grupo: "Administración" },
   { path: "/cierres-dia", label: "Cierres del día", grupo: "Administración" },
   { path: "/usuarios", label: "Usuarios", grupo: "Administración" },
+  { path: "/auditoria", label: "Auditoría", grupo: "Administración" },
 ];
 
 export const ALL_ROUTES = MODULE_CATALOG.map((m) => m.path);
@@ -87,4 +88,21 @@ export function getDefaultRoute(rol, modulos = null) {
 
 export function isAdmin(rol) {
   return normalizeRole(rol) === ROLES.ADMIN;
+}
+
+export const ACCION_COBRAR_DESDE_COMANDERA = "COBRAR_DESDE_COMANDERA";
+
+export function getEffectiveActions(rol, acciones) {
+  const r = normalizeRole(rol);
+  if (r === ROLES.ADMIN) return [ACCION_COBRAR_DESDE_COMANDERA];
+  return Array.isArray(acciones) ? acciones.filter((a) => a === ACCION_COBRAR_DESDE_COMANDERA) : [];
+}
+
+export function hasAction(rol, codigo, acciones = []) {
+  return getEffectiveActions(rol, acciones).includes(codigo);
+}
+
+export function canCobrarDesdeComandera(user) {
+  if (!user) return false;
+  return hasAction(user.rol, ACCION_COBRAR_DESDE_COMANDERA, user.permisos_acciones);
 }

@@ -28,6 +28,7 @@ const CuentasCajero = lazy(() => import("./pages/CuentasCajero"));
 const CierreCaja = lazy(() => import("./pages/CierreCaja"));
 const CierresDia = lazy(() => import("./pages/CierresDia"));
 const Usuarios = lazy(() => import("./pages/Usuarios"));
+const Auditoria = lazy(() => import("./pages/Auditoria"));
 
 function HomeRedirect() {
   const rol = useAuthStore((state) => state.user?.rol);
@@ -128,6 +129,10 @@ export default function App() {
           <Route
             path="usuarios"
             element={withRole("/usuarios", <LazyPage><Usuarios /></LazyPage>)}
+          />
+          <Route
+            path="auditoria"
+            element={withRole("/auditoria", <LazyPage><Auditoria /></LazyPage>)}
           />
         </Route>
 
