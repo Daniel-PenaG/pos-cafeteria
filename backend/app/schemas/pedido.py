@@ -136,7 +136,11 @@ class ComandaLinea(BaseModel):
     cantidad_nueva: Optional[float] = None
     id_cancelacion: Optional[int] = None
     vista_comandera: bool = False
+    estado_pedido: Optional[str] = None
+    cuenta_cobrada: bool = False
 
 
 class ComandaMarcarListo(BaseModel):
     cantidad: float = 1
+    cantidad_actual: Optional[float] = None
+    cantidad_lista_actual: Optional[float] = None

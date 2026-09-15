@@ -1643,6 +1643,15 @@ body {
   letter-spacing: 0.02em;
 }
 
+.comandera-visto {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .ranking-pos {
   display: inline-flex;
   align-items: center;

@@ -319,6 +319,11 @@
     min-height: 44px;
   }
 
+  .comandera-visto {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
   .login-page {
     padding: 1rem;
     padding-top: max(1rem, env(safe-area-inset-top));

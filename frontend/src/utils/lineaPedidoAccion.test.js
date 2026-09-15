@@ -35,6 +35,20 @@ describe("errores de línea", () => {
     );
   });
 
+  it("error 409 de comandera pide refrescar y muestra el detalle", () => {
+    const err = {
+      response: {
+        status: 409,
+        data: { detail: "La línea cambió en otro dispositivo. Actualiza la comandera." },
+      },
+    };
+    assert.equal(debeRefrescarPedidoPorConflicto(err), true);
+    assert.equal(
+      formatApiError(err, "La comandera cambió. Se actualiza la lista."),
+      "La línea cambió en otro dispositivo. Actualiza la comandera."
+    );
+  });
+
   it("error 409 indica refrescar el pedido", () => {
     const err = {
       response: {

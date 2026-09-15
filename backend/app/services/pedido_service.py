@@ -737,11 +737,14 @@ def cobrar_pedido(
     origen_cobro: str | None = None,
 ):
     from app.utils.forma_pago import normalizar_forma_pago
+    from app.services.pedido_locks import lock_detalles_de_pedido, lock_pedido
 
     forma_pago = normalizar_forma_pago(forma_pago)
+    pedido = lock_pedido(db, pedido.id_pedido) or pedido
+    detalles_bloqueados = lock_detalles_de_pedido(db, pedido.id_pedido)
     if pedido.estado != "ABIERTO":
         raise DatosInvalidosException("El pedido ya fue cobrado o cancelado")
-    detalles_activos = [d for d in pedido.detalles if float(d.cantidad) > 0]
+    detalles_activos = [d for d in detalles_bloqueados if float(d.cantidad) > 0]
     if not detalles_activos:
         raise DatosInvalidosException("El pedido no tiene productos")
 

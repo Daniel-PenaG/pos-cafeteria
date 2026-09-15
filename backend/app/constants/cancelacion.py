@@ -25,7 +25,9 @@ MSG_ENVIADA = "El producto ya fue enviado a comandera. Registra una cancelación
 MSG_SIN_PERMISO = "No tienes permiso para cancelar productos enviados."
 MSG_COBRADO = "El pedido ya fue cobrado y no puede modificarse."
 MSG_STALE = "La cantidad cambió en otro dispositivo. Actualiza el pedido."
+MSG_COMANDA_STALE = "La línea cambió en otro dispositivo. Actualiza la comandera."
 MSG_NEGATIVA = "La cantidad no puede ser negativa"
+MSG_LINEA_CANCELADA = "La línea ya está cancelada"
 
 
 def aviso_cancelacion(cantidad_anterior: float, cantidad_nueva: float, cantidad_cancelada: float) -> tuple[str, str]:

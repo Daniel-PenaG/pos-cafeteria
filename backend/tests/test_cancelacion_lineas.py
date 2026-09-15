@@ -11,6 +11,7 @@ from app.constants.acciones import CANCELAR_PRODUCTO_EN_COMANDA
 from app.constants.cancelacion import MSG_COBRADO, MSG_ENVIADA, MSG_SIN_PERMISO, MSG_STALE
 from app.models.models import (
     DetallePedidoModel,
+    PedidoModel,
     UsuarioModel,
 )
 from app.services.cancelacion_service import cancelar_linea_enviada
@@ -478,3 +479,138 @@ def test_dos_sesiones_no_generan_cantidad_negativa(tmp_path):
     assert len(oks) >= 1, resultados
     verify.close()
     engine.dispose()
+
+
+MESA_AVISO_COBRO = 25
+MESA_AVISO_CANCEL = 26
+
+
+def test_aviso_permanece_despues_de_cobrar(client, auth_headers):
+    precio = _precio_producto(client, auth_headers)
+    _ensure_mesa(client, auth_headers, MESA_AVISO_COBRO)
+    add = client.post(
+        f"/pedidos/mesa/{MESA_AVISO_COBRO}/lineas",
+        headers=auth_headers,
+        json={"id_producto": 1, "cantidad": 2, "precio_unitario": precio, "extras": []},
+    )
+    pedido_id = add.json()["id_pedido"]
+    lid = _linea_id(add.json())
+    client.post(f"/pedidos/{pedido_id}/confirmar-comanda", headers=auth_headers)
+    cancel = client.post(
+        f"/pedidos/lineas/{lid}/cancelar",
+        headers=auth_headers,
+        json={"cantidad": 1, "motivo": "Producto duplicado", "cantidad_actual": 2},
+    )
+    assert cancel.status_code == 200, cancel.text
+    pend = client.get("/comandera/pendientes", headers=auth_headers).json()
+    avisos = [x for x in pend if x.get("tipo") == "CANCELACION" and x["id_detalle_pedido"] == lid]
+    assert avisos
+    assert avisos[0]["aviso_texto"] == "CANTIDAD CAMBIÓ DE 2 A 1"
+    cobro = client.post(
+        f"/pedidos/{pedido_id}/cobrar",
+        headers=auth_headers,
+        json={"forma_pago": "EFECTIVO", "origen": "VENTAS"},
+    )
+    assert cobro.status_code == 200, cobro.text
+    pend2 = client.get("/comandera/pendientes", headers=auth_headers).json()
+    avisos2 = [x for x in pend2 if x.get("id_cancelacion") == avisos[0]["id_cancelacion"]]
+    assert avisos2, pend2
+    assert avisos2[0]["cuenta_cobrada"] is True
+    assert avisos2[0]["numero_mesa"] == MESA_AVISO_COBRO
+    visto = client.post(
+        f"/comandera/cancelaciones/{avisos[0]['id_cancelacion']}/visto",
+        headers=auth_headers,
+    )
+    assert visto.status_code == 200
+    visto2 = client.post(
+        f"/comandera/cancelaciones/{avisos[0]['id_cancelacion']}/visto",
+        headers=auth_headers,
+    )
+    assert visto2.status_code == 200
+    assert visto2.json()["ya_atendida"] is True
+    assert visto2.json()["id_usuario_vista"] == visto.json()["id_usuario_vista"]
+    pend3 = client.get("/comandera/pendientes", headers=auth_headers).json()
+    assert not any(x.get("id_cancelacion") == avisos[0]["id_cancelacion"] for x in pend3)
+
+
+def test_aviso_para_llevar_tras_cobro(client, auth_headers):
+    precio = _precio_producto(client, auth_headers)
+    add = client.post(
+        "/pedidos/mesa/99/lineas?para_llevar=true",
+        headers=auth_headers,
+        json={
+            "id_producto": 1,
+            "cantidad": 2,
+            "precio_unitario": precio,
+            "extras": [],
+            "comentario": "aviso-ll-cobro",
+        },
+    )
+    assert add.status_code == 200, add.text
+    pedido_id = add.json()["id_pedido"]
+    lid = next(
+        l["id_detalle_pedido"]
+        for l in add.json()["lineas"]
+        if l.get("comentario") == "aviso-ll-cobro"
+    )
+    client.post(f"/pedidos/{pedido_id}/confirmar-comanda", headers=auth_headers)
+    client.post(
+        f"/pedidos/lineas/{lid}/cancelar",
+        headers=auth_headers,
+        json={"cantidad": 1, "motivo": "Producto duplicado", "cantidad_actual": 2},
+    )
+    cobro = client.post(
+        f"/pedidos/{pedido_id}/cobrar",
+        headers=auth_headers,
+        json={"forma_pago": "EFECTIVO", "origen": "VENTAS"},
+    )
+    assert cobro.status_code == 200, cobro.text
+    pend = client.get("/comandera/pendientes", headers=auth_headers).json()
+    avisos = [x for x in pend if x.get("tipo") == "CANCELACION" and x["id_detalle_pedido"] == lid]
+    assert avisos
+    assert avisos[0]["para_llevar"] is True
+    assert avisos[0]["cuenta_cobrada"] is True
+
+
+def test_aviso_si_pedido_cancelado(client, auth_headers):
+    precio = _precio_producto(client, auth_headers)
+    _ensure_mesa(client, auth_headers, MESA_AVISO_CANCEL)
+    add = _agregar_linea(client, auth_headers, MESA_AVISO_CANCEL, precio)
+    pedido_id = add.json()["id_pedido"]
+    lid = _linea_id(add.json())
+    client.post(f"/pedidos/{pedido_id}/confirmar-comanda", headers=auth_headers)
+    client.post(
+        f"/pedidos/lineas/{lid}/cancelar",
+        headers=auth_headers,
+        json={"cantidad": 1, "motivo": "Producto no disponible", "cantidad_actual": 1},
+    )
+    listo_cancelada = client.post(
+        f"/comandera/lineas/{lid}/listo",
+        headers=auth_headers,
+        json={"cantidad": 1},
+    )
+    assert listo_cancelada.status_code == 409
+    from app.database import get_db
+    from app.main import app
+
+    db_gen = app.dependency_overrides[get_db]()
+    db = next(db_gen)
+    try:
+        p = db.get(PedidoModel, pedido_id)
+        p.estado = "CANCELADO"
+        db.commit()
+    finally:
+        try:
+            next(db_gen)
+        except StopIteration:
+            pass
+    pend = client.get("/comandera/pendientes", headers=auth_headers).json()
+    avisos = [x for x in pend if x.get("tipo") == "CANCELACION" and x["id_detalle_pedido"] == lid]
+    assert avisos
+    assert avisos[0]["estado_pedido"] == "CANCELADO"
+
+
+def test_esquema_004_no_falla_en_silencio():
+    from app.database import verificar_esquema_cancelacion
+
+    verificar_esquema_cancelacion()

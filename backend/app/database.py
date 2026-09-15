@@ -1,5 +1,6 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
+import logging
 import os
 from dotenv import load_dotenv
 
@@ -649,10 +650,76 @@ def aplicar_migraciones_sqlite():
             # Algunas ALTER fallan si la columna ya existe (SQLite).
             snippet = " ".join(sql.split())[:80]
             lower = sql.lower()
+            es_004 = (
+                "pedido_cancelaciones" in lower
+                or "estado_linea" in lower
+                or "cantidad_cancelada" in lower
+                or "idx_cancelaciones_" in lower
+            )
+            if es_004:
+                msg = str(exc).lower()
+                if dialect == "sqlite" and "duplicate column" in msg:
+                    continue
+                logging.error(
+                    "Migración 004 de cancelación de líneas falló (%s). "
+                    "Aplica backend/migrations/004_cancelacion_lineas.up.sql. "
+                    "No se muestran credenciales.",
+                    type(exc).__name__,
+                )
+                raise RuntimeError(
+                    "Esquema de cancelación de líneas incompleto (migración 004). "
+                    "Detén el arranque, aplica 004_cancelacion_lineas.up.sql y vuelve a iniciar."
+                ) from None
             if any(k in lower for k in ("receta", "cierres", "modulos_json")):
                 print(f"[WARN] Migracion fallo: {snippet}... -> {exc}")
 
     normalizar_roles_usuarios()
+    verificar_esquema_cancelacion()
+
+
+def verificar_esquema_cancelacion() -> None:
+    """Falla el arranque si falta la tabla o columnas de la migración 004."""
+    insp = inspect(engine)
+    tablas = set(insp.get_table_names())
+    if "detalle_pedido" not in tablas:
+        return
+    faltantes = []
+    cols_det = {c["name"] for c in insp.get_columns("detalle_pedido")}
+    for col in ("estado_linea", "cantidad_cancelada"):
+        if col not in cols_det:
+            faltantes.append(f"detalle_pedido.{col}")
+    if "pedido_cancelaciones" not in tablas:
+        faltantes.append("tabla pedido_cancelaciones")
+    else:
+        cols_can = {c["name"] for c in insp.get_columns("pedido_cancelaciones")}
+        for col in (
+            "id_cancelacion",
+            "id_pedido",
+            "id_detalle_pedido",
+            "cantidad",
+            "cantidad_anterior",
+            "cantidad_nueva",
+            "motivo",
+            "estado_anterior",
+            "estado_nuevo",
+            "aviso",
+            "aviso_texto",
+            "id_usuario",
+            "fecha_hora",
+            "vista_comandera",
+        ):
+            if col not in cols_can:
+                faltantes.append(f"pedido_cancelaciones.{col}")
+    if faltantes:
+        logging.error(
+            "Esquema 004 incompleto: %s. Aplica backend/migrations/004_cancelacion_lineas.up.sql.",
+            ", ".join(faltantes),
+        )
+        raise RuntimeError(
+            "El esquema de cancelación de líneas está incompleto. "
+            "No se inicia el backend. Aplica la migración 004 y vuelve a arrancar. "
+            "No se muestran credenciales ni la URL de la base."
+        )
 
 
 def ensure_cierres_caja_table():

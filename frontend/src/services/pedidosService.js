@@ -107,10 +107,10 @@ export async function getComandaPendientes() {
   return res.data;
 }
 
-export async function marcarLineaListo(idDetalle, cantidad = 1) {
+export async function marcarLineaListo(idDetalle, cantidad = 1, extra = {}) {
   const res = await api.post(
     `/comandera/lineas/${idDetalle}/listo`,
-    { cantidad },
+    { cantidad, ...extra },
     { headers: getAuthHeader() }
   );
   return res.data;

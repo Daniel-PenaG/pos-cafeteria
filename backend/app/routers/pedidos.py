@@ -34,12 +34,11 @@ from app.services.pedido_service import (
     _parse_extras,
 )
 from app.services.cancelacion_service import (
-    _lock_detalle,
-    _lock_pedido,
     actualizar_linea_no_enviada,
     cancelar_linea_enviada,
     eliminar_linea_no_enviada,
 )
+from app.services.pedido_locks import lock_pedido_y_detalle
 from app.services.venta_service import MESA_PARA_LLEVAR
 from app.services.promocion_service import calcular_linea, es_promo_paquete, es_promo_ticket
 from app.models import ProductoModel
@@ -200,10 +199,9 @@ def actualizar_linea(
     db: Session = Depends(get_db),
     current: UsuarioModel = Depends(get_current_user),
 ):
-    detalle = _lock_detalle(db, id_detalle_pedido)
+    pedido, detalle = lock_pedido_y_detalle(db, id_detalle_pedido)
     if not detalle:
         raise RecursoNoEncontradoException("Línea no encontrada")
-    pedido = _lock_pedido(db, detalle.id_pedido)
     if not pedido:
         raise RecursoNoEncontradoException("Pedido no encontrado")
     exigir_modulo_pedido(current, bool(pedido.para_llevar))
