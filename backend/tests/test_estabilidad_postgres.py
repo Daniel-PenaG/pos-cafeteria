@@ -13,19 +13,22 @@ NO se conecta a producción. NO se aplica en el merge de esta revisión.
 from __future__ import annotations
 
 import os
+import random
 import threading
 import uuid
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
-from app.models.models import DetallePedidoModel, PedidoModel, PedidoOperacionModel
+from app.models.models import DetallePedidoModel, PedidoModel, PedidoOperacionModel, ProductoModel, UsuarioModel
 from app.schemas.pedido import PedidoLineaCreate
 from app.services.pedido_service import (
     agregar_linea_pedido_con_respuesta,
     obtener_pedido_abierto_mesa,
 )
+from tests.pg_test_guard import exigir_postgres_desechable
 from tests.promo_seed import seed_promo_catalog
 from tests.test_promociones_integracion import _linea
 
@@ -56,6 +59,7 @@ def _data(db, id_producto, operation_id):
 
 @pytest.fixture(scope="module")
 def pg_engine():
+    exigir_postgres_desechable(POSTGRES_TEST_URL)
     engine = create_engine(POSTGRES_TEST_URL, pool_pre_ping=True)
     from app.database import Base
 
@@ -76,18 +80,38 @@ def pg_engine():
 
 @pytest.fixture(scope="module")
 def pg_refs(pg_engine):
+    from tests.promo_seed import PromoSeed
+
     Session = sessionmaker(bind=pg_engine, autocommit=False, autoflush=False)
     db = Session()
-    refs = seed_promo_catalog(db)
-    db.commit()
+    try:
+        refs = seed_promo_catalog(db)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        refs = PromoSeed()
+        user = db.query(UsuarioModel).filter_by(usuario_login="cajero_test").first()
+        malteada = db.query(ProductoModel).filter_by(nombre="Malteada").first()
+        cafe = db.query(ProductoModel).filter_by(nombre="Cafe").first()
+        if not user or not malteada:
+            raise RuntimeError("Catálogo de prueba PostgreSQL incompleto")
+        refs.id_usuario = user.id_usuario
+        refs.id_malteada = malteada.id_producto
+        refs.id_cafe = cafe.id_producto if cafe else malteada.id_producto
+        db.commit()
     db.close()
     return refs, Session
 
 
+def _mesa() -> int:
+    return random.randint(20000, 29999)
+
+
 def test_postgres_misma_clave_concurrente(pg_refs):
     refs, Session = pg_refs
+    mesa = _mesa()
     setup = Session()
-    pedido = obtener_pedido_abierto_mesa(setup, 212, refs.id_usuario)
+    pedido = obtener_pedido_abierto_mesa(setup, mesa, refs.id_usuario)
     setup.commit()
     pedido_id = pedido.id_pedido
     setup.close()
@@ -122,7 +146,7 @@ def test_postgres_misma_clave_concurrente(pg_refs):
     ops = verify.query(PedidoOperacionModel).filter_by(operation_id=key).all()
     vacios = [
         p.id_pedido
-        for p in verify.query(PedidoModel).all()
+        for p in verify.query(PedidoModel).filter_by(numero_mesa=mesa, estado="ABIERTO").all()
         if verify.query(DetallePedidoModel).filter_by(id_pedido=p.id_pedido).count() == 0
     ]
     verify.close()
@@ -138,7 +162,7 @@ def test_postgres_misma_clave_concurrente(pg_refs):
 
 def test_postgres_dos_sesiones_primer_producto(pg_refs):
     refs, Session = pg_refs
-    mesa = 231
+    mesa = _mesa()
     errores = []
     respuestas = []
     barrier = threading.Barrier(2)

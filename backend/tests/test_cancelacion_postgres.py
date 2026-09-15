@@ -38,11 +38,34 @@ from app.services.pedido_service import (
     cobrar_pedido,
     obtener_pedido_abierto_mesa,
 )
+from tests.pg_test_guard import exigir_postgres_desechable
 from tests.promo_seed import PromoSeed, seed_promo_catalog
 from tests.test_estabilidad_idempotencia import _data
 
 POSTGRES_TEST_URL = os.getenv("POSTGRES_TEST_URL", "").strip()
 MIGRATIONS = Path(__file__).resolve().parents[1] / "migrations"
+COLS_004_DETALLE = ("estado_linea", "cantidad_cancelada")
+COLS_004_CANCELACIONES = (
+    "id_cancelacion",
+    "id_pedido",
+    "id_detalle_pedido",
+    "cantidad",
+    "cantidad_anterior",
+    "cantidad_nueva",
+    "motivo",
+    "estado_anterior",
+    "estado_nuevo",
+    "aviso",
+    "aviso_texto",
+    "id_usuario",
+    "fecha_hora",
+    "vista_comandera",
+)
+IDX_004 = (
+    "idx_cancelaciones_pedido",
+    "idx_cancelaciones_detalle",
+    "idx_cancelaciones_vista",
+)
 
 pytestmark = pytest.mark.skipif(
     not POSTGRES_TEST_URL,
@@ -76,6 +99,82 @@ def _apply_sql(engine, path: Path) -> None:
     with engine.begin() as conn:
         for stmt in _sql_statements(path):
             conn.execute(text(stmt))
+
+
+def _columnas(conn, tabla: str) -> set[str]:
+    return {
+        r[0]
+        for r in conn.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = :t"
+            ),
+            {"t": tabla},
+        )
+    }
+
+
+def _tablas(conn) -> set[str]:
+    return {
+        r[0]
+        for r in conn.execute(
+            text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+        )
+    }
+
+
+def _indices(conn, tabla: str) -> set[str]:
+    return {
+        r[0]
+        for r in conn.execute(
+            text(
+                "SELECT indexname FROM pg_indexes "
+                "WHERE schemaname = 'public' AND tablename = :t"
+            ),
+            {"t": tabla},
+        )
+    }
+
+
+def _dejar_esquema_pre_004(engine) -> None:
+    """Quita artefactos 004 para simular una base que solo llegó hasta 003."""
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS pedido_cancelaciones CASCADE"))
+        conn.execute(
+            text("ALTER TABLE detalle_pedido DROP COLUMN IF EXISTS estado_linea")
+        )
+        conn.execute(
+            text(
+                "ALTER TABLE detalle_pedido DROP COLUMN IF EXISTS cantidad_cancelada"
+            )
+        )
+
+
+def _assert_pre_004(engine) -> None:
+    with engine.connect() as conn:
+        tablas = _tablas(conn)
+        cols = _columnas(conn, "detalle_pedido")
+        assert "pedido_cancelaciones" not in tablas
+        assert "estado_linea" not in cols
+        assert "cantidad_cancelada" not in cols
+
+
+def _assert_post_004(engine) -> None:
+    with engine.connect() as conn:
+        cols = _columnas(conn, "detalle_pedido")
+        for col in COLS_004_DETALLE:
+            assert col in cols, col
+        assert "pedido_cancelaciones" in _tablas(conn)
+        can_cols = _columnas(conn, "pedido_cancelaciones")
+        for col in COLS_004_CANCELACIONES:
+            assert col in can_cols, col
+        idxs = _indices(conn, "pedido_cancelaciones")
+        for idx in IDX_004:
+            assert idx in idxs, idx
+
+
+def _aplicar_004(engine) -> None:
+    _apply_sql(engine, MIGRATIONS / "004_cancelacion_lineas.up.sql")
 
 
 def _grant_cancel(db, id_usuario: int) -> None:
@@ -113,6 +212,7 @@ def _mesa() -> int:
 
 @pytest.fixture(scope="module")
 def pg_engine():
+    exigir_postgres_desechable(POSTGRES_TEST_URL)
     engine = create_engine(POSTGRES_TEST_URL, pool_pre_ping=True)
 
     @event.listens_for(engine, "connect")
@@ -140,6 +240,7 @@ def pg_engine():
 
 @pytest.fixture(scope="module")
 def pg_refs(pg_engine):
+    _aplicar_004(pg_engine)
     Session = sessionmaker(bind=pg_engine, autocommit=False, autoflush=False)
     db = Session()
     try:
@@ -152,6 +253,13 @@ def pg_refs(pg_engine):
         db.commit()
     db.close()
     return refs, Session
+
+
+@pytest.fixture
+def pg_ready(pg_engine, pg_refs):
+    """Garantiza esquema 004 antes de cada prueba de concurrencia."""
+    _aplicar_004(pg_engine)
+    return pg_refs
 
 
 def _linea_en_comanda(Session, refs, mesa: int, cantidad: float = 2, para_llevar: bool = False):
@@ -214,100 +322,63 @@ def _permite_abierto(pedido: PedidoModel) -> bool:
     return pedido is not None and pedido.estado == "ABIERTO"
 
 
-def test_migracion_004_se_puede_aplicar_dos_veces(pg_engine, pg_refs):
-    _apply_sql(pg_engine, MIGRATIONS / "002_pedido_operaciones.up.sql")
-    _apply_sql(pg_engine, MIGRATIONS / "003_usuarios_permisos_auditoria.up.sql")
-    _apply_sql(pg_engine, MIGRATIONS / "004_cancelacion_lineas.up.sql")
-    _apply_sql(pg_engine, MIGRATIONS / "004_cancelacion_lineas.up.sql")
-    with pg_engine.connect() as conn:
-        det_cols = {
-            r[0]
-            for r in conn.execute(
-                text(
-                    "SELECT column_name FROM information_schema.columns "
-                    "WHERE table_schema = 'public' AND table_name = 'detalle_pedido'"
-                )
-            )
-        }
-        assert "estado_linea" in det_cols
-        assert "cantidad_cancelada" in det_cols
-        tables = {
-            r[0]
-            for r in conn.execute(
-                text(
-                    "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
-                )
-            )
-        }
-        assert "pedido_cancelaciones" in tables
-        can_cols = {
-            r[0]
-            for r in conn.execute(
-                text(
-                    "SELECT column_name FROM information_schema.columns "
-                    "WHERE table_schema = 'public' AND table_name = 'pedido_cancelaciones'"
-                )
-            )
-        }
-        for col in (
-            "id_cancelacion",
-            "id_pedido",
-            "id_detalle_pedido",
-            "cantidad",
-            "cantidad_anterior",
-            "cantidad_nueva",
-            "motivo",
-            "estado_anterior",
-            "estado_nuevo",
-            "aviso",
-            "aviso_texto",
-            "id_usuario",
-            "fecha_hora",
-            "vista_comandera",
-        ):
-            assert col in can_cols, col
-        idxs = {
-            r[0]
-            for r in conn.execute(
-                text(
-                    "SELECT indexname FROM pg_indexes "
-                    "WHERE schemaname = 'public' AND tablename = 'pedido_cancelaciones'"
-                )
-            )
-        }
-        assert "idx_cancelaciones_pedido" in idxs
-        assert "idx_cancelaciones_detalle" in idxs
-        assert "idx_cancelaciones_vista" in idxs
-
-    refs, Session = pg_refs
-    pedido_id, id_detalle = _linea_en_comanda(Session, refs, _mesa(), cantidad=2)
-    db = Session()
+def test_migracion_004_se_puede_aplicar_dos_veces(pg_engine):
+    """Reproduce una base pre-004 y aplica el UP dos veces. Destructiva."""
+    exigir_postgres_desechable(POSTGRES_TEST_URL)
     try:
-        current = db.get(UsuarioModel, refs.id_usuario)
-        cancelar_linea_enviada(
-            db,
-            id_detalle=id_detalle,
-            current=current,
-            cantidad=1,
-            motivo="Producto duplicado",
-            cantidad_actual=2,
-        )
-        avisos = (
-            db.query(PedidoCancelacionModel)
-            .filter_by(id_detalle_pedido=id_detalle)
-            .all()
-        )
-        assert len(avisos) == 1
-        det = db.get(DetallePedidoModel, id_detalle)
-        _invariantes(det)
-        pedido = db.get(PedidoModel, pedido_id)
-        assert pedido is not None
+        _dejar_esquema_pre_004(pg_engine)
+        _assert_pre_004(pg_engine)
+
+        _aplicar_004(pg_engine)
+        _assert_post_004(pg_engine)
+
+        _aplicar_004(pg_engine)
+        _assert_post_004(pg_engine)
+
+        Session = sessionmaker(bind=pg_engine, autocommit=False, autoflush=False)
+        db = Session()
+        try:
+            try:
+                refs = seed_promo_catalog(db)
+                _grant_cancel(db, refs.id_usuario)
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                refs = _load_refs(db)
+                db.commit()
+        finally:
+            db.close()
+
+        pedido_id, id_detalle = _linea_en_comanda(Session, refs, _mesa(), cantidad=2)
+        db = Session()
+        try:
+            current = db.get(UsuarioModel, refs.id_usuario)
+            cancelar_linea_enviada(
+                db,
+                id_detalle=id_detalle,
+                current=current,
+                cantidad=1,
+                motivo="Producto duplicado",
+                cantidad_actual=2,
+            )
+            avisos = (
+                db.query(PedidoCancelacionModel)
+                .filter_by(id_detalle_pedido=id_detalle)
+                .all()
+            )
+            assert len(avisos) == 1
+            det = db.get(DetallePedidoModel, id_detalle)
+            _invariantes(det)
+            pedido = db.get(PedidoModel, pedido_id)
+            assert pedido is not None
+        finally:
+            db.close()
     finally:
-        db.close()
+        _aplicar_004(pg_engine)
 
 
-def test_cancelacion_total_y_marcar_listo_simultaneos(pg_refs):
-    refs, Session = pg_refs
+def test_cancelacion_total_y_marcar_listo_simultaneos(pg_ready):
+    refs, Session = pg_ready
     pedido_id, id_detalle = _linea_en_comanda(Session, refs, _mesa(), cantidad=2)
 
     def cancelar():
@@ -373,8 +444,8 @@ def test_cancelacion_total_y_marcar_listo_simultaneos(pg_refs):
         db.close()
 
 
-def test_cancelacion_parcial_y_marcar_listo_simultaneos(pg_refs):
-    refs, Session = pg_refs
+def test_cancelacion_parcial_y_marcar_listo_simultaneos(pg_ready):
+    refs, Session = pg_ready
     _, id_detalle = _linea_en_comanda(Session, refs, _mesa(), cantidad=2)
 
     def cancelar():
@@ -424,8 +495,8 @@ def test_cancelacion_parcial_y_marcar_listo_simultaneos(pg_refs):
         db.close()
 
 
-def test_dos_cancelaciones_misma_cantidad_actual(pg_refs):
-    refs, Session = pg_refs
+def test_dos_cancelaciones_misma_cantidad_actual(pg_ready):
+    refs, Session = pg_ready
     _, id_detalle = _linea_en_comanda(Session, refs, _mesa(), cantidad=2)
 
     def cancelar():
@@ -464,8 +535,8 @@ def test_dos_cancelaciones_misma_cantidad_actual(pg_refs):
         db.close()
 
 
-def test_dos_marcar_listo_simultaneos(pg_refs):
-    refs, Session = pg_refs
+def test_dos_marcar_listo_simultaneos(pg_ready):
+    refs, Session = pg_ready
     _, id_detalle = _linea_en_comanda(Session, refs, _mesa(), cantidad=2)
 
     def listo():
@@ -498,8 +569,8 @@ def test_dos_marcar_listo_simultaneos(pg_refs):
         db.close()
 
 
-def test_cobro_simultaneo_con_cancelacion(pg_refs):
-    refs, Session = pg_refs
+def test_cobro_simultaneo_con_cancelacion(pg_ready):
+    refs, Session = pg_ready
     pedido_id, id_detalle = _linea_en_comanda(Session, refs, _mesa(), cantidad=2)
 
     def cancelar():
