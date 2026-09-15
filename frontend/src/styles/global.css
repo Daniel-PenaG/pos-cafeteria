@@ -1603,6 +1603,46 @@ body {
   color: #856404;
 }
 
+.badge--danger {
+  background: #fde8e8;
+  color: #8a1f1f;
+  font-weight: 700;
+}
+
+.cart-item--cancelada {
+  opacity: 0.7;
+  text-decoration: line-through;
+}
+
+.cart-item--cancelada strong {
+  text-decoration: line-through;
+}
+
+.modal-box--cancel {
+  max-width: 440px;
+}
+
+.modal-box--cancel .extra-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.4rem;
+}
+
+.comandera-item--aviso {
+  background: #fde8e8;
+  border: 2px solid #c0392b;
+  border-radius: var(--radius-sm);
+  padding: 0.75rem;
+  margin: 0.35rem 0;
+}
+
+.comandera-aviso {
+  display: inline-block;
+  margin: 0.35rem 0;
+  letter-spacing: 0.02em;
+}
+
 .ranking-pos {
   display: inline-flex;
   align-items: center;

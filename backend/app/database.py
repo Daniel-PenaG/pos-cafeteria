@@ -572,18 +572,74 @@ def aplicar_migraciones_sqlite():
         )""",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_login_bloqueos_usuario_ip ON login_bloqueos (usuario_login, ip)",
     ]
+    # Misma 004 que backend/migrations/004_cancelacion_lineas.up.sql
+    migraciones_cancelacion_pg = [
+        "ALTER TABLE detalle_pedido ADD COLUMN IF NOT EXISTS estado_linea VARCHAR(20) NOT NULL DEFAULT 'ACTIVA'",
+        "ALTER TABLE detalle_pedido ADD COLUMN IF NOT EXISTS cantidad_cancelada NUMERIC(10, 2) NOT NULL DEFAULT 0",
+        "UPDATE detalle_pedido SET estado_linea = 'ACTIVA' WHERE estado_linea IS NULL",
+        "UPDATE detalle_pedido SET cantidad_cancelada = 0 WHERE cantidad_cancelada IS NULL",
+        """CREATE TABLE IF NOT EXISTS pedido_cancelaciones (
+            id_cancelacion SERIAL PRIMARY KEY,
+            id_pedido INTEGER NOT NULL REFERENCES pedidos(id_pedido),
+            id_detalle_pedido INTEGER NOT NULL REFERENCES detalle_pedido(id_detalle_pedido),
+            cantidad NUMERIC(10, 2) NOT NULL,
+            cantidad_anterior NUMERIC(10, 2) NOT NULL,
+            cantidad_nueva NUMERIC(10, 2) NOT NULL,
+            motivo VARCHAR(80) NOT NULL,
+            motivo_detalle VARCHAR(300),
+            estado_anterior VARCHAR(20) NOT NULL,
+            estado_nuevo VARCHAR(20) NOT NULL,
+            aviso VARCHAR(40) NOT NULL,
+            aviso_texto VARCHAR(80) NOT NULL,
+            id_usuario INTEGER NOT NULL REFERENCES usuarios(id_usuario),
+            fecha_hora TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            vista_comandera BOOLEAN NOT NULL DEFAULT FALSE,
+            fecha_vista TIMESTAMP,
+            id_usuario_vista INTEGER REFERENCES usuarios(id_usuario)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_cancelaciones_pedido ON pedido_cancelaciones (id_pedido)",
+        "CREATE INDEX IF NOT EXISTS idx_cancelaciones_detalle ON pedido_cancelaciones (id_detalle_pedido)",
+        "CREATE INDEX IF NOT EXISTS idx_cancelaciones_vista ON pedido_cancelaciones (vista_comandera)",
+    ]
+    migraciones_cancelacion_sqlite = [
+        "ALTER TABLE detalle_pedido ADD COLUMN estado_linea VARCHAR(20) DEFAULT 'ACTIVA'",
+        "ALTER TABLE detalle_pedido ADD COLUMN cantidad_cancelada NUMERIC(10, 2) DEFAULT 0",
+        """CREATE TABLE IF NOT EXISTS pedido_cancelaciones (
+            id_cancelacion INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_pedido INTEGER NOT NULL REFERENCES pedidos(id_pedido),
+            id_detalle_pedido INTEGER NOT NULL REFERENCES detalle_pedido(id_detalle_pedido),
+            cantidad NUMERIC(10, 2) NOT NULL,
+            cantidad_anterior NUMERIC(10, 2) NOT NULL,
+            cantidad_nueva NUMERIC(10, 2) NOT NULL,
+            motivo VARCHAR(80) NOT NULL,
+            motivo_detalle VARCHAR(300),
+            estado_anterior VARCHAR(20) NOT NULL,
+            estado_nuevo VARCHAR(20) NOT NULL,
+            aviso VARCHAR(40) NOT NULL,
+            aviso_texto VARCHAR(80) NOT NULL,
+            id_usuario INTEGER NOT NULL REFERENCES usuarios(id_usuario),
+            fecha_hora TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            vista_comandera INTEGER NOT NULL DEFAULT 0,
+            fecha_vista TIMESTAMP,
+            id_usuario_vista INTEGER REFERENCES usuarios(id_usuario)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_cancelaciones_pedido ON pedido_cancelaciones (id_pedido)",
+        "CREATE INDEX IF NOT EXISTS idx_cancelaciones_detalle ON pedido_cancelaciones (id_detalle_pedido)",
+    ]
     migraciones = (
         migraciones_postgres + migraciones_sqlite_extras + migraciones_promos
         + migraciones_fidelidad_pg + migraciones_pedidos_pg + migraciones_comanda_tiempos_pg
         + migraciones_recetas_pg + migraciones_extra_tipos_pg + migraciones_para_llevar_pg
         + migraciones_mesas_pg + migraciones_cierres_modulos_pg + migraciones_operaciones_pg
         + migraciones_seguridad_pg
+        + migraciones_cancelacion_pg
         if dialect == "postgresql"
         else migraciones_sqlite + migraciones_sqlite_extras + migraciones_sqlite_promos
         + migraciones_fidelidad_sqlite + migraciones_pedidos_sqlite + migraciones_comanda_tiempos_sqlite
         + migraciones_extra_tipos_sqlite + migraciones_para_llevar_sqlite
         + migraciones_mesas_sqlite + migraciones_cierres_modulos_sqlite + migraciones_operaciones_sqlite
         + migraciones_seguridad_sqlite
+        + migraciones_cancelacion_sqlite
     )
     for sql in migraciones:
         try:

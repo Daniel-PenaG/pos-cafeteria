@@ -37,6 +37,8 @@ class DetallePedidoLinea(BaseModel):
     fecha_envio_comanda: Optional[str] = None
     fecha_listo_comanda: Optional[str] = None
     segundos_preparacion: Optional[int] = None
+    estado_linea: str = "ACTIVA"
+    cantidad_cancelada: float = 0
 
 
 class Pedido(BaseModel):
@@ -85,6 +87,14 @@ class PedidoLineaCreate(BaseModel):
 class PedidoLineaUpdate(BaseModel):
     cantidad: Optional[float] = None
     comentario: Optional[str] = Field(None, max_length=300)
+    cantidad_actual: Optional[float] = None
+
+
+class PedidoLineaCancelar(BaseModel):
+    cantidad: float = Field(..., gt=0)
+    motivo: str
+    motivo_detalle: Optional[str] = Field(None, max_length=300)
+    cantidad_actual: Optional[float] = None
 
 
 class PedidoClienteUpdate(BaseModel):
@@ -119,6 +129,13 @@ class ComandaLinea(BaseModel):
     comentario: Optional[str] = None
     fecha_envio_comanda: Optional[str] = None
     segundos_en_preparacion: Optional[int] = None
+    tipo: str = "PENDIENTE"
+    aviso: Optional[str] = None
+    aviso_texto: Optional[str] = None
+    cantidad_anterior: Optional[float] = None
+    cantidad_nueva: Optional[float] = None
+    id_cancelacion: Optional[int] = None
+    vista_comandera: bool = False
 
 
 class ComandaMarcarListo(BaseModel):

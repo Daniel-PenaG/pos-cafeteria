@@ -29,8 +29,9 @@ import {
   previewPuntos,
 } from "../services/clientesService";
 import { useAuthStore } from "../store/authStore";
-import { isAdmin } from "../config/permissions";
+import { isAdmin, canCancelarProductoEnComanda } from "../config/permissions";
 import PageHeader from "../components/PageHeader";
+import CancelacionLineaModal from "../components/CancelacionLineaModal";
 import QrCodeDisplay from "../components/QrCodeDisplay";
 import QrScannerModal from "../components/QrScannerModal";
 import { parseCodigoFidelidad } from "../utils/fidelidadQr";
@@ -56,12 +57,21 @@ import {
 } from "react-icons/hi2";
 import {
   createIntentStore,
+  createProductAddLock,
   fingerprintCombo,
   fingerprintLinea,
   shouldKeepPendingKey,
   withIntentRetry,
 } from "../utils/operationIntent";
 import { puedeAgregarRapido } from "../utils/agregadoRapido";
+import { formatApiError } from "../utils/apiError";
+import {
+  accionQuitarLinea,
+  debeRefrescarPedidoPorConflicto,
+  esLineaCancelada,
+  lineasActivas,
+  requiereCancelacionEnviada,
+} from "../utils/lineaPedidoAccion";
 
 const MESA_PARA_LLEVAR = 99;
 
@@ -121,10 +131,11 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [calculoInicialModal, setCalculoInicialModal] = useState(null);
 
   const calcRequestRef = useRef(0);
-  const contextoAbortRef = useRef(null);
-  const addLockRef = useRef(false);
+  const productLockRef = useRef(createProductAddLock());
   const intentStoreRef = useRef(createIntentStore());
-  const [productoAgregandoId, setProductoAgregandoId] = useState(null);
+  const [agregandoIds, setAgregandoIds] = useState(() => new Set());
+  const [lineaCancelar, setLineaCancelar] = useState(null);
+  const [quitandoId, setQuitandoId] = useState(null);
   const [comentarioEdit, setComentarioEdit] = useState({});
 
   const usuario = useAuthStore((s) => s.user);
@@ -132,11 +143,12 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [searchParams] = useSearchParams();
 
   const lineasPedido = pedido?.lineas;
-  const carrito = lineasPedido ?? [];
+  const carrito = useMemo(() => lineasPedido ?? [], [lineasPedido]);
+  const carritoActivo = useMemo(() => lineasActivas(carrito), [carrito]);
 
   const total = useMemo(
-    () => (lineasPedido ?? []).reduce((acc, item) => acc + item.cantidad * item.precio_unitario, 0),
-    [lineasPedido]
+    () => carritoActivo.reduce((acc, item) => acc + item.cantidad * item.precio_unitario, 0),
+    [carritoActivo]
   );
   const subtotalNormal = pedido?.subtotal_normal;
   const descuentoPromos = pedido?.descuento_promociones;
@@ -158,7 +170,10 @@ export default function Ventas({ modoParaLlevar = false }) {
     (montoRecibido === "" || isNaN(montoRecibidoNum) || montoRecibidoNum < total);
 
   const lineasPendientesConfirmar = useMemo(
-    () => (lineasPedido ?? []).filter((item) => !item.en_comanda),
+    () =>
+      (lineasPedido ?? []).filter(
+        (item) => !item.en_comanda && !esLineaCancelada(item)
+      ),
     [lineasPedido]
   );
 
@@ -504,7 +519,7 @@ export default function Ventas({ modoParaLlevar = false }) {
   };
 
   const handleCerrarCuenta = async () => {
-    if (!pedido?.id_pedido || carrito.length === 0) return;
+    if (!pedido?.id_pedido || carritoActivo.length === 0) return;
     if (imprimiendoPrecuenta || loading || showCobroModal) return;
 
     if (lineasPendientesConfirmar.length > 0) {
@@ -614,9 +629,6 @@ export default function Ventas({ modoParaLlevar = false }) {
       alert(modoParaLlevar ? "Espera a que cargue el pedido" : "Primero selecciona el número de mesa");
       return;
     }
-    if (contextoAbortRef.current) {
-      contextoAbortRef.current.abort();
-    }
     setProductoModal(producto);
     setExtrasSeleccionados([]);
     setExtrasModal([]);
@@ -658,16 +670,14 @@ export default function Ventas({ modoParaLlevar = false }) {
       return;
     }
     if (!usuario?.id_usuario) return;
-    if (addLockRef.current || productoAgregandoId === producto.id_producto || guardandoLinea) return;
-    addLockRef.current = true;
+    if (!productLockRef.current.tryBegin(producto.id_producto)) return;
 
-    if (contextoAbortRef.current) {
-      contextoAbortRef.current.abort();
-    }
     const ac = new AbortController();
-    contextoAbortRef.current = ac;
-
-    setProductoAgregandoId(producto.id_producto);
+    setAgregandoIds((prev) => {
+      const next = new Set(prev);
+      next.add(producto.id_producto);
+      return next;
+    });
 
     try {
       const ctx = await getProductoContexto(producto.id_producto, { signal: ac.signal });
@@ -688,13 +698,10 @@ export default function Ventas({ modoParaLlevar = false }) {
       }
 
       if (puedeAgregarRapido({ ...ctx, extras, promociones: promos, paquetes })) {
-        setGuardandoLinea(true);
         try {
           await agregarLineaConCalculo(producto, ctx.calculo_inicial);
         } catch (err) {
-          alert(err.response?.data?.detail || "Error al agregar al pedido");
-        } finally {
-          setGuardandoLinea(false);
+          alert(formatApiError(err, "Error al agregar al pedido"));
         }
         return;
       }
@@ -713,12 +720,14 @@ export default function Ventas({ modoParaLlevar = false }) {
     } catch (err) {
       if (err?.code === "ERR_CANCELED" || ac.signal.aborted) return;
       console.error("Contexto producto:", err.response?.status, err.response?.data?.detail);
-      alert("Error al cargar opciones del producto");
+      alert(formatApiError(err, "Error al cargar opciones del producto"));
     } finally {
-      addLockRef.current = false;
-      if (!ac.signal.aborted) {
-        setProductoAgregandoId(null);
-      }
+      productLockRef.current.end(producto.id_producto);
+      setAgregandoIds((prev) => {
+        const next = new Set(prev);
+        next.delete(producto.id_producto);
+        return next;
+      });
     }
   };
 
@@ -767,7 +776,7 @@ export default function Ventas({ modoParaLlevar = false }) {
         if (!shouldKeepPendingKey(err)) {
           store.completeIntent(fingerprint);
         }
-        alert(err.response?.data?.detail || "Error al agregar combo");
+        alert(formatApiError(err, "Error al agregar combo"));
         abrirModalProducto(producto, { promoModo: "none" });
       } finally {
         setGuardandoLinea(false);
@@ -823,7 +832,7 @@ export default function Ventas({ modoParaLlevar = false }) {
         comentarioModal
       );
     } catch (err) {
-      alert(err.response?.data?.detail || "Error al agregar al pedido");
+      alert(formatApiError(err, "Error al agregar al pedido"));
       return;
     } finally {
       setGuardandoLinea(false);
@@ -847,13 +856,25 @@ export default function Ventas({ modoParaLlevar = false }) {
 
     const linea = carrito.find((item) => item.id_detalle_pedido === idDetalle);
     if (linea && linea.cantidad === cant) return true;
+    if (linea && requiereCancelacionEnviada(linea) && cant < Number(linea.cantidad)) {
+      setLineaCancelar(linea);
+      return false;
+    }
 
     try {
-      await actualizarLineaPedido(idDetalle, { cantidad: cant });
+      await actualizarLineaPedido(idDetalle, {
+        cantidad: cant,
+        cantidad_actual: linea?.cantidad,
+      });
       await cargarPedidoMesa(numeroMesa, modoParaLlevar);
       return true;
     } catch (err) {
-      alert(err.response?.data?.detail || "Error al actualizar cantidad");
+      if (debeRefrescarPedidoPorConflicto(err) && numeroMesa) {
+        alert(formatApiError(err, "Actualiza el pedido"));
+        await cargarPedidoMesa(numeroMesa, modoParaLlevar);
+        return false;
+      }
+      alert(formatApiError(err, "Error al actualizar cantidad"));
       return false;
     }
   };
@@ -901,18 +922,57 @@ export default function Ventas({ modoParaLlevar = false }) {
       await actualizarLineaPedido(idDetalle, { comentario: nuevo });
       await cargarPedidoMesa(numeroMesa, modoParaLlevar);
     } catch (err) {
-      alert(err.response?.data?.detail || "Error al actualizar comentario");
+      alert(formatApiError(err, "Error al actualizar comentario"));
     }
   };
 
+  const aplicarPedidoServidor = (pedidoActualizado) => {
+    if (!pedidoActualizado) return;
+    setPedido(pedidoActualizado);
+    setCantidadEdit({});
+  };
+
   const eliminarDelCarrito = async (idDetalle) => {
-    if (!numeroMesa) return;
+    if (!numeroMesa || quitandoId === idDetalle) return;
+    const linea = carrito.find((item) => item.id_detalle_pedido === idDetalle);
+    const accion = accionQuitarLinea(linea);
+    if (accion === "ninguna") return;
+    if (accion === "cancelar_enviada") {
+      if (!canCancelarProductoEnComanda(usuario)) {
+        alert("No tienes permiso para cancelar productos enviados.");
+        return;
+      }
+      setLineaCancelar(linea);
+      return;
+    }
+    setQuitandoId(idDetalle);
     try {
       await eliminarLineaPedido(idDetalle);
       await cargarPedidoMesa(numeroMesa, modoParaLlevar);
     } catch (err) {
-      alert(err.response?.data?.detail || "Error al eliminar línea");
+      if (debeRefrescarPedidoPorConflicto(err)) {
+        alert(formatApiError(err, "Actualiza el pedido"));
+        await cargarPedidoMesa(numeroMesa, modoParaLlevar);
+        return;
+      }
+      alert(formatApiError(err, "Error al eliminar línea"));
+    } finally {
+      setQuitandoId(null);
     }
+  };
+
+  const onCancelacionOk = async (pedidoActualizado, meta) => {
+    setLineaCancelar(null);
+    if (meta?.stale) {
+      alert(meta.message);
+      await cargarPedidoMesa(numeroMesa, modoParaLlevar);
+      return;
+    }
+    if (pedidoActualizado) {
+      aplicarPedidoServidor(pedidoActualizado);
+      return;
+    }
+    await cargarPedidoMesa(numeroMesa, modoParaLlevar);
   };
 
   const confirmarPedidoComanda = async () => {
@@ -932,7 +992,7 @@ export default function Ventas({ modoParaLlevar = false }) {
       );
       return true;
     } catch (err) {
-      alert(err.response?.data?.detail || "Error al confirmar pedido");
+      alert(formatApiError(err, "Error al confirmar pedido"));
       return false;
     } finally {
       setLoading(false);
@@ -1201,14 +1261,13 @@ export default function Ventas({ modoParaLlevar = false }) {
                                 onClick={() => handleProductoClick(p)}
                                 disabled={
                                   !ventasHabilitadas ||
-                                  productoAgregandoId === p.id_producto ||
-                                  guardandoLinea
+                                  agregandoIds.has(p.id_producto)
                                 }
                               >
                                 <span className="ventas-producto-item__main">
                                   <span className="ventas-producto-item__dot" aria-hidden />
                                   <span className="ventas-producto-item__nombre">
-                                    {productoAgregandoId === p.id_producto ? "Agregando…" : p.nombre}
+                                    {agregandoIds.has(p.id_producto) ? "Agregando…" : p.nombre}
                                   </span>
                                 </span>
                                 <span className="ventas-producto-item__precio">
@@ -1219,7 +1278,7 @@ export default function Ventas({ modoParaLlevar = false }) {
                                 type="button"
                                 className="ventas-producto-item__personalizar"
                                 onClick={(e) => handlePersonalizar(p, e)}
-                                disabled={!ventasHabilitadas || guardandoLinea}
+                                disabled={!ventasHabilitadas || agregandoIds.has(p.id_producto)}
                                 aria-label={`Personalizar ${p.nombre}`}
                                 title="Cantidad y comentario"
                               >
@@ -1252,8 +1311,14 @@ export default function Ventas({ modoParaLlevar = false }) {
             <p className="empty-state">Sin productos en el pedido</p>
           ) : (
             <div className="cart-panel__items">
-              {carrito.map((item) => (
-                <div key={item.id_detalle_pedido} className="cart-item">
+              {carrito.map((item) => {
+                const cancelada = esLineaCancelada(item);
+                const enviada = requiereCancelacionEnviada(item);
+                return (
+                <div
+                  key={item.id_detalle_pedido}
+                  className={`cart-item${cancelada ? " cart-item--cancelada" : ""}`}
+                >
                   <div style={{ flex: 1 }}>
                     <strong>{item.nombre_producto}</strong>
                     {item.nombre_promocion && (
@@ -1261,17 +1326,22 @@ export default function Ventas({ modoParaLlevar = false }) {
                         {item.nombre_promocion}
                       </span>
                     )}
-                    {!item.en_comanda && !modoParaLlevar && (
+                    {cancelada && (
+                      <span className="badge badge--danger" style={{ marginLeft: "0.35rem" }}>
+                        CANCELADO
+                      </span>
+                    )}
+                    {!cancelada && !item.en_comanda && !modoParaLlevar && (
                       <span className="badge badge--pending" style={{ marginLeft: "0.35rem" }}>
                         sin confirmar
                       </span>
                     )}
-                    {item.cantidad_pendiente > 0 && item.en_comanda && (
+                    {!cancelada && item.cantidad_pendiente > 0 && item.en_comanda && (
                       <span className="badge badge--kitchen" style={{ marginLeft: "0.35rem" }}>
                         en comanda
                       </span>
                     )}
-                    {item.en_comanda && item.cantidad_pendiente > 0 && item.fecha_envio_comanda && (
+                    {item.en_comanda && item.cantidad_pendiente > 0 && item.fecha_envio_comanda && !cancelada && (
                       <span style={{ marginLeft: "0.35rem" }}>
                         <ElapsedTimer since={item.fecha_envio_comanda} />
                       </span>
@@ -1289,7 +1359,7 @@ export default function Ventas({ modoParaLlevar = false }) {
                         ))}
                       </ul>
                     )}
-                    {comentarioEdit[item.id_detalle_pedido] !== undefined ? (
+                    {!cancelada && comentarioEdit[item.id_detalle_pedido] !== undefined ? (
                       <div className="cart-item__comentario-edit">
                         <textarea
                           className="input"
@@ -1309,6 +1379,7 @@ export default function Ventas({ modoParaLlevar = false }) {
                     ) : (
                       <p className="cart-item__comentario">
                         {item.comentario ? `📝 ${item.comentario}` : (
+                          !cancelada && (
                           <button
                             type="button"
                             className="btn btn--ghost btn--sm cart-item__nota-btn"
@@ -1322,8 +1393,9 @@ export default function Ventas({ modoParaLlevar = false }) {
                             <HiOutlinePencilSquare className="size-4" aria-hidden />
                             Nota
                           </button>
+                          )
                         )}
-                        {item.comentario && (
+                        {item.comentario && !cancelada && (
                           <button
                             type="button"
                             className="btn btn--ghost btn--sm cart-item__nota-btn"
@@ -1367,20 +1439,27 @@ export default function Ventas({ modoParaLlevar = false }) {
                     }}
                     style={{ width: 56 }}
                     className="input"
+                    disabled={cancelada || enviada}
+                    readOnly={enviada}
+                    title={enviada ? "Para reducir una línea en comanda, registra una cancelación" : undefined}
                   />
                   <span style={{ minWidth: 72, fontWeight: 600 }}>
                     ${(item.cantidad * item.precio_unitario).toFixed(2)}
                   </span>
+                  {!cancelada && (
                   <button
                     type="button"
                     className="btn btn--danger"
                     onClick={() => eliminarDelCarrito(item.id_detalle_pedido)}
-                    aria-label="Quitar"
+                    disabled={quitandoId === item.id_detalle_pedido}
+                    aria-label={enviada ? "Cancelar producto enviado" : "Quitar"}
                   >
-                    ✕
+                    {quitandoId === item.id_detalle_pedido ? "…" : "✕"}
                   </button>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -1414,7 +1493,7 @@ export default function Ventas({ modoParaLlevar = false }) {
               onClick={confirmarPedidoComanda}
               disabled={
                 loading ||
-                carrito.length === 0 ||
+                carritoActivo.length === 0 ||
                 !numeroMesa ||
                 lineasPendientesConfirmar.length === 0
               }
@@ -1429,7 +1508,7 @@ export default function Ventas({ modoParaLlevar = false }) {
               className="btn btn--accent inline-flex w-full items-center justify-center gap-2"
               style={{ marginTop: "0.75rem", padding: "0.75rem" }}
               onClick={confirmarPedidoComanda}
-              disabled={loading || carrito.length === 0 || !numeroMesa}
+              disabled={loading || carritoActivo.length === 0 || !numeroMesa}
             >
               <HiOutlineCheckBadge className="size-5 shrink-0" aria-hidden />
               Confirmar pedido / Enviar a comandera ({lineasPendientesConfirmar.length})
@@ -1440,7 +1519,7 @@ export default function Ventas({ modoParaLlevar = false }) {
             className="btn btn--success inline-flex w-full items-center justify-center gap-2"
             style={{ marginTop: "0.75rem", padding: "0.75rem" }}
             onClick={handleCerrarCuenta}
-            disabled={loading || imprimiendoPrecuenta || showCobroModal || carrito.length === 0 || !numeroMesa}
+            disabled={loading || imprimiendoPrecuenta || showCobroModal || carritoActivo.length === 0 || !numeroMesa}
           >
             <HiOutlineBanknotes className="size-5 shrink-0" aria-hidden />
             {modoParaLlevar ? "Cobrar para llevar" : "Cerrar cuenta / Cobrar"}
@@ -1995,6 +2074,13 @@ export default function Ventas({ modoParaLlevar = false }) {
             </div>
           </div>
         </div>
+      )}
+      {lineaCancelar && (
+        <CancelacionLineaModal
+          linea={lineaCancelar}
+          onClose={() => setLineaCancelar(null)}
+          onOk={onCancelacionOk}
+        />
       )}
     </div>
   );

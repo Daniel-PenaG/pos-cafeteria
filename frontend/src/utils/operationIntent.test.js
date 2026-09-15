@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   createIntentStore,
+  createProductAddLock,
   fingerprintCombo,
   fingerprintLinea,
   shouldKeepPendingKey,
@@ -84,5 +85,14 @@ describe("operationIntent", () => {
     assert.equal(shouldKeepPendingKey(timeoutErr), true);
     assert.equal(shouldKeepPendingKey({ response: { status: 409 } }), false);
     assert.equal(shouldKeepPendingKey({ response: { status: 400 } }), false);
+  });
+
+  it("createProductAddLock evita doble toque del mismo id", () => {
+    const lock = createProductAddLock();
+    assert.equal(lock.tryBegin(7), true);
+    assert.equal(lock.has(7), true);
+    assert.equal(lock.tryBegin(7), false);
+    lock.end(7);
+    assert.equal(lock.has(7), false);
   });
 });

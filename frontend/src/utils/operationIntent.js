@@ -75,11 +75,32 @@ export function createIntentStore() {
     return pending.get(fingerprint) ?? null;
   }
 
+  function has(fingerprint) {
+    return pending.has(fingerprint);
+  }
+
   function size() {
     return pending.size;
   }
 
-  return { beginIntent, completeIntent, peek, size };
+  return { beginIntent, completeIntent, peek, has, size };
+}
+
+/** Evita doble toque del mismo producto sin bloquear otro distinto. */
+export function createProductAddLock() {
+  const ids = new Set();
+  function tryBegin(id) {
+    if (ids.has(id)) return false;
+    ids.add(id);
+    return true;
+  }
+  function end(id) {
+    ids.delete(id);
+  }
+  function has(id) {
+    return ids.has(id);
+  }
+  return { tryBegin, end, has };
 }
 
 /** Un reintento automático con la misma clave y los mismos datos tras timeout/red. */

@@ -23,7 +23,7 @@ from app.services.extras_validacion_service import (
     parsear_extras_json,
     extras_linea_desde_json,
 )
-from app.services.promocion_service import calcular_linea, calcular_combo, es_promo_paquete
+from app.services.promocion_service import calcular_linea, calcular_combo, es_promo_paquete, es_promo_ticket
 from app.services.promocion_ticket_service import recalcular_lineas_ticket
 from app.services.venta_service import registrar_venta, MESA_PARA_LLEVAR
 from app.exceptions import (
@@ -72,12 +72,14 @@ def _detalle_a_dict(d: DetallePedidoModel) -> dict:
         "fecha_envio_comanda": isoformat_utc(d.fecha_envio_comanda),
         "fecha_listo_comanda": isoformat_utc(d.fecha_listo_comanda),
         "segundos_preparacion": prep_secs,
+        "estado_linea": getattr(d, "estado_linea", None) or "ACTIVA",
+        "cantidad_cancelada": float(getattr(d, "cantidad_cancelada", 0) or 0),
     }
 
 
 def _pedido_a_dict(p: PedidoModel, promo_resumen: dict | None = None) -> dict:
     lineas = [_detalle_a_dict(d) for d in p.detalles]
-    total = sum(l["cantidad"] * l["precio_unitario"] for l in lineas)
+    total = sum(l["cantidad"] * l["precio_unitario"] for l in lineas if l["cantidad"] > 0)
     cliente_nombre = p.cliente.nombre if p.cliente else None
     out = {
         "id_pedido": p.id_pedido,
@@ -295,10 +297,20 @@ def _registrar_operacion(
     return op
 
 
+def _linea_participa_en_ticket(d: DetallePedidoModel) -> bool:
+    if float(d.cantidad or 0) <= 0:
+        return False
+    if getattr(d, "estado_linea", "ACTIVA") == "CANCELADA":
+        return False
+    return True
+
+
 def _lineas_desde_pedido(db: Session, pedido: PedidoModel) -> list:
     lineas = []
     promo_cache: dict[int, PromocionModel] = {}
     for d in pedido.detalles:
+        if not _linea_participa_en_ticket(d):
+            continue
         extras = extras_linea_desde_json(_parse_extras(d.extras_json))
         id_promo = d.id_promocion
         sin_promo = id_promo is None
@@ -309,9 +321,13 @@ def _lineas_desde_pedido(db: Session, pedido: PedidoModel) -> list:
                     .filter(PromocionModel.id_promocion == id_promo)
                     .first()
                 )
-            if promo_cache[id_promo] and es_promo_paquete(promo_cache[id_promo]):
+            promo = promo_cache[id_promo]
+            if promo and es_promo_paquete(promo):
                 id_promo = None
                 sin_promo = True
+            elif promo and es_promo_ticket(promo):
+                id_promo = None
+                sin_promo = False
         lineas.append(
             {
                 "id_detalle_pedido": d.id_detalle_pedido,
@@ -328,7 +344,8 @@ def _lineas_desde_pedido(db: Session, pedido: PedidoModel) -> list:
 
 
 def _aplicar_recalc_a_detalles(pedido: PedidoModel, recalc: dict) -> None:
-    for detalle, calc in zip(pedido.detalles, recalc["lineas"]):
+    activos = [d for d in pedido.detalles if _linea_participa_en_ticket(d)]
+    for detalle, calc in zip(activos, recalc.get("lineas") or []):
         detalle.precio_unitario = calc["precio_unitario"]
         detalle.precio_original = calc.get("precio_original")
         detalle.descuento_unitario = calc.get("descuento_unitario")
@@ -338,14 +355,17 @@ def _aplicar_recalc_a_detalles(pedido: PedidoModel, recalc: dict) -> None:
 
 def _recalcular_promociones_sin_commit(db: Session, pedido: PedidoModel) -> dict:
     """Recalcula promociones ticket en memoria/sesión sin commit."""
+    vacio = {
+        "lineas": [],
+        "resumen_promociones": [],
+        "subtotal_normal": 0.0,
+        "descuento_promociones": 0.0,
+        "total": 0.0,
+    }
     if pedido.estado != "ABIERTO" or not pedido.detalles:
-        return {
-            "lineas": [],
-            "resumen_promociones": [],
-            "subtotal_normal": 0.0,
-            "descuento_promociones": 0.0,
-            "total": 0.0,
-        }
+        return vacio
+    if not any(_linea_participa_en_ticket(d) for d in pedido.detalles):
+        return vacio
     recalc = recalcular_lineas_ticket(db, _lineas_desde_pedido(db, pedido))
     _aplicar_recalc_a_detalles(pedido, recalc)
     return recalc
@@ -361,16 +381,20 @@ def recalcular_promociones_pedido(db: Session, pedido: PedidoModel) -> dict:
 
 def _pedido_a_dict_con_recalc_en_lectura(pedido: PedidoModel, recalc: dict) -> dict:
     """Construye respuesta GET sin persistir precios recalculados."""
+    calc_iter = iter(recalc.get("lineas", []))
     lineas = []
-    for detalle, calc in zip(pedido.detalles, recalc.get("lineas", [])):
+    for detalle in pedido.detalles:
         d = _detalle_a_dict(detalle)
-        d["precio_unitario"] = calc["precio_unitario"]
-        d["precio_original"] = calc.get("precio_original")
-        d["descuento_unitario"] = calc.get("descuento_unitario")
-        d["id_promocion"] = calc.get("id_promocion")
-        d["nombre_promocion"] = calc.get("nombre_promocion")
+        if _linea_participa_en_ticket(detalle):
+            calc = next(calc_iter, None)
+            if calc:
+                d["precio_unitario"] = calc["precio_unitario"]
+                d["precio_original"] = calc.get("precio_original")
+                d["descuento_unitario"] = calc.get("descuento_unitario")
+                d["id_promocion"] = calc.get("id_promocion")
+                d["nombre_promocion"] = calc.get("nombre_promocion")
         lineas.append(d)
-    total = sum(l["cantidad"] * l["precio_unitario"] for l in lineas)
+    total = sum(l["cantidad"] * l["precio_unitario"] for l in lineas if l["cantidad"] > 0)
     cliente_nombre = pedido.cliente.nombre if pedido.cliente else None
     return {
         "id_pedido": pedido.id_pedido,
@@ -393,7 +417,7 @@ def _pedido_a_dict_con_recalc_en_lectura(pedido: PedidoModel, recalc: dict) -> d
 
 def pedido_respuesta_lectura(db: Session, pedido: PedidoModel) -> dict:
     """GET de pedido: recalcula para mostrar totales sin escribir en BD."""
-    if pedido.estado == "ABIERTO" and pedido.detalles:
+    if pedido.estado == "ABIERTO" and any(_linea_participa_en_ticket(d) for d in (pedido.detalles or [])):
         recalc = recalcular_lineas_ticket(db, _lineas_desde_pedido(db, pedido))
         return _pedido_a_dict_con_recalc_en_lectura(pedido, recalc)
     return _pedido_a_dict(pedido)
@@ -484,6 +508,9 @@ def agregar_linea_pedido_con_respuesta(
             .filter(DetallePedidoModel.id_pedido == pedido.id_pedido, DetallePedidoModel.line_key == key)
             .first()
         )
+        if existente and getattr(existente, "estado_linea", "ACTIVA") == "CANCELADA":
+            existente = None
+            key = f"{key}-n{int(ahora.timestamp() * 1000)}"[:120]
 
         if existente and existente.en_comanda and not data.enviar_comanda:
             existente = None
@@ -569,6 +596,9 @@ def agregar_linea_combo(
         .filter(DetallePedidoModel.id_pedido == pedido.id_pedido, DetallePedidoModel.line_key == key)
         .first()
     )
+    if existente and getattr(existente, "estado_linea", "ACTIVA") == "CANCELADA":
+        existente = None
+        key = f"{key}-n{int(ahora.timestamp() * 1000)}"[:120]
     if existente and existente.en_comanda and not data.enviar_comanda:
         existente = None
         key = f"{key}-n{int(ahora.timestamp() * 1000)}"[:120]
@@ -683,6 +713,10 @@ def confirmar_comanda_pedido(db: Session, pedido: PedidoModel) -> int:
     for detalle in pedido.detalles:
         if detalle.en_comanda:
             continue
+        if getattr(detalle, "estado_linea", "ACTIVA") == "CANCELADA":
+            continue
+        if float(detalle.cantidad or 0) <= 0:
+            continue
         detalle.en_comanda = True
         detalle.fecha_envio_comanda = ahora
         detalle.fecha_listo_comanda = None
@@ -707,11 +741,12 @@ def cobrar_pedido(
     forma_pago = normalizar_forma_pago(forma_pago)
     if pedido.estado != "ABIERTO":
         raise DatosInvalidosException("El pedido ya fue cobrado o cancelado")
-    if not pedido.detalles:
+    detalles_activos = [d for d in pedido.detalles if float(d.cantidad) > 0]
+    if not detalles_activos:
         raise DatosInvalidosException("El pedido no tiene productos")
 
     detalles_venta = []
-    for d in pedido.detalles:
+    for d in detalles_activos:
         extras = extras_linea_desde_json(_parse_extras(d.extras_json))
         detalles_venta.append(
             DetalleVentaItem(

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { HiOutlineArrowPath } from "react-icons/hi2";
-import { getComandaPendientes, marcarLineaListo } from "../services/pedidosService";
+import { getComandaPendientes, marcarLineaListo, marcarCancelacionVista } from "../services/pedidosService";
+import { formatApiError } from "../utils/apiError";
 import PageHeader from "../components/PageHeader";
 import ElapsedTimer from "../components/ElapsedTimer";
 import { formatDuration } from "../utils/formatDuration";
@@ -39,7 +40,7 @@ export default function Comandera() {
       await marcarLineaListo(id, 1);
       load();
     } catch (err) {
-      alert(err.response?.data?.detail || "Error al marcar");
+      alert(formatApiError(err, "Error al marcar"));
     }
   };
 
@@ -48,7 +49,16 @@ export default function Comandera() {
       await marcarLineaListo(id, cantidadPendiente);
       load();
     } catch (err) {
-      alert(err.response?.data?.detail || "Error al marcar");
+      alert(formatApiError(err, "Error al marcar"));
+    }
+  };
+
+  const marcarAvisoVisto = async (idCancelacion) => {
+    try {
+      await marcarCancelacionVista(idCancelacion);
+      load();
+    } catch (err) {
+      alert(formatApiError(err, "No se pudo marcar el aviso"));
     }
   };
 
@@ -130,21 +140,33 @@ export default function Comandera() {
                 <ElapsedTimer since={earliestSince} className="comandera-timer--mesa" />
               </div>
               <ul className="comandera-list">
-                {items.map((l) => (
-                  <li key={l.id_detalle_pedido} className="comandera-item">
+                {items.map((l) => {
+                  const esAviso = l.tipo === "CANCELACION";
+                  return (
+                  <li
+                    key={esAviso ? `cancel-${l.id_cancelacion}` : `linea-${l.id_detalle_pedido}`}
+                    className={`comandera-item${esAviso ? " comandera-item--aviso" : ""}`}
+                  >
                     <div className="comandera-item__main">
                       <div className="comandera-item__title-row">
                         <strong>
                           {l.nombre_producto}
-                          {l.cantidad_pendiente > 1 && (
+                          {!esAviso && l.cantidad_pendiente > 1 && (
                             <span className="comandera-qty"> × {l.cantidad_pendiente}</span>
                           )}
                         </strong>
+                        {!esAviso && (
                         <ElapsedTimer
                           since={l.fecha_envio_comanda}
                           initialSeconds={l.segundos_en_preparacion}
                         />
+                        )}
                       </div>
+                      {esAviso && (
+                        <span className="badge badge--danger comandera-aviso">
+                          {l.aviso_texto || "CANCELADO"}
+                        </span>
+                      )}
                       {l.nombre_promocion && (
                         <span className="badge">{l.nombre_promocion}</span>
                       )}
@@ -158,13 +180,23 @@ export default function Comandera() {
                       {l.comentario && (
                         <p className="cart-item__comentario">📝 {l.comentario}</p>
                       )}
-                      {l.cantidad_pendiente < l.cantidad && (
+                      {!esAviso && l.cantidad_pendiente < l.cantidad && (
                         <p className="hint">
                           {l.cantidad_lista}/{l.cantidad} listos
                         </p>
                       )}
                     </div>
                     <div className="comandera-item__actions">
+                      {esAviso ? (
+                        <button
+                          type="button"
+                          className="btn btn--secondary btn--sm"
+                          onClick={() => marcarAvisoVisto(l.id_cancelacion)}
+                        >
+                          Vi / Atendí
+                        </button>
+                      ) : (
+                        <>
                       <button
                         type="button"
                         className="btn btn--success btn--sm"
@@ -183,9 +215,12 @@ export default function Comandera() {
                           Todo
                         </button>
                       )}
+                        </>
+                      )}
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
               <p className="hint comandera-mesa__footer">
                 Tiempo en preparación: {formatDuration(pedidoSegs)}

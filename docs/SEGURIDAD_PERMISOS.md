@@ -41,6 +41,7 @@ La autorización es **por operación**, no por router. Tener uno de varios módu
 | GET/POST mesa o línea (normal) | `/ventas` |
 | GET/POST mesa o línea (para llevar) | `/ventas-para-llevar` |
 | PATCH/DELETE línea, cliente, confirmar comanda | Según tipo del pedido ya cargado |
+| POST cancelar línea en comanda | Módulo del pedido **y** `CANCELAR_PRODUCTO_EN_COMANDA` |
 | Cobrar origen VENTAS | `/ventas` o `/ventas-para-llevar` según el pedido |
 | Cobrar origen COMANDERA | `/comandera` **y** `COBRAR_DESDE_COMANDERA` |
 | POST `/ventas/` | Origen **siempre VENTAS** (se ignora `origen_cobro` del cliente). Sin `id_pedido`: módulo según `para_llevar`. Con `id_pedido`: tipo y mesa del `PedidoModel`; contradicción → 409 |
@@ -77,12 +78,13 @@ ADMIN tiene todos los módulos y acciones. Frontend y backend usan el mismo cat�
 
 ## 4. Permisos de acción
 
-`permisos_acciones_json`: lista normalizada. Hoy: `COBRAR_DESDE_COMANDERA`.
+`permisos_acciones_json`: lista normalizada. Acciones actuales: `COBRAR_DESDE_COMANDERA`, `CANCELAR_PRODUCTO_EN_COMANDA`.
 
 - Valor inicial: vacío (false).
 - ADMIN: todas las acciones.
 - CAJERO: cobra desde Ventas (`origen=VENTAS`) con módulo de ventas.
 - COCINA: solo si tiene la acción y `origen=COMANDERA`.
+- `CANCELAR_PRODUCTO_EN_COMANDA`: ADMIN la tiene; CAJERO solo si se asigna; COCINA no la tiene por defecto. Ver `docs/CANCELACION_COMANDERA.md`.
 - Sin permiso: **403**.
 - La UI de cobro en Comandera **no está** en esta fase (pendiente fase de pagos). El backend ya valida origen + acción.
 

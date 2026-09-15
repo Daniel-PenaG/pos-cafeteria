@@ -256,7 +256,8 @@
   }
 
   .modal-box,
-  .modal-box--wide {
+  .modal-box--wide,
+  .modal-box--cancel {
     width: 100%;
     max-width: none;
     max-height: calc(100dvh - 1rem);

@@ -422,6 +422,8 @@ class DetallePedidoModel(Base):
     fecha_listo_comanda = Column(DateTime, nullable=True)
     line_key = Column(String(120), nullable=False)
     comentario = Column(String(300), nullable=True)
+    estado_linea = Column(String(20), nullable=False, default="ACTIVA")
+    cantidad_cancelada = Column(Numeric(10, 2), nullable=False, default=0)
 
     pedido = relationship("PedidoModel", back_populates="detalles")
     producto = relationship("ProductoModel")
@@ -443,6 +445,35 @@ class PedidoOperacionModel(Base):
     fecha = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     pedido = relationship("PedidoModel")
+
+
+class PedidoCancelacionModel(Base):
+    """Historial de cancelación/corrección de líneas enviadas a comandera."""
+
+    __tablename__ = "pedido_cancelaciones"
+
+    id_cancelacion = Column(Integer, primary_key=True, index=True)
+    id_pedido = Column(Integer, ForeignKey("pedidos.id_pedido"), nullable=False, index=True)
+    id_detalle_pedido = Column(
+        Integer, ForeignKey("detalle_pedido.id_detalle_pedido"), nullable=False, index=True
+    )
+    cantidad = Column(Numeric(10, 2), nullable=False)
+    cantidad_anterior = Column(Numeric(10, 2), nullable=False)
+    cantidad_nueva = Column(Numeric(10, 2), nullable=False)
+    motivo = Column(String(80), nullable=False)
+    motivo_detalle = Column(String(300), nullable=True)
+    estado_anterior = Column(String(20), nullable=False)
+    estado_nuevo = Column(String(20), nullable=False)
+    aviso = Column(String(40), nullable=False)
+    aviso_texto = Column(String(80), nullable=False)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+    fecha_hora = Column(DateTime, nullable=False, default=datetime.utcnow)
+    vista_comandera = Column(Boolean, nullable=False, default=False)
+    fecha_vista = Column(DateTime, nullable=True)
+    id_usuario_vista = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=True)
+
+    pedido = relationship("PedidoModel")
+    detalle = relationship("DetallePedidoModel")
 
 
 # ============================

@@ -91,11 +91,17 @@ export function isAdmin(rol) {
 }
 
 export const ACCION_COBRAR_DESDE_COMANDERA = "COBRAR_DESDE_COMANDERA";
+export const ACCION_CANCELAR_PRODUCTO_EN_COMANDA = "CANCELAR_PRODUCTO_EN_COMANDA";
+
+const ALL_ACCIONES = [
+  ACCION_COBRAR_DESDE_COMANDERA,
+  ACCION_CANCELAR_PRODUCTO_EN_COMANDA,
+];
 
 export function getEffectiveActions(rol, acciones) {
   const r = normalizeRole(rol);
-  if (r === ROLES.ADMIN) return [ACCION_COBRAR_DESDE_COMANDERA];
-  return Array.isArray(acciones) ? acciones.filter((a) => a === ACCION_COBRAR_DESDE_COMANDERA) : [];
+  if (r === ROLES.ADMIN) return [...ALL_ACCIONES];
+  return Array.isArray(acciones) ? acciones.filter((a) => ALL_ACCIONES.includes(a)) : [];
 }
 
 export function hasAction(rol, codigo, acciones = []) {
@@ -105,4 +111,9 @@ export function hasAction(rol, codigo, acciones = []) {
 export function canCobrarDesdeComandera(user) {
   if (!user) return false;
   return hasAction(user.rol, ACCION_COBRAR_DESDE_COMANDERA, user.permisos_acciones);
+}
+
+export function canCancelarProductoEnComanda(user) {
+  if (!user) return false;
+  return hasAction(user.rol, ACCION_CANCELAR_PRODUCTO_EN_COMANDA, user.permisos_acciones);
 }
