@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
-from app.models.models import PedidoModel
+from app.models.models import PedidoModel, UsuarioModel
 from app.routers.pedidos import agregar_linea, obtener_pedido_mesa
 from app.schemas.pedido import ExtraLineaPedido, PedidoLineaCreate
 from app.services.pedido_service import (
@@ -15,6 +15,10 @@ from app.services.pedido_service import (
 from tests.test_promociones_integracion import _linea
 
 
+def _usuario(db_session, refs):
+    return db_session.get(UsuarioModel, refs.id_usuario)
+
+
 def test_buscar_mesa_sin_pedido_no_crea(db_session, refs):
     encontrado = buscar_pedido_abierto_mesa(db_session, 2)
     assert encontrado is None
@@ -22,7 +26,7 @@ def test_buscar_mesa_sin_pedido_no_crea(db_session, refs):
 
 
 def test_get_mesa_sin_pedido_respuesta_vacia(db_session, refs):
-    resp = obtener_pedido_mesa(2, refs.id_usuario, False, db_session)
+    resp = obtener_pedido_mesa(2, False, refs.id_usuario, db_session, _usuario(db_session, refs))
     assert resp["sin_pedido"] is True
     assert resp["id_pedido"] is None
     assert resp["lineas"] == []
@@ -38,7 +42,7 @@ def test_producto_invalido_primer_item_no_crea(db_session, refs):
         extras=[],
     )
     with pytest.raises(RecursoNoEncontradoException):
-        agregar_linea(3, data, refs.id_usuario, False, db_session)
+        agregar_linea(3, data, refs.id_usuario, False, db_session, _usuario(db_session, refs))
     assert db_session.query(PedidoModel).filter_by(numero_mesa=3).count() == 0
 
 
@@ -55,7 +59,7 @@ def test_extra_invalido_no_crea_pedido(db_session, refs):
         ],
     )
     with pytest.raises(DatosInvalidosException):
-        agregar_linea(4, data, refs.id_usuario, False, db_session)
+        agregar_linea(4, data, refs.id_usuario, False, db_session, _usuario(db_session, refs))
     assert db_session.query(PedidoModel).filter_by(numero_mesa=4).count() == 0
 
 
@@ -67,7 +71,7 @@ def test_primer_producto_valido_atomico(db_session, refs):
         precio_unitario=det.precio_unitario,
         extras=[],
     )
-    resp = agregar_linea(5, data, refs.id_usuario, False, db_session)
+    resp = agregar_linea(5, data, refs.id_usuario, False, db_session, _usuario(db_session, refs))
     assert resp["id_pedido"]
     assert resp["sin_pedido"] is False
     assert len(resp["lineas"]) == 1
@@ -84,7 +88,7 @@ def test_precio_invalido_rollback_sin_pedido_vacio(db_session, refs):
         extras=[],
     )
     with pytest.raises(DatosInvalidosException):
-        agregar_linea(6, data, refs.id_usuario, False, db_session)
+        agregar_linea(6, data, refs.id_usuario, False, db_session, _usuario(db_session, refs))
     db_session.expire_all()
     assert db_session.query(PedidoModel).filter_by(numero_mesa=6).count() == 0
 
@@ -98,7 +102,7 @@ def test_pedido_existente_sigue_funcionando(db_session, refs):
         precio_unitario=det.precio_unitario,
         extras=[],
     )
-    resp = agregar_linea(8, data, refs.id_usuario, False, db_session)
+    resp = agregar_linea(8, data, refs.id_usuario, False, db_session, _usuario(db_session, refs))
     assert resp["id_pedido"] == pedido.id_pedido
     assert len(resp["lineas"]) == 1
 

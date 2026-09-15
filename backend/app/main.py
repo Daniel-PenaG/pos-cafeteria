@@ -6,7 +6,7 @@ import os
 from app.utils.config import get_cors_origins
 from app.database import Base, engine, aplicar_migraciones_sqlite, ensure_cierres_caja_table, crear_admin_inicial_si_vacio, crear_catalogo_demo_si_vacio
 from app.models import models
-from app.routers import auth, productos, recetas, ventas, reportes, compras, configuracion, extras_venta, promociones, clientes, pedidos, comandera, usuarios, gastos, cierres
+from app.routers import auth, productos, recetas, ventas, reportes, compras, configuracion, extras_venta, promociones, clientes, pedidos, comandera, usuarios, gastos, cierres, auditoria
 from app.middleware.performance import PerformanceMiddleware
 import app.utils.sql_counter  # noqa: F401 — registra listener de conteo SQL
 
@@ -50,6 +50,7 @@ app.include_router(comandera.router)
 app.include_router(usuarios.router)
 app.include_router(gastos.router)
 app.include_router(cierres.router)
+app.include_router(auditoria.router)
 
 
 @app.get("/")

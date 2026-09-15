@@ -695,7 +695,13 @@ def confirmar_comanda_pedido(db: Session, pedido: PedidoModel) -> int:
     return enviadas
 
 
-def cobrar_pedido(db: Session, pedido: PedidoModel, id_usuario: int, forma_pago: str):
+def cobrar_pedido(
+    db: Session,
+    pedido: PedidoModel,
+    id_usuario: int,
+    forma_pago: str,
+    origen_cobro: str | None = None,
+):
     from app.utils.forma_pago import normalizar_forma_pago
 
     forma_pago = normalizar_forma_pago(forma_pago)
@@ -725,6 +731,7 @@ def cobrar_pedido(db: Session, pedido: PedidoModel, id_usuario: int, forma_pago:
         id_cliente=pedido.id_cliente,
         para_llevar=bool(getattr(pedido, "para_llevar", False)),
         id_pedido=pedido.id_pedido,
+        origen_cobro=origen_cobro,
         detalles=detalles_venta,
     )
     return registrar_venta(db, venta_data)

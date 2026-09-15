@@ -7,13 +7,16 @@ from typing import List, Optional
 from app.database import get_db
 from app.models.models import GastoModel, UsuarioModel
 from app.schemas.gasto import GastoCreate, GastoUpdate, GastoResponse
+from app.constants import auditoria as A
+from app.services.auditoria_service import registrar_auditoria
 from app.utils.deps import get_current_user, require_admin
+from app.utils.permisos import require_module
 from app.utils.timezone_mx import today_mx, bounds_utc_naive_for_mx_date, now_utc_naive
 
 router = APIRouter(
     prefix="/gastos",
     tags=["Gastos"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_admin), Depends(require_module("/gastos"))],
 )
 
 
@@ -62,6 +65,14 @@ def registrar_gasto(
         id_usuario=current.id_usuario,
     )
     db.add(gasto)
+    registrar_auditoria(
+        db,
+        usuario=current,
+        accion=A.GASTO_CREADO,
+        entidad="gasto",
+        detalles={"monto": float(data.monto)},
+        origen="gastos",
+    )
     db.commit()
     db.refresh(gasto)
     return _gasto_a_response(gasto, current)
@@ -92,10 +103,22 @@ def actualizar_gasto(
 
 
 @router.delete("/{id_gasto}")
-def eliminar_gasto(id_gasto: int, db: Session = Depends(get_db)):
+def eliminar_gasto(
+    id_gasto: int,
+    db: Session = Depends(get_db),
+    current: UsuarioModel = Depends(get_current_user),
+):
     gasto = db.query(GastoModel).filter(GastoModel.id_gasto == id_gasto).first()
     if not gasto:
         raise HTTPException(status_code=404, detail="Gasto no encontrado")
+    registrar_auditoria(
+        db,
+        usuario=current,
+        accion=A.GASTO_ELIMINADO,
+        entidad="gasto",
+        entidad_id=id_gasto,
+        origen="gastos",
+    )
     db.delete(gasto)
     db.commit()
     return {"message": "Gasto eliminado"}

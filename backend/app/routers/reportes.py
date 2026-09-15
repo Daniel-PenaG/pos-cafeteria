@@ -21,6 +21,7 @@ from app.models.models import (
 )
 from app.services.comanda_tiempo_service import formatear_duracion, segundos_entre
 from app.utils.deps import get_current_user, require_admin
+from app.utils.permisos import require_module
 from app.constants.roles import ADMIN, normalizar_rol
 from app.utils.timezone_mx import (
     today_mx,
@@ -46,10 +47,12 @@ from app.services.reporte_ventas_service import (
     _productos_vendidos,
 )
 
+_admin_reportes = [Depends(require_admin), Depends(require_module("/reportes"))]
+_admin_cuentas = [Depends(require_admin), Depends(require_module("/cuentas-cajero"))]
+
 router = APIRouter(
     prefix="/reportes",
     tags=["Reportes"],
-    dependencies=[Depends(get_current_user)],
 )
 
 MESES = [
@@ -205,12 +208,12 @@ def _mesa_label_venta(venta: VentaModel) -> str:
 # ============================
 # REPORTE DE VENTAS POR DÍA
 # ============================
-@router.get("/ventas-dia", dependencies=[Depends(require_admin)])
+@router.get("/ventas-dia", dependencies=_admin_reportes)
 def ventas_por_dia(fecha: date, db: Session = Depends(get_db)):
     return resumen_ventas_dia(db, fecha)
 
 
-@router.get("/ventas-rango", dependencies=[Depends(require_admin)])
+@router.get("/ventas-rango", dependencies=_admin_reportes)
 def ventas_por_rango(
     fecha_inicio: date,
     fecha_fin: date,
@@ -221,7 +224,7 @@ def ventas_por_rango(
     return resumen_ventas_rango(db, fecha_inicio, fecha_fin)
 
 
-@router.get("/ventas-comparar", dependencies=[Depends(require_admin)])
+@router.get("/ventas-comparar", dependencies=_admin_reportes)
 def ventas_comparar_periodos(
     fecha_inicio_a: date,
     fecha_fin_a: date,
@@ -239,7 +242,7 @@ def ventas_comparar_periodos(
 # ============================
 # CUENTAS POR CAJERO (DÍA)
 # ============================
-@router.get("/cuentas-por-cajero", dependencies=[Depends(require_admin)])
+@router.get("/cuentas-por-cajero", dependencies=_admin_cuentas)
 def cuentas_por_cajero(fecha: date, db: Session = Depends(get_db)):
     ventas = (
         db.query(VentaModel, UsuarioModel, ClienteModel)
@@ -335,7 +338,7 @@ def cuentas_por_cajero(fecha: date, db: Session = Depends(get_db)):
     }
 
 
-@router.get("/desglose-pagos", dependencies=[Depends(require_admin)])
+@router.get("/desglose-pagos", dependencies=_admin_reportes)
 def reporte_desglose_pagos(
     fecha_inicio: date,
     fecha_fin: date,
@@ -349,7 +352,7 @@ def reporte_desglose_pagos(
 # ============================
 # REPORTE DE VENTAS POR MES
 # ============================
-@router.get("/ventas-mes", dependencies=[Depends(require_admin)])
+@router.get("/ventas-mes", dependencies=_admin_reportes)
 def ventas_por_mes(anio: int, mes: int, db: Session = Depends(get_db)):
     if mes < 1 or mes > 12:
         raise HTTPException(status_code=400, detail="Mes inválido")
@@ -391,7 +394,7 @@ def ventas_por_mes(anio: int, mes: int, db: Session = Depends(get_db)):
 # ============================
 # REPORTE DE VENTAS POR AÑO
 # ============================
-@router.get("/ventas-anio", dependencies=[Depends(require_admin)])
+@router.get("/ventas-anio", dependencies=_admin_reportes)
 def ventas_por_anio(anio: int, db: Session = Depends(get_db)):
     ventas = (
         db.query(VentaModel)
@@ -447,7 +450,7 @@ def ventas_por_anio(anio: int, db: Session = Depends(get_db)):
 # ============================
 # RANKING DE PRODUCTOS VENDIDOS
 # ============================
-@router.get("/productos-ranking", dependencies=[Depends(require_admin)])
+@router.get("/productos-ranking", dependencies=_admin_reportes)
 def productos_ranking(
     periodo: str,
     fecha: date | None = None,
@@ -505,7 +508,7 @@ def productos_ranking(
 # ============================
 # REPORTE DE CONSUMO DE INSUMOS
 # ============================
-@router.get("/consumo-insumos", dependencies=[Depends(require_admin)])
+@router.get("/consumo-insumos", dependencies=_admin_reportes)
 def consumo_insumos(fecha: date, db: Session = Depends(get_db)):
     filas = (
         db.query(
@@ -563,7 +566,7 @@ def consumo_insumos(fecha: date, db: Session = Depends(get_db)):
 # ============================
 # TIEMPOS DE PREPARACIÓN (COMANDERA)
 # ============================
-@router.get("/tiempos-preparacion", dependencies=[Depends(require_admin)])
+@router.get("/tiempos-preparacion", dependencies=_admin_reportes)
 def tiempos_preparacion_dia(fecha: date, db: Session = Depends(get_db)):
     lineas = (
         db.query(DetallePedidoModel, PedidoModel)
@@ -658,7 +661,7 @@ def tiempos_preparacion_dia(fecha: date, db: Session = Depends(get_db)):
     }
 
 
-@router.get("/resumen-dashboard")
+@router.get("/resumen-dashboard", dependencies=[Depends(require_module("/dashboard"))])
 def resumen_dashboard(
     fecha: Optional[date] = None,
     db: Session = Depends(get_db),

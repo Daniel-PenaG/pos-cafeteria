@@ -24,6 +24,8 @@ export default function Usuarios() {
   const [rol, setRol] = useState("CAJERO");
   const [modulosSel, setModulosSel] = useState([]);
   const [usarPersonalizado, setUsarPersonalizado] = useState(false);
+  const [accionesSel, setAccionesSel] = useState([]);
+  const [filtroActivos, setFiltroActivos] = useState("todos");
 
   const modulosPorGrupo = useMemo(() => {
     const map = new Map();
@@ -44,7 +46,10 @@ export default function Usuarios() {
       ]);
       setUsuarios(u);
       setPerfiles(p);
-      setCatalogo(cat);
+      setCatalogo({
+        ...cat,
+        acciones: cat.acciones || [],
+      });
     } catch {
       alert("Error al cargar usuarios");
     } finally {
@@ -67,6 +72,7 @@ export default function Usuarios() {
     setRol("CAJERO");
     setUsarPersonalizado(false);
     setModulosSel(defaultsRol("CAJERO"));
+    setAccionesSel([]);
     setShowModal(true);
   };
 
@@ -81,6 +87,7 @@ export default function Usuarios() {
     setModulosSel(
       tieneCustom ? u.modulos : u.modulos_efectivos || defaultsRol(u.rol)
     );
+    setAccionesSel(u.permisos_acciones || []);
     setShowModal(true);
   };
 
@@ -106,16 +113,20 @@ export default function Usuarios() {
       alert("La contraseña es obligatoria para usuarios nuevos");
       return;
     }
+    if (password && password.length < 8) {
+      alert("La contraseña debe tener al menos 8 caracteres");
+      return;
+    }
     if (usarPersonalizado && modulosSel.length === 0) {
       alert("Selecciona al menos un módulo");
       return;
     }
 
-    const modulosPayload = usarPersonalizado ? modulosSel : [];
+    const modulosPayload = usarPersonalizado ? modulosSel : null;
 
     try {
       if (editing) {
-        const payload = { nombre, rol, modulos: modulosPayload };
+        const payload = { nombre, rol, modulos: modulosPayload, permisos_acciones: accionesSel };
         if (password) payload.password = password;
         await updateUsuario(editing.id_usuario, payload);
       } else {
@@ -125,6 +136,7 @@ export default function Usuarios() {
           password,
           rol,
           modulos: modulosPayload,
+          permisos_acciones: accionesSel,
         });
       }
       setShowModal(false);
@@ -134,15 +146,26 @@ export default function Usuarios() {
     }
   };
 
-  const eliminar = async (u) => {
-    if (!confirm(`¿Eliminar al usuario "${u.nombre}"?`)) return;
+  const cambiarActivo = async (u, activo) => {
+    const verbo = activo ? "activar" : "desactivar";
+    if (!confirm(`¿${verbo} a "${u.nombre}"?`)) return;
     try {
-      await deleteUsuario(u.id_usuario);
+      if (activo) {
+        await updateUsuario(u.id_usuario, { activo: true });
+      } else {
+        await deleteUsuario(u.id_usuario);
+      }
       cargar();
     } catch (err) {
-      alert(err.response?.data?.detail || "Error al eliminar");
+      alert(err.response?.data?.detail || `Error al ${verbo}`);
     }
   };
+
+  const visible = usuarios.filter((u) => {
+    if (filtroActivos === "activos") return u.activo !== false;
+    if (filtroActivos === "inactivos") return u.activo === false;
+    return true;
+  });
 
   const labelRol = (codigo) =>
     perfiles.find((p) => p.codigo === codigo)?.nombre || codigo;
@@ -162,6 +185,18 @@ export default function Usuarios() {
         <p>Cargando…</p>
       ) : (
         <div className="card">
+          <div style={{ marginBottom: "0.75rem" }}>
+            <select
+              className="input"
+              value={filtroActivos}
+              onChange={(e) => setFiltroActivos(e.target.value)}
+              style={{ maxWidth: 220 }}
+            >
+              <option value="todos">Todos</option>
+              <option value="activos">Solo activos</option>
+              <option value="inactivos">Solo inactivos</option>
+            </select>
+          </div>
           <div className="table-wrap">
           <table className="table">
             <thead>
@@ -169,18 +204,20 @@ export default function Usuarios() {
                 <th>Nombre</th>
                 <th>Usuario</th>
                 <th>Perfil</th>
+                <th>Estado</th>
                 <th>Módulos</th>
-                <th style={{ width: 140 }}>Acciones</th>
+                <th style={{ width: 200 }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {usuarios.map((u) => (
+              {visible.map((u) => (
                 <tr key={u.id_usuario}>
                   <td>{u.nombre}</td>
                   <td>{u.usuario_login}</td>
                   <td>
                     <span className="badge">{labelRol(u.rol)}</span>
                   </td>
+                  <td>{u.activo === false ? "Inactivo" : "Activo"}</td>
                   <td>
                     <span className="hint">
                       {u.modulos?.length
@@ -196,13 +233,23 @@ export default function Usuarios() {
                     >
                       Editar
                     </button>{" "}
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm"
-                      onClick={() => eliminar(u)}
-                    >
-                      Eliminar
-                    </button>
+                    {u.activo === false ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={() => cambiarActivo(u, true)}
+                      >
+                        Activar
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={() => cambiarActivo(u, false)}
+                      >
+                        Desactivar
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -265,9 +312,30 @@ export default function Usuarios() {
                 ))}
               </select>
               <p className="hint" style={{ marginTop: "0.35rem" }}>
-                El perfil define permisos en la API. Los módulos controlan qué pantallas ve.
+                El perfil y los módulos se validan también en el backend. Mínimo 8 caracteres en contraseña nueva.
               </p>
             </div>
+
+            {rol !== "ADMIN" && (
+              <div className="form-row">
+                {(catalogo.acciones || []).map((a) => (
+                  <label key={a.codigo} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={accionesSel.includes(a.codigo)}
+                      onChange={() =>
+                        setAccionesSel((prev) =>
+                          prev.includes(a.codigo)
+                            ? prev.filter((c) => c !== a.codigo)
+                            : [...prev, a.codigo]
+                        )
+                      }
+                    />
+                    {a.label || a.codigo}
+                  </label>
+                ))}
+              </div>
+            )}
 
             {rol !== "ADMIN" && (
               <>

@@ -7,13 +7,13 @@ from app.models.models import DetallePedidoModel, PedidoModel
 from app.schemas.pedido import ComandaLinea, ComandaMarcarListo
 from app.services.pedido_service import _parse_extras
 from app.exceptions import RecursoNoEncontradoException, DatosInvalidosException
-from app.utils.deps import require_kitchen
+from app.utils.permisos import require_module
 from app.utils.timezone_mx import isoformat_utc, now_utc_naive, segundos_desde
 
 router = APIRouter(
     prefix="/comandera",
     tags=["Comandera"],
-    dependencies=[Depends(require_kitchen)],
+    dependencies=[Depends(require_module("/comandera"))],
 )
 
 

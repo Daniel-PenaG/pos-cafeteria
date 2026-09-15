@@ -25,6 +25,7 @@ from app.services.promocion_ticket_service import recalcular_lineas_ticket
 from app.services.fidelidad_service import obtener_config, calcular_puntos_ganados, acumular_puntos_venta
 from app.services.extras_validacion_service import validar_extras_producto
 from app.exceptions import (
+    ConflictoOperacionException,
     RecursoNoEncontradoException,
     DatosInvalidosException,
 )
@@ -169,6 +170,21 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
     if not data.detalles or len(data.detalles) == 0:
         raise DatosInvalidosException("La venta debe tener al menos un producto")
 
+    if data.id_pedido is not None:
+        pedido_ref = (
+            db.query(PedidoModel).filter(PedidoModel.id_pedido == data.id_pedido).first()
+        )
+        if not pedido_ref:
+            raise RecursoNoEncontradoException("Pedido no encontrado")
+        if bool(data.para_llevar) != bool(pedido_ref.para_llevar) or int(
+            data.numero_mesa
+        ) != int(pedido_ref.numero_mesa):
+            raise ConflictoOperacionException(
+                "Los datos de la venta no coinciden con el pedido"
+            )
+        data.para_llevar = bool(pedido_ref.para_llevar)
+        data.numero_mesa = int(pedido_ref.numero_mesa)
+
     para_llevar = bool(data.para_llevar)
     if para_llevar:
         if data.numero_mesa != MESA_PARA_LLEVAR:
@@ -254,6 +270,7 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
             forma_pago=forma_pago,
             id_cliente=data.id_cliente if cliente else None,
             puntos_generados=puntos_generados,
+            origen_cobro=getattr(data, "origen_cobro", None),
         )
         db.add(venta)
         db.flush()

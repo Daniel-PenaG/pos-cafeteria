@@ -29,6 +29,8 @@ def get_current_user(
     user = db.query(UsuarioModel).filter(UsuarioModel.usuario_login == username).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado")
+    if getattr(user, "activo", True) is False:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión no válida")
     return user
 
 

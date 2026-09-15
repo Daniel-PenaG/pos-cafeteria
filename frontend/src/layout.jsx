@@ -18,6 +18,7 @@ function getSidebarFocusables(sidebar) {
 
 export default function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [aviso403, setAviso403] = useState("");
   const location = useLocation();
   const menuBtnRef = useRef(null);
   const restoreFocusRef = useRef(false);
@@ -30,6 +31,15 @@ export default function MainLayout() {
   useEffect(() => {
     closeSidebar();
   }, [location.pathname, closeSidebar]);
+
+  useEffect(() => {
+    const onForbidden = (ev) => {
+      setAviso403(ev.detail || "No tienes permiso para esta acción");
+      window.setTimeout(() => setAviso403(""), 4000);
+    };
+    window.addEventListener("pos:forbidden", onForbidden);
+    return () => window.removeEventListener("pos:forbidden", onForbidden);
+  }, []);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 768px)");
@@ -116,6 +126,11 @@ export default function MainLayout() {
           menuExpanded={sidebarOpen}
         />
         <main className="app-content">
+          {aviso403 ? (
+            <div className="card" role="alert" style={{ marginBottom: "0.75rem" }}>
+              {aviso403}
+            </div>
+          ) : null}
           <Outlet />
         </main>
       </div>

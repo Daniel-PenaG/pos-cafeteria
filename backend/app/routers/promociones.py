@@ -38,12 +38,13 @@ from app.services.promocion_reporte_service import (
     comparar_promocion_periodos,
 )
 from app.utils.timezone_mx import now_utc_naive
-from app.utils.deps import require_admin, require_pos
+from app.utils.deps import require_admin
+from app.utils.permisos import require_module
 
 router = APIRouter(
     prefix="/promociones",
     tags=["Promociones"],
-    dependencies=[Depends(require_pos)],
+    dependencies=[Depends(require_module("/promociones", "/ventas", "/ventas-para-llevar"))],
 )
 
 
