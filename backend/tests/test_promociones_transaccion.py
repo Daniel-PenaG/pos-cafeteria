@@ -28,12 +28,21 @@ from app.services.venta_service import registrar_venta
 
 
 def _venta_simple(db, refs, **kwargs):
+    id_pedido = kwargs.get("id_pedido")
+    numero_mesa = kwargs.get("numero_mesa", 1)
+    para_llevar = kwargs.get("para_llevar", False)
+    if id_pedido is not None:
+        pedido = db.get(PedidoModel, id_pedido)
+        if pedido is not None:
+            numero_mesa = int(pedido.numero_mesa)
+            para_llevar = bool(pedido.para_llevar)
     return VentaCreate(
         id_usuario=refs.id_usuario,
-        numero_mesa=kwargs.get("numero_mesa", 1),
+        numero_mesa=numero_mesa,
         forma_pago=kwargs.get("forma_pago", "EFECTIVO"),
         id_cliente=kwargs.get("id_cliente"),
-        id_pedido=kwargs.get("id_pedido"),
+        para_llevar=para_llevar,
+        id_pedido=id_pedido,
         detalles=[
             DetalleVentaItem(
                 id_producto=refs.id_malteada,

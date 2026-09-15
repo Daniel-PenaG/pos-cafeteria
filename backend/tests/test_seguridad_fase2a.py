@@ -5,7 +5,14 @@ import json
 from datetime import timedelta
 
 from app.constants.acciones import COBRAR_DESDE_COMANDERA
-from app.models.models import AuditoriaModel, LoginBloqueoModel, UsuarioModel
+from app.models.models import (
+    AuditoriaModel,
+    LoginBloqueoModel,
+    PedidoModel,
+    UsuarioModel,
+    VentaModel,
+)
+from app.services.promocion_ticket_service import recalcular_lineas_ticket
 from app.utils.timezone_mx import now_utc_naive
 
 
@@ -276,6 +283,14 @@ def _token_modulos(client, auth_headers, login, modulos, rol="CAJERO", **extra):
     return _headers(token)
 
 
+def _precio_ticket(db_session, id_producto=1):
+    recalc = recalcular_lineas_ticket(
+        db_session,
+        [{"id_producto": id_producto, "cantidad": 1, "precio_extras": 0, "extras": []}],
+    )
+    return recalc["lineas"][0]["precio_unitario"]
+
+
 def _precio_producto(client, auth_headers, id_producto=1):
     ctx = client.get(f"/ventas/productos/{id_producto}/contexto", headers=auth_headers)
     assert ctx.status_code == 200, ctx.text
@@ -478,3 +493,125 @@ def test_modulos_vacios_y_null(client, auth_headers, db_session):
     assert reset.status_code == 200, reset.text
     assert reset.json()["modulos"] is None
     assert "/ventas" in reset.json()["modulos_efectivos"]
+
+
+def _payload_venta_directa(precio, mesa, para_llevar, id_pedido=None, origen="COMANDERA"):
+    body = {
+        "id_usuario": 1,
+        "numero_mesa": mesa,
+        "forma_pago": "EFECTIVO",
+        "para_llevar": para_llevar,
+        "origen_cobro": origen,
+        "detalles": [
+            {"id_producto": 1, "cantidad": 1, "precio_unitario": precio, "extras": []}
+        ],
+    }
+    if id_pedido is not None:
+        body["id_pedido"] = id_pedido
+    return body
+
+
+def test_post_ventas_ignora_origen_comandera(client, auth_headers, db_session):
+    precio = _precio_ticket(db_session)
+    tok = _token_modulos(client, auth_headers, "ventas_origen_forzado", ["/ventas"])
+    res = client.post(
+        "/ventas/",
+        headers=tok,
+        json=_payload_venta_directa(precio, 2, False, origen="COMANDERA"),
+    )
+    assert res.status_code == 200, res.text
+    db_session.expire_all()
+    venta = db_session.get(VentaModel, res.json()["id_venta"])
+    assert venta is not None
+    assert venta.origen_cobro == "VENTAS"
+    assert venta.origen_cobro != "COMANDERA"
+
+
+def test_post_ventas_no_cierra_pedido_ajeno_al_modulo(client, auth_headers, db_session):
+    precio = _precio_producto(client, auth_headers)
+    add_ll = _agregar_linea(client, auth_headers, 99, precio, para_llevar=True)
+    add_mesa = _agregar_linea(client, auth_headers, 1, precio)
+    assert add_ll.status_code == 200, add_ll.text
+    assert add_mesa.status_code == 200, add_mesa.text
+    id_ll = add_ll.json()["id_pedido"]
+    id_mesa = add_mesa.json()["id_pedido"]
+
+    tok_v = _token_modulos(client, auth_headers, "ventas_no_ll", ["/ventas"])
+    tok_ll = _token_modulos(client, auth_headers, "ll_no_mesa", ["/ventas-para-llevar"])
+
+    res_a = client.post(
+        "/ventas/",
+        headers=tok_v,
+        json=_payload_venta_directa(precio, 99, False, id_pedido=id_ll),
+    )
+    assert res_a.status_code == 403, res_a.text
+
+    res_b = client.post(
+        "/ventas/",
+        headers=tok_ll,
+        json=_payload_venta_directa(precio, 1, True, id_pedido=id_mesa),
+    )
+    assert res_b.status_code == 403, res_b.text
+
+    db_session.expire_all()
+    assert db_session.get(PedidoModel, id_ll).estado == "ABIERTO"
+    assert db_session.get(PedidoModel, id_mesa).estado == "ABIERTO"
+    assert db_session.get(PedidoModel, id_ll).id_venta is None
+    assert db_session.get(PedidoModel, id_mesa).id_venta is None
+
+
+def test_post_ventas_contradiccion_pedido_409(client, auth_headers, db_session):
+    precio = _precio_producto(client, auth_headers)
+    add = _agregar_linea(client, auth_headers, 2, precio)
+    assert add.status_code == 200, add.text
+    pedido_id = add.json()["id_pedido"]
+    ventas_antes = db_session.query(VentaModel).count()
+    tok = _token_modulos(
+        client, auth_headers, "ventas_coherente", ["/ventas", "/ventas-para-llevar"]
+    )
+
+    res_tipo = client.post(
+        "/ventas/",
+        headers=tok,
+        json=_payload_venta_directa(precio, 2, True, id_pedido=pedido_id),
+    )
+    assert res_tipo.status_code == 409, res_tipo.text
+
+    res_mesa = client.post(
+        "/ventas/",
+        headers=tok,
+        json=_payload_venta_directa(precio, 3, False, id_pedido=pedido_id),
+    )
+    assert res_mesa.status_code == 409, res_mesa.text
+
+    db_session.expire_all()
+    pedido = db_session.get(PedidoModel, pedido_id)
+    assert pedido.estado == "ABIERTO"
+    assert pedido.id_venta is None
+    assert db_session.query(VentaModel).count() == ventas_antes
+
+
+def test_post_ventas_coincidente_cierra_pedido(client, auth_headers, db_session):
+    precio_linea = _precio_producto(client, auth_headers)
+    add = _agregar_linea(client, auth_headers, 2, precio_linea)
+    assert add.status_code == 200, add.text
+    pedido_id = add.json()["id_pedido"]
+    tok = _token_modulos(client, auth_headers, "ventas_ok_cierre", ["/ventas"])
+    precio_venta = _precio_ticket(db_session)
+
+    res = client.post(
+        "/ventas/",
+        headers=tok,
+        json=_payload_venta_directa(
+            precio_venta, 2, False, id_pedido=pedido_id, origen="COMANDERA"
+        ),
+    )
+    assert res.status_code == 200, res.text
+    db_session.expire_all()
+    pedido = db_session.get(PedidoModel, pedido_id)
+    venta = db_session.get(VentaModel, res.json()["id_venta"])
+    assert pedido.estado == "COBRADO"
+    assert pedido.id_venta == venta.id_venta
+    assert venta.origen_cobro == "VENTAS"
+    assert venta.para_llevar is False
+    assert venta.numero_mesa == 2

@@ -26,7 +26,7 @@ def autorizar_cobro(
     origen: str | None,
     para_llevar: bool = False,
 ) -> str:
-    """VENTAS: módulo según tipo de pedido. COMANDERA: /comandera + acción."""
+    """Solo para POST /pedidos/{id}/cobrar. POST /ventas/ no llama esta función."""
     origen_n = normalizar_origen_cobro(origen)
     if origen_n == ORIGEN_COMANDERA:
         if not tiene_accion(usuario, COBRAR_DESDE_COMANDERA):

@@ -1,7 +1,7 @@
 # Fase 2A — Seguridad, identidad, permisos y auditoría
 
-Rama: `security/permisos-pos`  
-Base: `main` (`c13ecfa` estabilidad operativa)  
+Rama: `security/permisos-pos`
+Base: `main` (`c13ecfa` estabilidad operativa)
 
 **No merge. No despliegue. No migraciones en producción.**
 
@@ -43,7 +43,8 @@ La autorización es **por operación**, no por router. Tener uno de varios módu
 | PATCH/DELETE línea, cliente, confirmar comanda | Según tipo del pedido ya cargado |
 | Cobrar origen VENTAS | `/ventas` o `/ventas-para-llevar` según el pedido |
 | Cobrar origen COMANDERA | `/comandera` **y** `COBRAR_DESDE_COMANDERA` |
-| POST `/ventas/` | `/ventas` si `para_llevar=false`; `/ventas-para-llevar` si `true` |
+| POST `/ventas/` | Origen **siempre VENTAS** (se ignora `origen_cobro` del cliente). Sin `id_pedido`: módulo según `para_llevar`. Con `id_pedido`: tipo y mesa del `PedidoModel`; contradicción → 409 |
+| POST `/pedidos/{id}/cobrar` | Única vía para `origen=COMANDERA` (pasa por `autorizar_cobro`) |
 | GET `/ventas/extras`, contexto producto | `/ventas` o `/ventas-para-llevar` (sin costos) |
 | GET `/catalogo/categorias` | Módulos que necesitan catálogo (ventas, productos, etc.). No `/mesas-activas` |
 | Mutar categorías | ADMIN + `/categorias` |
@@ -107,7 +108,7 @@ Al arrancar, `aplicar_migraciones_sqlite()` replica las mismas sentencias idempo
 
 **No se aplicó en producción.**
 
-Verificar: `SELECT activo FROM usuarios LIMIT 5;` → true.  
+Verificar: `SELECT activo FROM usuarios LIMIT 5;` → true.
 Revertir: el `.down.sql` (no borra usuarios).
 
 ---
@@ -128,7 +129,9 @@ Bloqueo persistido en BD (sirve con varios workers). Sin Redis.
 - Siguen pudiendo enviar `id_usuario`; se ignora para atribución.
 - Contraseñas existentes no se invalidan; la regla de 8 caracteres aplica a altas y cambios.
 - GET mesa / POST líneas no cambian de forma.
-- Cobro acepta `origen` opcional (default VENTAS).
+- POST `/ventas/` acepta `origen_cobro` por compatibilidad y **siempre lo ignora** (queda `VENTAS`).
+- Solo POST `/pedidos/{id_pedido}/cobrar` puede registrar `COMANDERA`, y debe pasar por `autorizar_cobro()`.
+- Si POST `/ventas/` envía `id_pedido`, el tipo y la mesa salen del pedido en BD, no del JSON.
 - DELETE `/usuarios/{id}` ahora **desactiva** (no borra historial).
 
 ---
