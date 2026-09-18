@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { HiOutlineArrowPath } from "react-icons/hi2";
-import { getComandaPendientes, marcarLineaListo } from "../services/pedidosService";
+import { getComandaPendientes, marcarLineaListo, marcarCancelacionVista } from "../services/pedidosService";
+import { formatApiError } from "../utils/apiError";
 import PageHeader from "../components/PageHeader";
 import ElapsedTimer from "../components/ElapsedTimer";
 import { formatDuration } from "../utils/formatDuration";
@@ -10,6 +11,8 @@ export default function Comandera() {
   const [lineas, setLineas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [procesando, setProcesando] = useState(null);
+  const procesandoRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
@@ -34,21 +37,69 @@ export default function Comandera() {
     return () => clearInterval(t);
   }, []);
 
-  const marcar = async (id) => {
+  const conRefreshSiConflicto = async (run) => {
     try {
-      await marcarLineaListo(id, 1);
-      load();
+      await run();
+      await load();
     } catch (err) {
-      alert(err.response?.data?.detail || "Error al marcar");
+      if (err.response?.status === 409) {
+        alert(formatApiError(err, "La comandera cambió. Se actualiza la lista."));
+        await load();
+        return;
+      }
+      alert(formatApiError(err, "No se pudo completar la operación"));
     }
   };
 
-  const marcarTodo = async (id, cantidadPendiente) => {
+  const marcar = async (linea) => {
+    const key = `listo-${linea.id_detalle_pedido}`;
+    if (procesandoRef.current) return;
+    procesandoRef.current = key;
+    setProcesando(key);
     try {
-      await marcarLineaListo(id, cantidadPendiente);
-      load();
+      await conRefreshSiConflicto(() =>
+        marcarLineaListo(linea.id_detalle_pedido, 1, {
+          cantidad_actual: linea.cantidad,
+          cantidad_lista_actual: linea.cantidad_lista,
+        })
+      );
+    } finally {
+      procesandoRef.current = null;
+      setProcesando(null);
+    }
+  };
+
+  const marcarTodo = async (linea) => {
+    const key = `todo-${linea.id_detalle_pedido}`;
+    if (procesandoRef.current) return;
+    procesandoRef.current = key;
+    setProcesando(key);
+    try {
+      await conRefreshSiConflicto(() =>
+        marcarLineaListo(linea.id_detalle_pedido, linea.cantidad_pendiente, {
+          cantidad_actual: linea.cantidad,
+          cantidad_lista_actual: linea.cantidad_lista,
+        })
+      );
+    } finally {
+      procesandoRef.current = null;
+      setProcesando(null);
+    }
+  };
+
+  const marcarAvisoVisto = async (idCancelacion) => {
+    const key = `visto-${idCancelacion}`;
+    if (procesandoRef.current) return;
+    procesandoRef.current = key;
+    setProcesando(key);
+    try {
+      await marcarCancelacionVista(idCancelacion);
+      await load();
     } catch (err) {
-      alert(err.response?.data?.detail || "Error al marcar");
+      alert(formatApiError(err, "No se pudo marcar el aviso"));
+    } finally {
+      procesandoRef.current = null;
+      setProcesando(null);
     }
   };
 
@@ -56,8 +107,19 @@ export default function Comandera() {
     const acc = {};
     for (const l of lineas) {
       const key = l.id_pedido;
-      if (!acc[key]) acc[key] = { id_pedido: l.id_pedido, para_llevar: l.para_llevar, numero_mesa: l.numero_mesa, lineas: [] };
+      if (!acc[key]) {
+        acc[key] = {
+          id_pedido: l.id_pedido,
+          para_llevar: l.para_llevar,
+          numero_mesa: l.numero_mesa,
+          estado_pedido: l.estado_pedido,
+          cuenta_cobrada: l.cuenta_cobrada,
+          lineas: [],
+        };
+      }
       acc[key].lineas.push(l);
+      if (l.cuenta_cobrada) acc[key].cuenta_cobrada = true;
+      if (l.estado_pedido) acc[key].estado_pedido = l.estado_pedido;
     }
     return Object.values(acc).sort((a, b) => {
       const ta = Math.min(...a.lineas.map((x) => parseUtcDate(x.fecha_envio_comanda)?.getTime() ?? Infinity));
@@ -126,25 +188,53 @@ export default function Comandera() {
                       <p className="hint">Pedido #{grupo.id_pedido}</p>
                     </>
                   )}
+                  {grupo.cuenta_cobrada && (
+                    <span className="badge badge--danger" style={{ marginLeft: "0.35rem" }}>
+                      CUENTA COBRADA
+                    </span>
+                  )}
                 </div>
                 <ElapsedTimer since={earliestSince} className="comandera-timer--mesa" />
               </div>
               <ul className="comandera-list">
-                {items.map((l) => (
-                  <li key={l.id_detalle_pedido} className="comandera-item">
+                {items.map((l) => {
+                  const esAviso = l.tipo === "CANCELACION";
+                  const keyVisto = `visto-${l.id_cancelacion}`;
+                  const keyListo = `listo-${l.id_detalle_pedido}`;
+                  const keyTodo = `todo-${l.id_detalle_pedido}`;
+                  return (
+                  <li
+                    key={esAviso ? `cancel-${l.id_cancelacion}` : `linea-${l.id_detalle_pedido}`}
+                    className={`comandera-item${esAviso ? " comandera-item--aviso" : ""}`}
+                  >
                     <div className="comandera-item__main">
                       <div className="comandera-item__title-row">
                         <strong>
                           {l.nombre_producto}
-                          {l.cantidad_pendiente > 1 && (
+                          {!esAviso && l.cantidad_pendiente > 1 && (
                             <span className="comandera-qty"> × {l.cantidad_pendiente}</span>
                           )}
                         </strong>
+                        {!esAviso && (
                         <ElapsedTimer
                           since={l.fecha_envio_comanda}
                           initialSeconds={l.segundos_en_preparacion}
                         />
+                        )}
                       </div>
+                      {esAviso && (
+                        <>
+                          <span className="badge badge--danger comandera-aviso">
+                            {l.aviso_texto || "CANCELADO"}
+                          </span>
+                          {paraLlevar && (
+                            <span className="badge badge--ok">PARA LLEVAR</span>
+                          )}
+                          {l.cuenta_cobrada && (
+                            <span className="badge badge--danger">CUENTA COBRADA</span>
+                          )}
+                        </>
+                      )}
                       {l.nombre_promocion && (
                         <span className="badge">{l.nombre_promocion}</span>
                       )}
@@ -158,34 +248,48 @@ export default function Comandera() {
                       {l.comentario && (
                         <p className="cart-item__comentario">📝 {l.comentario}</p>
                       )}
-                      {l.cantidad_pendiente < l.cantidad && (
+                      {!esAviso && l.cantidad_pendiente < l.cantidad && (
                         <p className="hint">
                           {l.cantidad_lista}/{l.cantidad} listos
                         </p>
                       )}
                     </div>
                     <div className="comandera-item__actions">
+                      {esAviso ? (
+                        <button
+                          type="button"
+                          className="btn btn--secondary btn--sm comandera-visto"
+                          onClick={() => marcarAvisoVisto(l.id_cancelacion)}
+                          disabled={Boolean(procesando)}
+                        >
+                          {procesando === keyVisto ? "Marcando…" : "Vi / Atendí"}
+                        </button>
+                      ) : (
+                        <>
                       <button
                         type="button"
                         className="btn btn--success btn--sm"
-                        onClick={() => marcar(l.id_detalle_pedido)}
+                        onClick={() => marcar(l)}
+                        disabled={Boolean(procesando)}
                       >
-                        1 listo
+                        {procesando === keyListo ? "Marcando…" : "1 listo"}
                       </button>
                       {l.cantidad_pendiente > 1 && (
                         <button
                           type="button"
                           className="btn btn--primary btn--sm"
-                          onClick={() =>
-                            marcarTodo(l.id_detalle_pedido, l.cantidad_pendiente)
-                          }
+                          onClick={() => marcarTodo(l)}
+                          disabled={Boolean(procesando)}
                         >
-                          Todo
+                          {procesando === keyTodo ? "Marcando…" : "Todo"}
                         </button>
+                      )}
+                        </>
                       )}
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
               <p className="hint comandera-mesa__footer">
                 Tiempo en preparación: {formatDuration(pedidoSegs)}

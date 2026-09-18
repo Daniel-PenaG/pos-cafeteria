@@ -65,6 +65,20 @@ export async function eliminarLineaPedido(idDetalle) {
   return res.data;
 }
 
+export async function cancelarLineaPedido(idDetalle, data) {
+  const res = await api.post(`/pedidos/lineas/${idDetalle}/cancelar`, data, {
+    headers: getAuthHeader(),
+  });
+  return res.data;
+}
+
+export async function getMotivosCancelacion() {
+  const res = await api.get("/pedidos/motivos-cancelacion", {
+    headers: getAuthHeader(),
+  });
+  return res.data;
+}
+
 export async function asignarClientePedido(idPedido, idCliente) {
   const res = await api.put(
     `/pedidos/${idPedido}/cliente`,
@@ -93,10 +107,19 @@ export async function getComandaPendientes() {
   return res.data;
 }
 
-export async function marcarLineaListo(idDetalle, cantidad = 1) {
+export async function marcarLineaListo(idDetalle, cantidad = 1, extra = {}) {
   const res = await api.post(
     `/comandera/lineas/${idDetalle}/listo`,
-    { cantidad },
+    { cantidad, ...extra },
+    { headers: getAuthHeader() }
+  );
+  return res.data;
+}
+
+export async function marcarCancelacionVista(idCancelacion) {
+  const res = await api.post(
+    `/comandera/cancelaciones/${idCancelacion}/visto`,
+    null,
     { headers: getAuthHeader() }
   );
   return res.data;

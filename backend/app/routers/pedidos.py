@@ -3,13 +3,15 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 
 from app.constants import auditoria as A
+from app.constants.cancelacion import MOTIVOS_CANCELACION
 from app.database import get_db
-from app.models.models import PedidoModel, DetallePedidoModel, ClienteModel, PromocionModel
+from app.models.models import PedidoModel, ClienteModel, PromocionModel
 from app.schemas.pedido import (
     Pedido,
     PedidoResumen,
     PedidoLineaCreate,
     PedidoLineaUpdate,
+    PedidoLineaCancelar,
     PedidoClienteUpdate,
     PedidoCobrar,
     ComboPedidoCreate,
@@ -31,8 +33,14 @@ from app.services.pedido_service import (
     _line_key,
     _parse_extras,
 )
+from app.services.cancelacion_service import (
+    actualizar_linea_no_enviada,
+    cancelar_linea_enviada,
+    eliminar_linea_no_enviada,
+)
+from app.services.pedido_locks import lock_pedido_y_detalle
 from app.services.venta_service import MESA_PARA_LLEVAR
-from app.services.promocion_service import calcular_linea, es_promo_paquete
+from app.services.promocion_service import calcular_linea, es_promo_paquete, es_promo_ticket
 from app.models import ProductoModel
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 from app.models.models import UsuarioModel
@@ -65,6 +73,11 @@ def _meta(request: Request) -> dict:
 )
 def listar_pedidos_activos(db: Session = Depends(get_db)):
     return listar_pedidos_activos_resumen(db)
+
+
+@router.get("/motivos-cancelacion")
+def listar_motivos_cancelacion():
+    return {"motivos": MOTIVOS_CANCELACION}
 
 
 @router.get(
@@ -186,15 +199,19 @@ def actualizar_linea(
     db: Session = Depends(get_db),
     current: UsuarioModel = Depends(get_current_user),
 ):
-    detalle = db.query(DetallePedidoModel).filter(DetallePedidoModel.id_detalle_pedido == id_detalle_pedido).first()
+    pedido, detalle = lock_pedido_y_detalle(db, id_detalle_pedido)
     if not detalle:
         raise RecursoNoEncontradoException("Línea no encontrada")
-    pedido = db.query(PedidoModel).filter(PedidoModel.id_pedido == detalle.id_pedido).first()
     if not pedido:
         raise RecursoNoEncontradoException("Pedido no encontrado")
     exigir_modulo_pedido(current, bool(pedido.para_llevar))
-    if pedido.estado != "ABIERTO":
-        raise DatosInvalidosException("Pedido cerrado")
+    actualizar_linea_no_enviada(
+        db,
+        detalle=detalle,
+        pedido=pedido,
+        cantidad=data.cantidad,
+        cantidad_actual=data.cantidad_actual,
+    )
     if data.cantidad is None and data.comentario is None:
         raise DatosInvalidosException("Indica cantidad o comentario")
 
@@ -236,7 +253,8 @@ def actualizar_linea(
         import json
         extras = json.loads(detalle.extras_json) if detalle.extras_json else []
         precio_extras = sum(float(e.get("precio", 0)) for e in extras)
-        calc = calcular_linea(db, producto, float(data.cantidad), precio_extras, detalle.id_promocion)
+        id_promo_calc = None if (promo and es_promo_ticket(promo)) else detalle.id_promocion
+        calc = calcular_linea(db, producto, float(data.cantidad), precio_extras, id_promo_calc)
         if not calc["margen_ok"]:
             raise DatosInvalidosException(calc["mensaje"] or "Cantidad no válida para promoción")
         detalle.precio_unitario = calc["precio_unitario"]
@@ -258,18 +276,25 @@ def eliminar_linea(
     db: Session = Depends(get_db),
     current: UsuarioModel = Depends(get_current_user),
 ):
-    detalle = db.query(DetallePedidoModel).filter(DetallePedidoModel.id_detalle_pedido == id_detalle_pedido).first()
-    if not detalle:
-        raise RecursoNoEncontradoException("Línea no encontrada")
-    pedido = db.query(PedidoModel).filter(PedidoModel.id_pedido == detalle.id_pedido).first()
-    if not pedido:
-        raise RecursoNoEncontradoException("Pedido no encontrado")
-    exigir_modulo_pedido(current, bool(pedido.para_llevar))
-    if pedido.estado != "ABIERTO":
-        raise DatosInvalidosException("Pedido cerrado")
-    db.delete(detalle)
-    db.commit()
-    return {"ok": True}
+    return eliminar_linea_no_enviada(db, id_detalle=id_detalle_pedido, current=current)
+
+
+@router.post("/lineas/{id_detalle_pedido}/cancelar", response_model=Pedido)
+def cancelar_linea(
+    id_detalle_pedido: int,
+    data: PedidoLineaCancelar,
+    db: Session = Depends(get_db),
+    current: UsuarioModel = Depends(get_current_user),
+):
+    return cancelar_linea_enviada(
+        db,
+        id_detalle=id_detalle_pedido,
+        current=current,
+        cantidad=data.cantidad,
+        motivo=data.motivo,
+        motivo_detalle=data.motivo_detalle,
+        cantidad_actual=data.cantidad_actual,
+    )
 
 
 @router.put("/{id_pedido}/cliente", response_model=Pedido)

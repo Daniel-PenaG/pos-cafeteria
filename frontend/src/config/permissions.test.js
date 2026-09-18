@@ -2,7 +2,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   ACCION_COBRAR_DESDE_COMANDERA,
+  ACCION_CANCELAR_PRODUCTO_EN_COMANDA,
   canAccessRoute,
+  canCancelarProductoEnComanda,
   canCobrarDesdeComandera,
   getEffectiveRoutes,
 } from "./permissions.js";
@@ -45,5 +47,24 @@ describe("permisos frontend", () => {
       true
     );
     assert.equal(canCobrarDesdeComandera({ rol: "ADMIN" }), true);
+  });
+
+  it("cancelar producto en comandera según acción", () => {
+    assert.equal(
+      canCancelarProductoEnComanda({ rol: "CAJERO", permisos_acciones: [] }),
+      false
+    );
+    assert.equal(
+      canCancelarProductoEnComanda({
+        rol: "CAJERO",
+        permisos_acciones: [ACCION_CANCELAR_PRODUCTO_EN_COMANDA],
+      }),
+      true
+    );
+    assert.equal(
+      canCancelarProductoEnComanda({ rol: "COCINA", permisos_acciones: [] }),
+      false
+    );
+    assert.equal(canCancelarProductoEnComanda({ rol: "ADMIN" }), true);
   });
 });

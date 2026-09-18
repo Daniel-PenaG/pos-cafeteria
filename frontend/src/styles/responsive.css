@@ -256,7 +256,8 @@
   }
 
   .modal-box,
-  .modal-box--wide {
+  .modal-box--wide,
+  .modal-box--cancel {
     width: 100%;
     max-width: none;
     max-height: calc(100dvh - 1rem);
@@ -314,6 +315,11 @@
   }
 
   .comandera-item__actions .btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .comandera-visto {
     min-width: 44px;
     min-height: 44px;
   }
