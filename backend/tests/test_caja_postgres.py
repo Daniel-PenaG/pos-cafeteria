@@ -285,8 +285,9 @@ def test_indices_unicos_apertura(pg_refs):
     refs, Session = pg_refs
     db = Session()
     try:
-        user = db.get(UsuarioModel, refs.id_usuario)
+        user = _otro_cajero(db, "cajero_idx_pg")
         _cerrar_si_abierta(db, user)
+        _cerrar_activas_terminal(db, "CAJA-1")
         abrir_caja(db, user, fondo_inicial=10, terminal="CAJA-1", operation_id=f"pg-open-{random.randint(1, 99999)}")
         with pytest.raises(HTTPException):
             abrir_caja(db, user, fondo_inicial=10, terminal="CAJA-2", operation_id=f"pg-open-b-{random.randint(1, 99999)}")
@@ -298,8 +299,10 @@ def test_apertura_concurrente(pg_refs):
     refs, Session = pg_refs
     db = Session()
     try:
-        user = db.get(UsuarioModel, refs.id_usuario)
+        user = _otro_cajero(db, "cajero_conc_pg")
         _cerrar_si_abierta(db, user)
+        uid = user.id_usuario
+        db.commit()
     finally:
         db.close()
     oid_a = f"pg-conc-a-{random.randint(1, 9_999_999)}"
@@ -308,7 +311,7 @@ def test_apertura_concurrente(pg_refs):
     def worker(oid, terminal):
         db = Session()
         try:
-            user = db.get(UsuarioModel, refs.id_usuario)
+            user = db.get(UsuarioModel, uid)
             return abrir_caja(db, user, fondo_inicial=15, terminal=terminal, operation_id=oid)
         finally:
             db.close()
