@@ -56,6 +56,7 @@ def _uses_promo_seed(basename: str) -> bool:
             "test_agregar_producto",
             "test_estabilidad",
             "test_cancelacion",
+            "test_caja",
         )
     )
 

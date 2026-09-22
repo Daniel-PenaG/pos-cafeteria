@@ -1,0 +1,63 @@
+"""Constantes de sesión de caja, arqueo y conciliación."""
+
+ESTADO_ABIERTA = "ABIERTA"
+ESTADO_EN_ARQUEO = "EN_ARQUEO"
+ESTADO_CERRADA_CONCILIADA = "CERRADA_CONCILIADA"
+ESTADO_CERRADA_CON_DIFERENCIA = "CERRADA_CON_DIFERENCIA"
+ESTADO_REVISADA = "REVISADA"
+ESTADO_ANULADA = "ANULADA"
+
+ESTADOS_ACTIVOS = (ESTADO_ABIERTA, ESTADO_EN_ARQUEO)
+ESTADOS_CERRADOS = (ESTADO_CERRADA_CONCILIADA, ESTADO_CERRADA_CON_DIFERENCIA, ESTADO_REVISADA)
+ESTADOS_SESION = (
+    ESTADO_ABIERTA,
+    ESTADO_EN_ARQUEO,
+    ESTADO_CERRADA_CONCILIADA,
+    ESTADO_CERRADA_CON_DIFERENCIA,
+    ESTADO_REVISADA,
+    ESTADO_ANULADA,
+)
+
+MOV_FONDO_INICIAL = "FONDO_INICIAL"
+MOV_ENTRADA = "ENTRADA"
+MOV_RETIRO = "RETIRO"
+MOV_GASTO_CAJA = "GASTO_CAJA"
+MOV_DEVOLUCION = "DEVOLUCION"
+MOV_AJUSTE = "AJUSTE"
+MOV_REVERSO = "REVERSO"
+
+TIPOS_MOVIMIENTO = (
+    MOV_FONDO_INICIAL,
+    MOV_ENTRADA,
+    MOV_RETIRO,
+    MOV_GASTO_CAJA,
+    MOV_DEVOLUCION,
+    MOV_AJUSTE,
+    MOV_REVERSO,
+)
+
+MOV_REDUCEN_EFECTIVO = (MOV_RETIRO, MOV_GASTO_CAJA, MOV_DEVOLUCION)
+MOV_AUMENTAN_EFECTIVO = (MOV_FONDO_INICIAL, MOV_ENTRADA)
+
+ESTADO_MOV_ACTIVO = "ACTIVO"
+ESTADO_MOV_REVERSADO = "REVERSADO"
+
+TERMINALES_CAJA = ("CAJA-1", "CAJA-2", "CAJA-3", "BARRA")
+
+DENOMS_BILLETES = (1000, 500, 200, 100, 50, 20)
+DENOMS_MONEDAS = (20.0, 10.0, 5.0, 2.0, 1.0, 0.5)
+
+TOLERANCIA_EFECTIVO_DEFAULT = 5.0
+
+MSG_SIN_CAJA = "Abre una caja antes de cobrar."
+MSG_CAJA_CERRANDO = "La caja está en arqueo o cerrada. No se puede cobrar."
+MSG_DOBLE_APERTURA = "Ya tienes una caja abierta."
+MSG_TERMINAL_OCUPADA = "Esa terminal ya tiene una caja abierta."
+MSG_CAJA_CERRADA = "La caja no admite movimientos."
+MSG_IMPORTE = "El importe no puede ser negativo ni cero."
+MSG_OBS_DIFERENCIA = "Indica una observación: hay diferencia fuera de tolerancia."
+MSG_PEDIDOS_ABIERTOS = "Hay pedidos abiertos. Ciérralos o solicita un cierre forzado."
+MSG_STALE_CAJA = "La caja cambió en otro dispositivo. Actualiza."
+MSG_PAYLOAD = "La clave de operación no corresponde a esta solicitud."
+MSG_NO_REVISAR_PROPIO = "No puedes revisar tu propio cierre."
+MSG_AJENA = "No puedes modificar la caja de otro usuario."

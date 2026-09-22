@@ -260,6 +260,24 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
     _revisar_stock_receta(db, data.detalles, advertencias_stock)
     _revisar_stock_extras(db, data.detalles, advertencias_stock)
 
+    from app.constants.caja import ESTADO_ABIERTA, MSG_CAJA_CERRANDO, MSG_SIN_CAJA
+    from app.services.caja_service import (
+        caja_requerida_para_cobrar,
+        lock_sesion,
+        registrar_pago_venta,
+        sesion_activa_usuario,
+    )
+
+    sesion_id = None
+    activa = sesion_activa_usuario(db, usuario.id_usuario)
+    if activa:
+        locked = lock_sesion(db, activa.id_sesion_caja)
+        if not locked or locked.estado != ESTADO_ABIERTA:
+            raise ConflictoOperacionException(MSG_CAJA_CERRANDO)
+        sesion_id = locked.id_sesion_caja
+    elif caja_requerida_para_cobrar():
+        raise DatosInvalidosException(MSG_SIN_CAJA)
+
     try:
         venta = VentaModel(
             fecha_hora=now_utc_naive(),
@@ -271,6 +289,7 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
             id_cliente=data.id_cliente if cliente else None,
             puntos_generados=puntos_generados,
             origen_cobro=getattr(data, "origen_cobro", None),
+            id_sesion_caja=sesion_id,
         )
         db.add(venta)
         db.flush()
@@ -307,6 +326,7 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
         if data.id_pedido is not None:
             _cerrar_pedido_tras_venta(db, data.id_pedido, venta.id_venta)
 
+        registrar_pago_venta(db, venta)
         db.commit()
         db.refresh(venta)
     except Exception:

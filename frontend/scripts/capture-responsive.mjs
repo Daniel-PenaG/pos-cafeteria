@@ -23,7 +23,7 @@ const LOGIN_USER = process.env.CAPTURE_LOGIN || "admin";
 const LOGIN_PASS = process.env.CAPTURE_PASSWORD || "admin123";
 
 const MODAL_BOTTOM_VIEWPORTS = new Set(["320x568", "390x844"]);
-const TABLE_ROUTES = new Set(["/reportes", "/usuarios", "/cuentas-cajero"]);
+const TABLE_ROUTES = new Set(["/reportes", "/usuarios", "/cuentas-cajero", "/cierre-caja", "/cierres-dia"]);
 
 const VIEWPORTS = [
   { w: 320, h: 568, tag: "320x568" },
@@ -286,6 +286,16 @@ async function captureMobile(page, vp) {
   await waitAppReady(page, { mobile: true });
   await validateRouteLayout(page, "/cuentas-cajero", vp.tag);
   await shot(page, dir, "cuentas-cajero");
+
+  await page.goto(`${BASE_URL}/cierre-caja`, { waitUntil: "load" });
+  await waitAppReady(page, { mobile: true });
+  await validateRouteLayout(page, "/cierre-caja", vp.tag);
+  await shot(page, dir, "cierre-caja");
+
+  await page.goto(`${BASE_URL}/cierres-dia`, { waitUntil: "load" });
+  await waitAppReady(page, { mobile: true });
+  await validateRouteLayout(page, "/cierres-dia", vp.tag);
+  await shot(page, dir, "cierres-dia");
 }
 
 async function captureTabletDesktop(page, vp, name) {
@@ -303,6 +313,16 @@ async function captureTabletDesktop(page, vp, name) {
   await waitAppReady(page, { mobile: false });
   await validateRouteLayout(page, "/reportes", vp.tag);
   await shot(page, dir, `${name}-reportes`);
+
+  await page.goto(`${BASE_URL}/cierre-caja`, { waitUntil: "load" });
+  await waitAppReady(page, { mobile: false });
+  await validateRouteLayout(page, "/cierre-caja", vp.tag);
+  await shot(page, dir, `${name}-cierre-caja`);
+
+  await page.goto(`${BASE_URL}/cierres-dia`, { waitUntil: "load" });
+  await waitAppReady(page, { mobile: false });
+  await validateRouteLayout(page, "/cierres-dia", vp.tag);
+  await shot(page, dir, `${name}-cierres-dia`);
 }
 
 async function main() {

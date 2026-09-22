@@ -137,10 +137,13 @@ class VentaModel(Base):
     id_cliente = Column(Integer, ForeignKey("clientes.id_cliente"), nullable=True)
     puntos_generados = Column(Integer, nullable=False, default=0)
     origen_cobro = Column(String(20), nullable=True)
+    id_sesion_caja = Column(Integer, ForeignKey("sesiones_caja.id_sesion_caja"), nullable=True, index=True)
 
     usuario = relationship("UsuarioModel", back_populates="ventas")
     cliente = relationship("ClienteModel", back_populates="ventas")
     detalles = relationship("DetalleVentaModel", back_populates="venta")
+    sesion_caja = relationship("SesionCajaModel", back_populates="ventas")
+    pagos = relationship("VentaPagoModel", back_populates="venta")
 
 
 # ============================
@@ -337,6 +340,128 @@ class CierreCajaModel(Base):
     fecha_hora_registro = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     usuario = relationship("UsuarioModel", back_populates="cierres_caja")
+    id_sesion_caja = Column(Integer, ForeignKey("sesiones_caja.id_sesion_caja"), nullable=True)
+
+
+# ============================
+# SESIÓN DE CAJA / TURNO
+# ============================
+class SesionCajaModel(Base):
+    __tablename__ = "sesiones_caja"
+    __table_args__ = (
+        Index(
+            "uq_sesion_caja_usuario_activa",
+            "id_usuario",
+            unique=True,
+            sqlite_where=text("estado IN ('ABIERTA', 'EN_ARQUEO')"),
+            postgresql_where=text("estado IN ('ABIERTA', 'EN_ARQUEO')"),
+        ),
+        Index(
+            "uq_sesion_caja_terminal_activa",
+            "terminal",
+            unique=True,
+            sqlite_where=text("estado IN ('ABIERTA', 'EN_ARQUEO')"),
+            postgresql_where=text("estado IN ('ABIERTA', 'EN_ARQUEO')"),
+        ),
+        UniqueConstraint("operation_id", name="uq_sesion_caja_operation_id"),
+    )
+
+    id_sesion_caja = Column(Integer, primary_key=True, index=True)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False, index=True)
+    terminal = Column(String(40), nullable=False, index=True)
+    estado = Column(String(30), nullable=False, default="ABIERTA", index=True)
+    fondo_inicial = Column(Numeric(12, 2), nullable=False, default=0)
+    observacion_apertura = Column(String(500))
+    fecha_apertura = Column(DateTime, nullable=False)
+    fecha_inicio_arqueo = Column(DateTime, nullable=True)
+    fecha_cierre = Column(DateTime, nullable=True)
+    id_usuario_cierre = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=True)
+    esperado_efectivo = Column(Numeric(12, 2), nullable=True)
+    esperado_transferencia = Column(Numeric(12, 2), nullable=True)
+    esperado_tarjeta = Column(Numeric(12, 2), nullable=True)
+    declarado_efectivo = Column(Numeric(12, 2), nullable=True)
+    declarado_transferencia = Column(Numeric(12, 2), nullable=True)
+    declarado_tarjeta = Column(Numeric(12, 2), nullable=True)
+    diferencia_efectivo = Column(Numeric(12, 2), nullable=True)
+    diferencia_transferencia = Column(Numeric(12, 2), nullable=True)
+    diferencia_tarjeta = Column(Numeric(12, 2), nullable=True)
+    ventas_total = Column(Numeric(12, 2), nullable=True)
+    num_ventas = Column(Integer, nullable=True)
+    ref_terminal = Column(String(80), nullable=True)
+    lote_terminal = Column(String(80), nullable=True)
+    ref_transferencia = Column(String(80), nullable=True)
+    observacion_cierre = Column(String(500), nullable=True)
+    id_usuario_revision = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=True)
+    fecha_revision = Column(DateTime, nullable=True)
+    motivo_anulacion = Column(String(500), nullable=True)
+    forzado = Column(Boolean, nullable=False, default=False)
+    operation_id = Column(String(64), nullable=False)
+    captura_directa = Column(Boolean, nullable=False, default=False)
+
+    usuario = relationship("UsuarioModel", foreign_keys=[id_usuario])
+    ventas = relationship("VentaModel", back_populates="sesion_caja")
+    movimientos = relationship("MovimientoCajaModel", back_populates="sesion")
+    denominaciones = relationship("ArqueoDenominacionModel", back_populates="sesion")
+
+
+class MovimientoCajaModel(Base):
+    __tablename__ = "movimientos_caja"
+    __table_args__ = (
+        UniqueConstraint("operation_id", name="uq_movimiento_caja_operation_id"),
+        UniqueConstraint("id_gasto", name="uq_movimiento_caja_gasto"),
+    )
+
+    id_movimiento = Column(Integer, primary_key=True, index=True)
+    id_sesion_caja = Column(Integer, ForeignKey("sesiones_caja.id_sesion_caja"), nullable=False, index=True)
+    tipo = Column(String(30), nullable=False)
+    importe = Column(Numeric(12, 2), nullable=False)
+    metodo = Column(String(30), nullable=False, default="EFECTIVO")
+    motivo = Column(String(200), nullable=False)
+    referencia = Column(String(80), nullable=True)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+    fecha_hora = Column(DateTime, nullable=False)
+    estado = Column(String(20), nullable=False, default="ACTIVO")
+    id_movimiento_reverso = Column(Integer, ForeignKey("movimientos_caja.id_movimiento"), nullable=True)
+    id_gasto = Column(Integer, ForeignKey("gastos.id_gasto"), nullable=True)
+    operation_id = Column(String(64), nullable=False)
+
+    sesion = relationship("SesionCajaModel", back_populates="movimientos")
+
+
+class ArqueoDenominacionModel(Base):
+    __tablename__ = "arqueo_denominaciones"
+    __table_args__ = (
+        UniqueConstraint("id_sesion_caja", "codigo", name="uq_arqueo_sesion_codigo"),
+    )
+
+    id_denominacion = Column(Integer, primary_key=True)
+    id_sesion_caja = Column(Integer, ForeignKey("sesiones_caja.id_sesion_caja"), nullable=False, index=True)
+    codigo = Column(String(10), nullable=False)
+    valor = Column(Numeric(10, 2), nullable=False)
+    cantidad = Column(Integer, nullable=False, default=0)
+
+    sesion = relationship("SesionCajaModel", back_populates="denominaciones")
+
+
+class VentaPagoModel(Base):
+    """Componentes de pago de una venta. En Fase 3A solo métodos monetarios."""
+
+    __tablename__ = "venta_pagos"
+    __table_args__ = (UniqueConstraint("operation_id", name="uq_venta_pago_operation_id"),)
+
+    id_pago = Column(Integer, primary_key=True)
+    id_venta = Column(Integer, ForeignKey("ventas.id_venta"), nullable=False, index=True)
+    metodo = Column(String(30), nullable=False)
+    importe_monetario = Column(Numeric(12, 2), nullable=False)
+    cantidad_puntos = Column(Integer, nullable=True)
+    equivalencia_puntos = Column(Numeric(12, 2), nullable=True)
+    referencia = Column(String(80), nullable=True)
+    fecha_hora = Column(DateTime, nullable=False)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+    id_sesion_caja = Column(Integer, ForeignKey("sesiones_caja.id_sesion_caja"), nullable=True)
+    operation_id = Column(String(64), nullable=False)
+
+    venta = relationship("VentaModel", back_populates="pagos")
 
 
 # ============================
@@ -364,6 +489,7 @@ class ConfiguracionModel(Base):
     margen_ganancia = Column(Numeric(5, 2), default=15.0)  # Porcentaje de margen
     gastos_fijos = Column(Numeric(12, 2), default=1000.0)  # Gastos fijos mensuales
     mesas_json = Column(String(500))  # JSON: [1, 2, 3, ...] mesas de servicio
+    tolerancia_efectivo = Column(Numeric(10, 2), nullable=False, default=5)
     fecha_actualizacion = Column(DateTime, default=datetime.utcnow)
 
     def __repr__(self):

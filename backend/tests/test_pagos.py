@@ -9,7 +9,7 @@ from app.schemas.ventas import DetalleVentaItem, VentaCreate
 from app.services.cierre_service import resumen_ventas_usuario
 from app.services.pago_reporte_service import desglose_pagos_periodo
 from app.services.venta_service import registrar_venta
-from app.utils.forma_pago import etiqueta_forma_pago, normalizar_forma_pago
+from app.utils.forma_pago import agregar_por_forma_pago, bucket_forma_pago, etiqueta_forma_pago, normalizar_forma_pago
 from app.utils.timezone_mx import today_mx
 from tests.promo_seed import promo_vigente_siempre
 
@@ -88,6 +88,23 @@ def test_efectivo_esperado_excluye_otros_metodos(db_session, refs):
 
 def test_normalizar_forma_pago():
     assert normalizar_forma_pago(" efectivo ") == "EFECTIVO"
+
+
+def test_puntos_y_desconocido_nunca_suman_efectivo():
+    assert bucket_forma_pago(None) == "EFECTIVO"
+    assert bucket_forma_pago("") == "EFECTIVO"
+    assert bucket_forma_pago("PUNTOS") == "DESCONOCIDO"
+    assert bucket_forma_pago("CRYPTO") == "DESCONOCIDO"
+
+    class _V:
+        def __init__(self, forma, total):
+            self.forma_pago = forma
+            self.total = total
+
+    agg = agregar_por_forma_pago([_V("PUNTOS", 80), _V("EFECTIVO", 20), _V(None, 10)])
+    assert agg["total_efectivo"] == 30.0
+    assert agg["por_metodo"]["DESCONOCIDO"]["importe"] == 80.0
+    assert abs(agg["total_general"] - 110.0) < 0.02
 
 
 def test_desglose_por_cajero_metodos(db_session, refs):

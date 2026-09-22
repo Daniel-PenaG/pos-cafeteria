@@ -627,6 +627,230 @@ def aplicar_migraciones_sqlite():
         "CREATE INDEX IF NOT EXISTS idx_cancelaciones_pedido ON pedido_cancelaciones (id_pedido)",
         "CREATE INDEX IF NOT EXISTS idx_cancelaciones_detalle ON pedido_cancelaciones (id_detalle_pedido)",
     ]
+    # Misma 005 que backend/migrations/005_cierre_caja_conciliacion.up.sql (SQLite sin equivalencia de FOR UPDATE)
+    migraciones_caja_pg = [
+        "ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS tolerancia_efectivo NUMERIC(10, 2) NOT NULL DEFAULT 5",
+        "UPDATE configuracion SET tolerancia_efectivo = 5 WHERE tolerancia_efectivo IS NULL",
+        """CREATE TABLE IF NOT EXISTS sesiones_caja (
+            id_sesion_caja SERIAL PRIMARY KEY,
+            id_usuario INTEGER NOT NULL REFERENCES usuarios(id_usuario),
+            terminal VARCHAR(40) NOT NULL,
+            estado VARCHAR(30) NOT NULL DEFAULT 'ABIERTA',
+            fondo_inicial NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            observacion_apertura VARCHAR(500),
+            fecha_apertura TIMESTAMP NOT NULL,
+            fecha_inicio_arqueo TIMESTAMP,
+            fecha_cierre TIMESTAMP,
+            id_usuario_cierre INTEGER REFERENCES usuarios(id_usuario),
+            esperado_efectivo NUMERIC(12, 2),
+            esperado_transferencia NUMERIC(12, 2),
+            esperado_tarjeta NUMERIC(12, 2),
+            declarado_efectivo NUMERIC(12, 2),
+            declarado_transferencia NUMERIC(12, 2),
+            declarado_tarjeta NUMERIC(12, 2),
+            diferencia_efectivo NUMERIC(12, 2),
+            diferencia_transferencia NUMERIC(12, 2),
+            diferencia_tarjeta NUMERIC(12, 2),
+            ventas_total NUMERIC(12, 2),
+            num_ventas INTEGER,
+            ref_terminal VARCHAR(80),
+            lote_terminal VARCHAR(80),
+            ref_transferencia VARCHAR(80),
+            observacion_cierre VARCHAR(500),
+            id_usuario_revision INTEGER REFERENCES usuarios(id_usuario),
+            fecha_revision TIMESTAMP,
+            motivo_anulacion VARCHAR(500),
+            forzado BOOLEAN NOT NULL DEFAULT FALSE,
+            operation_id VARCHAR(64) NOT NULL,
+            captura_directa BOOLEAN NOT NULL DEFAULT FALSE
+        )""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_sesion_caja_operation_id ON sesiones_caja (operation_id)",
+        """CREATE UNIQUE INDEX IF NOT EXISTS uq_sesion_caja_usuario_activa
+            ON sesiones_caja (id_usuario) WHERE estado IN ('ABIERTA', 'EN_ARQUEO')""",
+        """CREATE UNIQUE INDEX IF NOT EXISTS uq_sesion_caja_terminal_activa
+            ON sesiones_caja (terminal) WHERE estado IN ('ABIERTA', 'EN_ARQUEO')""",
+        "CREATE INDEX IF NOT EXISTS idx_sesiones_caja_estado ON sesiones_caja (estado)",
+        "CREATE INDEX IF NOT EXISTS idx_sesiones_caja_usuario ON sesiones_caja (id_usuario)",
+        "ALTER TABLE ventas ADD COLUMN IF NOT EXISTS id_sesion_caja INTEGER REFERENCES sesiones_caja(id_sesion_caja)",
+        "CREATE INDEX IF NOT EXISTS idx_ventas_sesion_caja ON ventas (id_sesion_caja)",
+        "ALTER TABLE cierres_caja ADD COLUMN IF NOT EXISTS id_sesion_caja INTEGER REFERENCES sesiones_caja(id_sesion_caja)",
+        "DROP INDEX IF EXISTS idx_cierres_usuario_fecha",
+        "CREATE INDEX IF NOT EXISTS idx_cierres_usuario_fecha ON cierres_caja (id_usuario, fecha)",
+        """CREATE TABLE IF NOT EXISTS movimientos_caja (
+            id_movimiento SERIAL PRIMARY KEY,
+            id_sesion_caja INTEGER NOT NULL REFERENCES sesiones_caja(id_sesion_caja),
+            tipo VARCHAR(30) NOT NULL,
+            importe NUMERIC(12, 2) NOT NULL,
+            metodo VARCHAR(30) NOT NULL DEFAULT 'EFECTIVO',
+            motivo VARCHAR(200) NOT NULL,
+            referencia VARCHAR(80),
+            id_usuario INTEGER NOT NULL REFERENCES usuarios(id_usuario),
+            fecha_hora TIMESTAMP NOT NULL,
+            estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVO',
+            id_movimiento_reverso INTEGER REFERENCES movimientos_caja(id_movimiento),
+            id_gasto INTEGER REFERENCES gastos(id_gasto),
+            operation_id VARCHAR(64) NOT NULL
+        )""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_movimiento_caja_operation_id ON movimientos_caja (operation_id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_movimiento_caja_gasto ON movimientos_caja (id_gasto) WHERE id_gasto IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_movimientos_caja_sesion ON movimientos_caja (id_sesion_caja)",
+        """CREATE TABLE IF NOT EXISTS arqueo_denominaciones (
+            id_denominacion SERIAL PRIMARY KEY,
+            id_sesion_caja INTEGER NOT NULL REFERENCES sesiones_caja(id_sesion_caja),
+            codigo VARCHAR(10) NOT NULL,
+            valor NUMERIC(10, 2) NOT NULL,
+            cantidad INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (id_sesion_caja, codigo)
+        )""",
+        """CREATE TABLE IF NOT EXISTS venta_pagos (
+            id_pago SERIAL PRIMARY KEY,
+            id_venta INTEGER NOT NULL REFERENCES ventas(id_venta),
+            metodo VARCHAR(30) NOT NULL,
+            importe_monetario NUMERIC(12, 2) NOT NULL,
+            cantidad_puntos INTEGER,
+            equivalencia_puntos NUMERIC(12, 2),
+            referencia VARCHAR(80),
+            fecha_hora TIMESTAMP NOT NULL,
+            id_usuario INTEGER NOT NULL REFERENCES usuarios(id_usuario),
+            id_sesion_caja INTEGER REFERENCES sesiones_caja(id_sesion_caja),
+            operation_id VARCHAR(64) NOT NULL
+        )""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_venta_pago_operation_id ON venta_pagos (operation_id)",
+        """CREATE UNIQUE INDEX IF NOT EXISTS uq_venta_pago_backfill ON venta_pagos (id_venta)
+            WHERE operation_id LIKE 'backfill-venta-%'""",
+        "CREATE INDEX IF NOT EXISTS idx_venta_pagos_venta ON venta_pagos (id_venta)",
+        """INSERT INTO venta_pagos (
+            id_venta, metodo, importe_monetario, fecha_hora, id_usuario, id_sesion_caja, operation_id
+        )
+        SELECT
+            v.id_venta,
+            CASE
+                WHEN v.forma_pago IS NULL OR btrim(v.forma_pago) = '' THEN 'EFECTIVO'
+                WHEN upper(v.forma_pago) IN ('EFECTIVO', 'TRANSFERENCIA', 'TARJETA') THEN upper(v.forma_pago)
+                ELSE 'DESCONOCIDO'
+            END,
+            v.total,
+            v.fecha_hora,
+            v.id_usuario,
+            v.id_sesion_caja,
+            'backfill-venta-' || v.id_venta::text
+        FROM ventas v
+        WHERE NOT EXISTS (
+            SELECT 1 FROM venta_pagos p
+            WHERE p.operation_id = 'backfill-venta-' || v.id_venta::text
+        )""",
+    ]
+    migraciones_caja_sqlite = [
+        "ALTER TABLE configuracion ADD COLUMN tolerancia_efectivo NUMERIC(10, 2) DEFAULT 5",
+        """CREATE TABLE IF NOT EXISTS sesiones_caja (
+            id_sesion_caja INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_usuario INTEGER NOT NULL REFERENCES usuarios(id_usuario),
+            terminal VARCHAR(40) NOT NULL,
+            estado VARCHAR(30) NOT NULL DEFAULT 'ABIERTA',
+            fondo_inicial NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            observacion_apertura VARCHAR(500),
+            fecha_apertura TIMESTAMP NOT NULL,
+            fecha_inicio_arqueo TIMESTAMP,
+            fecha_cierre TIMESTAMP,
+            id_usuario_cierre INTEGER REFERENCES usuarios(id_usuario),
+            esperado_efectivo NUMERIC(12, 2),
+            esperado_transferencia NUMERIC(12, 2),
+            esperado_tarjeta NUMERIC(12, 2),
+            declarado_efectivo NUMERIC(12, 2),
+            declarado_transferencia NUMERIC(12, 2),
+            declarado_tarjeta NUMERIC(12, 2),
+            diferencia_efectivo NUMERIC(12, 2),
+            diferencia_transferencia NUMERIC(12, 2),
+            diferencia_tarjeta NUMERIC(12, 2),
+            ventas_total NUMERIC(12, 2),
+            num_ventas INTEGER,
+            ref_terminal VARCHAR(80),
+            lote_terminal VARCHAR(80),
+            ref_transferencia VARCHAR(80),
+            observacion_cierre VARCHAR(500),
+            id_usuario_revision INTEGER REFERENCES usuarios(id_usuario),
+            fecha_revision TIMESTAMP,
+            motivo_anulacion VARCHAR(500),
+            forzado INTEGER NOT NULL DEFAULT 0,
+            operation_id VARCHAR(64) NOT NULL,
+            captura_directa INTEGER NOT NULL DEFAULT 0
+        )""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_sesion_caja_operation_id ON sesiones_caja (operation_id)",
+        """CREATE UNIQUE INDEX IF NOT EXISTS uq_sesion_caja_usuario_activa
+            ON sesiones_caja (id_usuario) WHERE estado IN ('ABIERTA', 'EN_ARQUEO')""",
+        """CREATE UNIQUE INDEX IF NOT EXISTS uq_sesion_caja_terminal_activa
+            ON sesiones_caja (terminal) WHERE estado IN ('ABIERTA', 'EN_ARQUEO')""",
+        "CREATE INDEX IF NOT EXISTS idx_sesiones_caja_estado ON sesiones_caja (estado)",
+        "CREATE INDEX IF NOT EXISTS idx_sesiones_caja_usuario ON sesiones_caja (id_usuario)",
+        "ALTER TABLE ventas ADD COLUMN id_sesion_caja INTEGER REFERENCES sesiones_caja(id_sesion_caja)",
+        "CREATE INDEX IF NOT EXISTS idx_ventas_sesion_caja ON ventas (id_sesion_caja)",
+        "ALTER TABLE cierres_caja ADD COLUMN id_sesion_caja INTEGER REFERENCES sesiones_caja(id_sesion_caja)",
+        "DROP INDEX IF EXISTS idx_cierres_usuario_fecha",
+        "CREATE INDEX IF NOT EXISTS idx_cierres_usuario_fecha ON cierres_caja (id_usuario, fecha)",
+        """CREATE TABLE IF NOT EXISTS movimientos_caja (
+            id_movimiento INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_sesion_caja INTEGER NOT NULL REFERENCES sesiones_caja(id_sesion_caja),
+            tipo VARCHAR(30) NOT NULL,
+            importe NUMERIC(12, 2) NOT NULL,
+            metodo VARCHAR(30) NOT NULL DEFAULT 'EFECTIVO',
+            motivo VARCHAR(200) NOT NULL,
+            referencia VARCHAR(80),
+            id_usuario INTEGER NOT NULL REFERENCES usuarios(id_usuario),
+            fecha_hora TIMESTAMP NOT NULL,
+            estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVO',
+            id_movimiento_reverso INTEGER REFERENCES movimientos_caja(id_movimiento),
+            id_gasto INTEGER REFERENCES gastos(id_gasto),
+            operation_id VARCHAR(64) NOT NULL
+        )""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_movimiento_caja_operation_id ON movimientos_caja (operation_id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_movimiento_caja_gasto ON movimientos_caja (id_gasto) WHERE id_gasto IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_movimientos_caja_sesion ON movimientos_caja (id_sesion_caja)",
+        """CREATE TABLE IF NOT EXISTS arqueo_denominaciones (
+            id_denominacion INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_sesion_caja INTEGER NOT NULL REFERENCES sesiones_caja(id_sesion_caja),
+            codigo VARCHAR(10) NOT NULL,
+            valor NUMERIC(10, 2) NOT NULL,
+            cantidad INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (id_sesion_caja, codigo)
+        )""",
+        """CREATE TABLE IF NOT EXISTS venta_pagos (
+            id_pago INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_venta INTEGER NOT NULL REFERENCES ventas(id_venta),
+            metodo VARCHAR(30) NOT NULL,
+            importe_monetario NUMERIC(12, 2) NOT NULL,
+            cantidad_puntos INTEGER,
+            equivalencia_puntos NUMERIC(12, 2),
+            referencia VARCHAR(80),
+            fecha_hora TIMESTAMP NOT NULL,
+            id_usuario INTEGER NOT NULL REFERENCES usuarios(id_usuario),
+            id_sesion_caja INTEGER REFERENCES sesiones_caja(id_sesion_caja),
+            operation_id VARCHAR(64) NOT NULL
+        )""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_venta_pago_operation_id ON venta_pagos (operation_id)",
+        """CREATE UNIQUE INDEX IF NOT EXISTS uq_venta_pago_backfill ON venta_pagos (id_venta)
+            WHERE operation_id LIKE 'backfill-venta-%'""",
+        "CREATE INDEX IF NOT EXISTS idx_venta_pagos_venta ON venta_pagos (id_venta)",
+        """INSERT INTO venta_pagos (
+            id_venta, metodo, importe_monetario, fecha_hora, id_usuario, id_sesion_caja, operation_id
+        )
+        SELECT
+            v.id_venta,
+            CASE
+                WHEN v.forma_pago IS NULL OR trim(v.forma_pago) = '' THEN 'EFECTIVO'
+                WHEN upper(v.forma_pago) IN ('EFECTIVO', 'TRANSFERENCIA', 'TARJETA') THEN upper(v.forma_pago)
+                ELSE 'DESCONOCIDO'
+            END,
+            v.total,
+            v.fecha_hora,
+            v.id_usuario,
+            v.id_sesion_caja,
+            'backfill-venta-' || v.id_venta
+        FROM ventas v
+        WHERE NOT EXISTS (
+            SELECT 1 FROM venta_pagos p
+            WHERE p.operation_id = 'backfill-venta-' || v.id_venta
+        )""",
+    ]
     migraciones = (
         migraciones_postgres + migraciones_sqlite_extras + migraciones_promos
         + migraciones_fidelidad_pg + migraciones_pedidos_pg + migraciones_comanda_tiempos_pg
@@ -634,6 +858,7 @@ def aplicar_migraciones_sqlite():
         + migraciones_mesas_pg + migraciones_cierres_modulos_pg + migraciones_operaciones_pg
         + migraciones_seguridad_pg
         + migraciones_cancelacion_pg
+        + migraciones_caja_pg
         if dialect == "postgresql"
         else migraciones_sqlite + migraciones_sqlite_extras + migraciones_sqlite_promos
         + migraciones_fidelidad_sqlite + migraciones_pedidos_sqlite + migraciones_comanda_tiempos_sqlite
@@ -641,6 +866,7 @@ def aplicar_migraciones_sqlite():
         + migraciones_mesas_sqlite + migraciones_cierres_modulos_sqlite + migraciones_operaciones_sqlite
         + migraciones_seguridad_sqlite
         + migraciones_cancelacion_sqlite
+        + migraciones_caja_sqlite
     )
     for sql in migraciones:
         try:
@@ -650,12 +876,37 @@ def aplicar_migraciones_sqlite():
             # Algunas ALTER fallan si la columna ya existe (SQLite).
             snippet = " ".join(sql.split())[:80]
             lower = sql.lower()
+            es_005 = (
+                "sesiones_caja" in lower
+                or "movimientos_caja" in lower
+                or "arqueo_denominaciones" in lower
+                or "venta_pagos" in lower
+                or "tolerancia_efectivo" in lower
+                or "id_sesion_caja" in lower
+                or "uq_sesion_caja" in lower
+                or "uq_movimiento_caja" in lower
+                or "uq_venta_pago" in lower
+            )
             es_004 = (
                 "pedido_cancelaciones" in lower
                 or "estado_linea" in lower
                 or "cantidad_cancelada" in lower
                 or "idx_cancelaciones_" in lower
             )
+            if es_005:
+                msg = str(exc).lower()
+                if dialect == "sqlite" and "duplicate column" in msg:
+                    continue
+                logging.error(
+                    "Migración 005 de cierre de caja falló (%s). "
+                    "Aplica backend/migrations/005_cierre_caja_conciliacion.up.sql. "
+                    "No se muestran credenciales.",
+                    type(exc).__name__,
+                )
+                raise RuntimeError(
+                    "Esquema de cierre de caja incompleto (migración 005). "
+                    "Detén el arranque, aplica 005_cierre_caja_conciliacion.up.sql y vuelve a iniciar."
+                ) from None
             if es_004:
                 msg = str(exc).lower()
                 if dialect == "sqlite" and "duplicate column" in msg:
@@ -675,6 +926,7 @@ def aplicar_migraciones_sqlite():
 
     normalizar_roles_usuarios()
     verificar_esquema_cancelacion()
+    verificar_esquema_caja()
 
 
 def verificar_esquema_cancelacion() -> None:
@@ -718,6 +970,40 @@ def verificar_esquema_cancelacion() -> None:
         raise RuntimeError(
             "El esquema de cancelación de líneas está incompleto. "
             "No se inicia el backend. Aplica la migración 004 y vuelve a arrancar. "
+            "No se muestran credenciales ni la URL de la base."
+        )
+
+
+def verificar_esquema_caja() -> None:
+    """Falla el arranque si falta el esquema de la migración 005."""
+    insp = inspect(engine)
+    tablas = set(insp.get_table_names())
+    if "ventas" not in tablas:
+        return
+    faltantes = []
+    if "sesiones_caja" not in tablas:
+        faltantes.append("tabla sesiones_caja")
+    if "movimientos_caja" not in tablas:
+        faltantes.append("tabla movimientos_caja")
+    if "arqueo_denominaciones" not in tablas:
+        faltantes.append("tabla arqueo_denominaciones")
+    if "venta_pagos" not in tablas:
+        faltantes.append("tabla venta_pagos")
+    cols_ventas = {c["name"] for c in insp.get_columns("ventas")}
+    if "id_sesion_caja" not in cols_ventas:
+        faltantes.append("ventas.id_sesion_caja")
+    if "configuracion" in tablas:
+        cols_cfg = {c["name"] for c in insp.get_columns("configuracion")}
+        if "tolerancia_efectivo" not in cols_cfg:
+            faltantes.append("configuracion.tolerancia_efectivo")
+    if faltantes:
+        logging.error(
+            "Esquema 005 incompleto: %s. Aplica backend/migrations/005_cierre_caja_conciliacion.up.sql.",
+            ", ".join(faltantes),
+        )
+        raise RuntimeError(
+            "El esquema de cierre de caja está incompleto. "
+            "No se inicia el backend. Aplica la migración 005 y vuelve a arrancar. "
             "No se muestran credenciales ni la URL de la base."
         )
 

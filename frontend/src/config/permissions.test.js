@@ -1,12 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  ACCION_ABRIR_CAJA,
   ACCION_COBRAR_DESDE_COMANDERA,
   ACCION_CANCELAR_PRODUCTO_EN_COMANDA,
+  ACCION_REVISAR_CIERRE_CAJA,
   canAccessRoute,
   canCancelarProductoEnComanda,
   canCobrarDesdeComandera,
   getEffectiveRoutes,
+  hasAction,
 } from "./permissions.js";
 
 describe("permisos frontend", () => {
@@ -66,5 +69,12 @@ describe("permisos frontend", () => {
       false
     );
     assert.equal(canCancelarProductoEnComanda({ rol: "ADMIN" }), true);
+  });
+
+  it("caja: ADMIN todas, COCINA ninguna, CAJERO las concedidas", () => {
+    assert.equal(hasAction("ADMIN", ACCION_ABRIR_CAJA), true);
+    assert.equal(hasAction("COCINA", ACCION_ABRIR_CAJA, []), false);
+    assert.equal(hasAction("CAJERO", ACCION_ABRIR_CAJA, [ACCION_ABRIR_CAJA]), true);
+    assert.equal(hasAction("CAJERO", ACCION_REVISAR_CIERRE_CAJA, [ACCION_ABRIR_CAJA]), false);
   });
 });
