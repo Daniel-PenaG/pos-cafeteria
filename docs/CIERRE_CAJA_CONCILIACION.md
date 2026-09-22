@@ -148,13 +148,21 @@ Frontend: denominaciones, `bucketFormaPago`, permisos de caja, ticket ESC/POS.
 
 ## 12. Despliegue futuro (no en esta rama)
 
-1. Respaldo.
-2. Aplicar `005_cierre_caja_conciliacion.up.sql` en un mantenimiento.
-3. Verificar tablas e índices.
-4. Desplegar API y frontend juntos.
-5. Capacitar apertura de caja.
-6. Poner `CAJA_REQUERIDA_PARA_COBRAR=1` cuando el cobro sin caja ya no sea aceptable.
-7. Rollback de código: DOWN solo con respaldo (borra sesiones/movimientos/pagos).
+Riesgo de APK: si se activa `CAJA_REQUERIDA_PARA_COBRAR=1` antes de actualizar el APK, un APK anterior que no permita abrir caja puede quedar imposibilitado para cobrar. **No activar el flag en producción desde este trabajo.**
+
+Orden futuro obligatorio:
+
+1. Respaldo PostgreSQL.
+2. Deploy backend con flag en `0`.
+3. Verificar migración 005.
+4. Deploy web nuevo.
+5. Generar e instalar APK nuevo.
+6. Probar apertura y cobro.
+7. Solo después cambiar el flag a `1`.
+8. Reiniciar/verificar backend.
+9. Ejecutar una venta controlada.
+
+Rollback de código: DOWN solo con respaldo (borra sesiones, movimientos, arqueos y `venta_pagos`).
 
 ## 13. Validación manual
 

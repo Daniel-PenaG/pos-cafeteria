@@ -757,6 +757,9 @@ def sesion_a_dict(db: Session, s: SesionCajaModel, ciego: bool = False) -> dict:
     }
     if ciego and s.estado == ESTADO_EN_ARQUEO:
         base["ciego"] = True
+        base.pop("ventas_total", None)
+        base.pop("num_ventas", None)
+        base.pop("ingreso_monetario", None)
         return base
     base.update(tot)
     if s.esperado_efectivo is not None:

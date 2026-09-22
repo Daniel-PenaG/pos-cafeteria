@@ -184,6 +184,19 @@ def test_entrada_retiro_gasto_y_esperado(db_session, refs):
     assert tot["gastos_caja"] == 10
 
 
+def test_arqueo_ciego_no_expone_esperados(db_session, refs):
+    user = _user(db_session, refs)
+    _abrir(db_session, user, fondo=80)
+    _venta(db_session, refs, "EFECTIVO")
+    data = iniciar_arqueo(db_session, user)
+    assert data["ciego"] is True
+    assert "efectivo_esperado" not in data
+    assert "esperado_efectivo" not in data
+    assert "ventas_efectivo" not in data
+    assert "ventas_total" not in data
+    assert "ingreso_monetario" not in data
+
+
 def test_arqueo_denominaciones_y_conciliado(db_session, refs):
     user = _user(db_session, refs)
     _abrir(db_session, user, fondo=100)
