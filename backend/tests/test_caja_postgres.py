@@ -475,4 +475,3 @@ def test_venta_contra_cierre(pg_refs):
                 assert sesion is not None
     finally:
         db.close()
-
