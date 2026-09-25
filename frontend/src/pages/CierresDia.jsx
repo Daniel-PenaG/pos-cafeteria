@@ -1,49 +1,101 @@
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import PageHeader from "../components/PageHeader";
-import { getCierresDia } from "../services/cierresService";
+import {
+  anularSesionCaja,
+  listarSesionesCaja,
+  revisarSesionCaja,
+} from "../services/cajaService";
+import { getCierresDia as getCierresHistoricos } from "../services/cierresService";
 import { fechaMexicoISO, formatearHoraMexico } from "../utils/datetimeMx";
 import { formatApiError } from "../utils/apiError";
-
-function fmt(n) {
-  return `$${Number(n).toFixed(2)}`;
-}
+import { etiquetaEstadoCaja, fmtCaja } from "../utils/cajaArqueo.js";
+import { useAuthStore } from "../store/authStore";
+import { hasAction } from "../config/permissions";
 
 export default function CierresDia() {
+  const user = useAuthStore((s) => s.user);
+  const [estado, setEstado] = useState("");
+  const [sesiones, setSesiones] = useState([]);
+  const [historicos, setHistoricos] = useState([]);
   const [fecha, setFecha] = useState(fechaMexicoISO());
-  const [cierres, setCierres] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [detalle, setDetalle] = useState(null);
+  const [motivoAnula, setMotivoAnula] = useState("");
+
+  const puedeRevisar = hasAction(user?.rol, "REVISAR_CIERRE_CAJA", user?.permisos_acciones);
+  const puedeAnular = hasAction(user?.rol, "ANULAR_CIERRE_CAJA", user?.permisos_acciones);
 
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getCierresDia(fecha);
-      setCierres(data);
+      const params = {};
+      if (estado) params.estado = estado;
+      const [lista, hist] = await Promise.all([
+        listarSesionesCaja(params),
+        getCierresHistoricos(fecha).catch(() => []),
+      ]);
+      setSesiones(Array.isArray(lista) ? lista : []);
+      setHistoricos(Array.isArray(hist) ? hist : []);
     } catch (err) {
-      alert(formatApiError(err, "Error al cargar cierres"));
+      alert(formatApiError(err, "Error al cargar sesiones"));
     } finally {
       setLoading(false);
     }
-  }, [fecha]);
+  }, [estado, fecha]);
 
   useEffect(() => {
     cargar();
   }, [cargar]);
 
-  const totalVentas = cierres.reduce((a, c) => a + Number(c.total_ventas), 0);
-  const totalDiff = cierres.reduce((a, c) => a + Number(c.diferencia), 0);
+  const handleRevisar = async (id) => {
+    try {
+      await revisarSesionCaja(id);
+      await cargar();
+    } catch (err) {
+      alert(formatApiError(err, "No se pudo revisar"));
+    }
+  };
+
+  const handleAnular = async (id) => {
+    if (!motivoAnula.trim()) {
+      alert("Indica el motivo de anulación");
+      return;
+    }
+    try {
+      await anularSesionCaja(id, motivoAnula.trim());
+      setMotivoAnula("");
+      await cargar();
+    } catch (err) {
+      alert(formatApiError(err, "No se pudo anular"));
+    }
+  };
+
+  const pendientes = sesiones.filter((s) => s.estado === "CERRADA_CON_DIFERENCIA");
 
   return (
-    <div>
+    <div className="caja-page">
       <PageHeader
         title="Cierres del día"
-        subtitle="Registro de arqueos por usuario (administración)"
+        subtitle="Sesiones de caja, diferencias pendientes y revisión administrativa"
       />
 
-      <div className="card" style={{ marginBottom: "1rem" }}>
-        <div className="form-row" style={{ maxWidth: 220 }}>
-          <label htmlFor="fecha-cierres">Fecha</label>
+      <div className="card caja-card caja-admin-filters">
+        <div className="form-row">
+          <label htmlFor="filtro-estado">Estado</label>
+          <select id="filtro-estado" className="select" value={estado} onChange={(e) => setEstado(e.target.value)}>
+            <option value="">Todos</option>
+            <option value="ABIERTA">Abierta</option>
+            <option value="EN_ARQUEO">En arqueo</option>
+            <option value="CERRADA_CONCILIADA">Conciliada</option>
+            <option value="CERRADA_CON_DIFERENCIA">Con diferencia</option>
+            <option value="REVISADA">Revisada</option>
+            <option value="ANULADA">Anulada</option>
+          </select>
+        </div>
+        <div className="form-row">
+          <label htmlFor="fecha-hist">Histórico por fecha</label>
           <input
-            id="fecha-cierres"
+            id="fecha-hist"
             type="date"
             className="input"
             value={fecha}
@@ -52,69 +104,146 @@ export default function CierresDia() {
         </div>
       </div>
 
+      {pendientes.length > 0 && (
+        <p className="hint caja-banner">
+          {pendientes.length} cierre(s) con diferencia pendientes de revisión.
+        </p>
+      )}
+
       {loading ? (
         <p>Cargando…</p>
-      ) : cierres.length === 0 ? (
-        <p className="empty-state">Nadie ha registrado cierre en esta fecha.</p>
       ) : (
-        <>
-          <div className="grid-stats" style={{ marginBottom: "1rem" }}>
-            <div className="stat-card">
-              <p className="stat-card__label">Cierres registrados</p>
-              <p className="stat-card__value">{cierres.length}</p>
-            </div>
-            <div className="stat-card">
-              <p className="stat-card__label">Total ventas cerradas</p>
-              <p className="stat-card__value">{fmt(totalVentas)}</p>
-            </div>
-            <div className="stat-card">
-              <p className="stat-card__label">Diferencia acumulada</p>
-              <p className="stat-card__value">{fmt(totalDiff)}</p>
-            </div>
-          </div>
+        <div className="table-wrap card">
+          <table>
+            <thead>
+              <tr>
+                <th>Cajero</th>
+                <th>Terminal</th>
+                <th>Estado</th>
+                <th>Apertura</th>
+                <th>Cierre</th>
+                <th>Dif. efectivo</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sesiones.map((s) => (
+                <tr key={s.id_sesion_caja}>
+                  <td>{s.usuario_nombre || s.id_usuario}</td>
+                  <td>{s.terminal}</td>
+                  <td>{etiquetaEstadoCaja(s.estado)}</td>
+                  <td>{formatearHoraMexico(s.fecha_apertura)}</td>
+                  <td>{s.fecha_cierre ? formatearHoraMexico(s.fecha_cierre) : "—"}</td>
+                  <td>{s.diferencia_efectivo != null ? fmtCaja(s.diferencia_efectivo) : "—"}</td>
+                  <td>
+                    <div className="caja-admin-actions">
+                      <button type="button" className="btn btn--ghost" onClick={() => setDetalle(s)}>
+                        Ver
+                      </button>
+                      {puedeRevisar && ["CERRADA_CONCILIADA", "CERRADA_CON_DIFERENCIA"].includes(s.estado) && (
+                        <button type="button" className="btn btn--secondary" onClick={() => handleRevisar(s.id_sesion_caja)}>
+                          Revisar
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {sesiones.length === 0 && <p className="empty-state">Sin sesiones con ese filtro.</p>}
+        </div>
+      )}
 
-          <div className="table-wrap card">
+      {detalle && (
+        <div className="card caja-card">
+          <h3>Sesión #{detalle.id_sesion_caja}</h3>
+          <p className="hint">
+            {etiquetaEstadoCaja(detalle.estado)} · {detalle.terminal} · {detalle.usuario_nombre}
+          </p>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Método</th>
+                  <th>Esperado</th>
+                  <th>Declarado</th>
+                  <th>Diferencia</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Efectivo</td>
+                  <td>{fmtCaja(detalle.esperado_efectivo)}</td>
+                  <td>{fmtCaja(detalle.declarado_efectivo)}</td>
+                  <td>{fmtCaja(detalle.diferencia_efectivo)}</td>
+                </tr>
+                <tr>
+                  <td>Transferencia</td>
+                  <td>{fmtCaja(detalle.esperado_transferencia)}</td>
+                  <td>{fmtCaja(detalle.declarado_transferencia)}</td>
+                  <td>{fmtCaja(detalle.diferencia_transferencia)}</td>
+                </tr>
+                <tr>
+                  <td>Terminal</td>
+                  <td>{fmtCaja(detalle.esperado_tarjeta)}</td>
+                  <td>{fmtCaja(detalle.declarado_tarjeta)}</td>
+                  <td>{fmtCaja(detalle.diferencia_tarjeta)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          {detalle.observacion_cierre && <p className="hint">Obs.: {detalle.observacion_cierre}</p>}
+          {detalle.motivo_anulacion && <p className="hint">Anulación: {detalle.motivo_anulacion}</p>}
+          {puedeAnular && detalle.estado !== "ANULADA" && (
+            <div className="form-row">
+              <label htmlFor="motivo-anula">Motivo de anulación</label>
+              <input
+                id="motivo-anula"
+                className="input"
+                value={motivoAnula}
+                onChange={(e) => setMotivoAnula(e.target.value)}
+              />
+              <button type="button" className="btn btn--danger" onClick={() => handleAnular(detalle.id_sesion_caja)}>
+                Anular
+              </button>
+            </div>
+          )}
+          <button type="button" className="btn btn--ghost" onClick={() => setDetalle(null)}>
+            Cerrar detalle
+          </button>
+        </div>
+      )}
+
+      <div className="card caja-card">
+        <h3>Cierres históricos del {fecha}</h3>
+        {historicos.length === 0 ? (
+          <p className="empty-state">Sin snapshots diarios en esa fecha.</p>
+        ) : (
+          <div className="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>Usuario</th>
-                  <th>Hora cierre</th>
                   <th>Ventas</th>
-                  <th>Total</th>
-                  <th>Efectivo sistema</th>
-                  <th>Contado</th>
+                  <th>Efectivo</th>
                   <th>Diferencia</th>
-                  <th>Notas</th>
                 </tr>
               </thead>
               <tbody>
-                {cierres.map((c) => (
+                {historicos.map((c) => (
                   <tr key={c.id_cierre}>
-                    <td>
-                      {c.nombre_usuario}
-                      <span className="hint"> @{c.usuario_login}</span>
-                    </td>
-                    <td>{formatearHoraMexico(c.fecha_hora_registro)}</td>
-                    <td>{c.num_ventas}</td>
-                    <td>{fmt(c.total_ventas)}</td>
-                    <td>{fmt(c.total_efectivo)}</td>
-                    <td>{fmt(c.efectivo_contado)}</td>
-                    <td
-                      style={{
-                        color: Number(c.diferencia) === 0 ? "inherit" : "var(--berry)",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {fmt(c.diferencia)}
-                    </td>
-                    <td>{c.notas || "—"}</td>
+                    <td>{c.usuario_nombre || c.id_usuario}</td>
+                    <td>{fmtCaja(c.total_ventas)}</td>
+                    <td>{fmtCaja(c.total_efectivo)}</td>
+                    <td>{fmtCaja(c.diferencia)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </>
-      )}
+        )}
+      </div>
     </div>
   );
 }

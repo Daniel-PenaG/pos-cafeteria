@@ -1906,3 +1906,73 @@ body {
   color: var(--olive-muted);
   font-weight: 600;
 }
+
+.caja-page .caja-card {
+  margin-bottom: 1rem;
+}
+
+.caja-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 0.75rem;
+}
+
+.caja-stats {
+  margin-bottom: 1rem;
+}
+
+.caja-denom-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 110px), 1fr));
+  gap: 0.75rem;
+}
+
+.caja-denom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.caja-denom .input,
+.caja-page .input,
+.caja-page .select,
+.caja-page textarea.input {
+  font-size: 16px;
+  min-height: 44px;
+  width: 100%;
+}
+
+.caja-page .btn {
+  min-height: 44px;
+}
+
+.caja-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.caja-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  margin: 0.75rem 0;
+}
+
+.caja-banner {
+  color: var(--berry);
+  margin-bottom: 1rem;
+}
+
+.caja-admin-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 0.75rem;
+}
+
+.caja-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}

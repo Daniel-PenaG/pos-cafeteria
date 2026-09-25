@@ -27,6 +27,10 @@ from .models import (
     PedidoOperacionModel,
     PedidoCancelacionModel,
     CierreCajaModel,
+    SesionCajaModel,
+    MovimientoCajaModel,
+    ArqueoDenominacionModel,
+    VentaPagoModel,
     AuditoriaModel,
     LoginBloqueoModel,
 )
@@ -60,6 +64,10 @@ __all__ = [
     "PedidoOperacionModel",
     "PedidoCancelacionModel",
     "CierreCajaModel",
+    "SesionCajaModel",
+    "MovimientoCajaModel",
+    "ArqueoDenominacionModel",
+    "VentaPagoModel",
     "AuditoriaModel",
     "LoginBloqueoModel",
 ]

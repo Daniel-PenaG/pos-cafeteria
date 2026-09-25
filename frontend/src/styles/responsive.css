@@ -305,6 +305,25 @@
     grid-template-columns: 1fr;
   }
 
+  .caja-form-grid,
+  .caja-denom-grid,
+  .caja-admin-filters,
+  .caja-admin-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .caja-page .input,
+  .caja-page .select,
+  .caja-page textarea.input {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  .caja-page .btn {
+    min-height: 44px;
+    width: 100%;
+  }
+
   .comandera-grid {
     grid-template-columns: 1fr;
   }

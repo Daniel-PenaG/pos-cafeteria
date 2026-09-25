@@ -4,11 +4,13 @@ from __future__ import annotations
 from app.exceptions import DatosInvalidosException
 
 FORMAS_PAGO_VALIDAS = frozenset({"EFECTIVO", "TRANSFERENCIA", "TARJETA"})
+FORMA_DESCONOCIDO = "DESCONOCIDO"
 
 ETIQUETAS_FORMA_PAGO = {
     "EFECTIVO": "Efectivo",
     "TRANSFERENCIA": "Transferencia",
     "TARJETA": "Terminal",
+    FORMA_DESCONOCIDO: "Desconocido",
 }
 
 
@@ -27,11 +29,16 @@ def etiqueta_forma_pago(forma: str | None) -> str:
 
 
 def bucket_forma_pago(forma: str | None) -> str:
-    """Agrupa ventas históricas; desconocidos van a EFECTIVO (compatibilidad)."""
-    fp = (forma or "EFECTIVO").upper()
+    """Agrupa ventas. Nulo/vacío → EFECTIVO (histórico). Valor explícito desconocido → DESCONOCIDO.
+
+    PUNTOS u otro método no validado nunca se suma al efectivo.
+    """
+    if forma is None or str(forma).strip() == "":
+        return "EFECTIVO"
+    fp = str(forma).strip().upper()
     if fp in FORMAS_PAGO_VALIDAS:
         return fp
-    return "EFECTIVO"
+    return FORMA_DESCONOCIDO
 
 
 def agregar_por_forma_pago(ventas) -> dict:
@@ -41,6 +48,7 @@ def agregar_por_forma_pago(ventas) -> dict:
         "EFECTIVO": {"importe": 0.0, "cantidad": 0},
         "TRANSFERENCIA": {"importe": 0.0, "cantidad": 0},
         "TARJETA": {"importe": 0.0, "cantidad": 0},
+        FORMA_DESCONOCIDO: {"importe": 0.0, "cantidad": 0},
     }
     total = 0.0
     for v in ventas_list:

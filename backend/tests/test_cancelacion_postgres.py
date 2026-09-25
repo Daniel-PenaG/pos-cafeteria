@@ -619,6 +619,17 @@ def test_cobro_simultaneo_con_cancelacion(pg_ready):
             assert venta is not None
             qty_venta = sum(float(d.cantidad) for d in venta.detalles)
             assert abs(qty_venta - float(det.cantidad)) < 0.02
+            from app.models.models import VentaPagoModel
+
+            pagos = db.query(VentaPagoModel).filter_by(id_venta=venta.id_venta).all()
+            assert len(pagos) == 1
+            assert abs(float(pagos[0].importe_monetario) - float(venta.total)) < 0.02
+            avisos_tras_cobro = (
+                db.query(PedidoCancelacionModel)
+                .filter_by(id_detalle_pedido=id_detalle)
+                .all()
+            )
+            assert all(a.aviso_texto for a in avisos_tras_cobro)
         else:
             assert pedido.estado == "ABIERTO"
             assert float(det.cantidad) == 1

@@ -1,5 +1,6 @@
 import ThermalPrinterEncoder from "thermal-printer-encoder";
 import { etiquetaFormaPago } from "../utils/formaPago";
+import { lineasResumenCierre } from "../utils/cajaTicketResumen";
 
 const WIDTH = 32; // 58 mm ~ 32 chars
 const BRAND_NAME = "Coffe Song";
@@ -256,5 +257,34 @@ export function buildCobroTicket({
     .newline()
     .cut();
 
+  return enc.encode();
+}
+
+/** Resumen de cierre. No altera el resultado del cierre si la impresión falla. */
+export function buildCierreCajaTicket({ sesion, usuario }) {
+  const enc = encoder();
+  const apertura = sesion?.fecha_apertura
+    ? new Date(sesion.fecha_apertura).toLocaleString("es-MX")
+    : "—";
+  const cierre = sesion?.fecha_cierre
+    ? new Date(sesion.fecha_cierre).toLocaleString("es-MX")
+    : "—";
+
+  appendCoffeeSongHeader(enc);
+  enc.align("center").bold(true).line("CIERRE DE CAJA").bold(false).newline().align("left");
+  for (const linea of lineasResumenCierre({ sesion, usuario, cafeteria: BRAND_NAME })) {
+    enc.line(linea);
+  }
+  enc.line(`Apertura: ${apertura}`).line(`Cierre: ${cierre}`);
+  if (sesion?.observacion_cierre) {
+    enc.line(`Obs: ${sesion.observacion_cierre}`);
+  }
+  enc
+    .newline()
+    .align("center")
+    .line("--------------------------------")
+    .line(BRAND_NAME)
+    .newline()
+    .cut();
   return enc.encode();
 }
