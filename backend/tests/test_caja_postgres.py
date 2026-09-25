@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.constants.caja import ESTADOS_ACTIVOS
-from app.models.models import SesionCajaModel, UsuarioModel, VentaModel
+from app.models.models import SesionCajaModel, UsuarioModel, VentaModel, VentaPagoModel
 from app.schemas.ventas import DetalleVentaItem, VentaCreate
 from app.services.caja_service import abrir_caja, cerrar_caja, registrar_movimiento
 from app.services.venta_service import registrar_venta
@@ -135,6 +135,17 @@ def _assert_post_005(engine) -> None:
         assert "uq_sesion_caja_operation_id" in idxs
         assert "uq_sesion_caja_usuario_activa" in idxs
         assert "uq_sesion_caja_terminal_activa" in idxs
+        # 002 / 003 / 004 siguen intactas después de 005.
+        for t in ("pedido_operaciones", "auditoria", "pedido_cancelaciones"):
+            assert t in tablas, t
+        det_cols = _columnas(conn, "detalle_pedido")
+        for col in ("estado_linea", "cantidad_cancelada"):
+            assert col in det_cols, col
+        can_cols = _columnas(conn, "pedido_cancelaciones")
+        for col in ("aviso", "aviso_texto", "vista_comandera"):
+            assert col in can_cols, col
+        usr_cols = _columnas(conn, "usuarios")
+        assert "permisos_acciones_json" in usr_cols
 
 
 def _status(exc) -> int | None:
@@ -246,8 +257,37 @@ def test_migracion_005_se_puede_aplicar_dos_veces(pg_engine):
     _assert_pre_005(pg_engine)
     _aplicar_005(pg_engine)
     _assert_post_005(pg_engine)
+    login = f"mig005_{random.randint(1, 9_999_999)}"
+    with pg_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO usuarios (nombre, usuario_login, hash_password, rol, activo) "
+                "VALUES ('Mig005', :login, 'x', 'CAJERO', true)"
+            ),
+            {"login": login},
+        )
+        uid = conn.execute(
+            text("SELECT id_usuario FROM usuarios WHERE usuario_login = :login"),
+            {"login": login},
+        ).scalar()
+        conn.execute(
+            text(
+                "INSERT INTO ventas (fecha_hora, id_usuario, numero_mesa, total, forma_pago, puntos_generados) "
+                "VALUES (NOW(), :uid, 91, 25, 'EFECTIVO', 0)"
+            ),
+            {"uid": uid},
+        )
     _aplicar_005(pg_engine)
     _assert_post_005(pg_engine)
+    with pg_engine.connect() as conn:
+        pagos_1 = conn.execute(text("SELECT COUNT(*) FROM venta_pagos")).scalar()
+        ventas_n = conn.execute(text("SELECT COUNT(*) FROM ventas")).scalar()
+    _aplicar_005(pg_engine)
+    _assert_post_005(pg_engine)
+    with pg_engine.connect() as conn:
+        pagos_2 = conn.execute(text("SELECT COUNT(*) FROM venta_pagos")).scalar()
+    assert pagos_1 == pagos_2
+    assert pagos_2 == ventas_n
 
 
 def _cerrar_si_abierta(db, user):
@@ -473,8 +513,12 @@ def test_venta_contra_cierre(pg_refs):
     try:
         ventas = db.query(VentaModel).filter(VentaModel.id_usuario == uid).all()
         for v in ventas:
+            pagos = db.query(VentaPagoModel).filter_by(id_venta=v.id_venta).all()
+            assert len(pagos) == 1
+            assert abs(float(pagos[0].importe_monetario) - float(v.total)) < 0.02
             if v.id_sesion_caja:
                 sesion = db.get(SesionCajaModel, v.id_sesion_caja)
                 assert sesion is not None
+                assert pagos[0].id_sesion_caja == v.id_sesion_caja
     finally:
         db.close()

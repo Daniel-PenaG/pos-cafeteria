@@ -13,6 +13,7 @@
     "test": "node --test src/utils/*.test.js src/services/*.test.js src/config/*.test.js",
     "preview": "vite preview",
     "capture:responsive": "node scripts/capture-responsive.mjs",
+    "capture:caja": "node scripts/capture-caja.mjs",
     "verify:sidebar-scroll": "node scripts/verify-sidebar-scroll.mjs",
     "test:estabilidad-critico": "node scripts/test-estabilidad-critico.mjs"
   },

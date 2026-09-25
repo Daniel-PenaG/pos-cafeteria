@@ -142,7 +142,14 @@ Eventos: `CAJA_ABIERTA`, `CAJA_MOVIMIENTO`, `CAJA_ARQUEO`, `CAJA_CERRADA`, `CAJA
 
 Backend SQLite: `tests/test_caja.py` (apertura, flag, movimientos, fórmula, arqueo, diferencia, pedidos, forzar, revisión propia, ajeno, doble cierre, idempotencia, desconocido, histórico, TZ México).
 
-PostgreSQL desechable: `tests/test_caja_postgres.py` (únicos, apertura/cierre/movimientos concurrentes, venta vs cierre, 005 dos veces, pre-005 → UP, guarda contra `DATABASE_URL`).
+PostgreSQL desechable (15 pruebas, juntas, nunca contra `DATABASE_URL`):
+
+```text
+set POSTGRES_TEST_URL=postgresql+psycopg2://...@127.0.0.1:<puerto>/pos_fase3a_test
+python -m pytest -q tests/test_estabilidad_postgres.py tests/test_cancelacion_postgres.py tests/test_caja_postgres.py
+```
+
+Cubre: cobro vs cierre sin venta huérfana, `venta_pagos` en la misma venta, cancelación vs cobro sin deadlock, aviso de Comandera, 005 dos veces sin duplicar pagos, y que 005 no destruye 002/003/004.
 
 Frontend: denominaciones, `bucketFormaPago`, permisos de caja, ticket ESC/POS.
 
@@ -164,13 +171,42 @@ Orden futuro obligatorio:
 
 Rollback de código: DOWN solo con respaldo (borra sesiones, movimientos, arqueos y `venta_pagos`).
 
-## 13. Validación manual
+## 13. Validación manual y capturas
 
 Resoluciones: 320×568, 360×800, 390×844, 412×915, 768×1024, 1024×768, 1366×768.
 
 Perfiles: ADMIN, CAJERO, COCINA.
 
 Flujo: abrir con fondo → cobrar efectivo, transferencia y terminal → entrada, retiro, gasto de caja → arqueo ciego por denominaciones → declarar transferencia/terminal → cerrar → conciliación → revisar como ADMIN → imprimir → confirmar que el cierre no se modifica.
+
+### Capturas de evidencia
+
+Selección en `docs/screenshots/caja/` (sin datos personales):
+
+| Archivo | Estado |
+| --- | --- |
+| `390x844/caja-sin-abrir.png` | Formulario de apertura, sin sesión |
+| `390x844/modal-apertura.png` | Fondo inicial capturado |
+| `390x844/caja-abierta.png` | Sesión ABIERTA |
+| `390x844/arqueo-ciego.png` | Arqueo por denominaciones, sin esperados |
+| `390x844/resultado-conciliado.png` | `CERRADA_CONCILIADA` |
+| `390x844/resultado-diferencia.png` | `CERRADA_CON_DIFERENCIA` |
+| `1366x768/vista-admin.png` | Listado administrativo de sesiones |
+
+Reproducir (solo localhost; las credenciales van por entorno):
+
+```text
+# API local, p. ej. uvicorn en 127.0.0.1:18081
+# Frontend: npm run dev -- --host 127.0.0.1 --port 5176
+cd frontend
+$env:PREVIEW_URL="http://127.0.0.1:5176"
+$env:API_URL="http://127.0.0.1:18081"
+$env:CAPTURE_LOGIN="..."
+$env:CAPTURE_PASSWORD="..."
+npm run capture:caja
+```
+
+El script cierra por API cualquier sesión activa del usuario de captura antes de tomar «caja sin abrir». No usa contraseñas por defecto ni hosts remotos.
 
 ## 14. Riesgos
 
