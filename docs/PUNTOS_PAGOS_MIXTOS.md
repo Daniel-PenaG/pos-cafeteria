@@ -2,7 +2,7 @@
 
 Rama: `feature/puntos-pagos-mixtos`, desde `5313b9a613cf9a92ea634bdc36f7b4b8e728ffd3`.
 
-No hay commit, merge, PR, despliegue ni migración aplicada en producción.
+La implementación está publicada en feature/puntos-pagos-mixtos. Todavía no hay merge a main, despliegue ni migración aplicada en producción.
 
 ## Causa raíz de las ventas sin puntos
 
