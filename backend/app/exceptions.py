@@ -25,6 +25,20 @@ class ConflictoOperacionException(HTTPException):
         )
 
 
+class SaldoPuntosCambioException(HTTPException):
+    """El canje era válido con el saldo leído; otra operación lo consumió al esperar el bloqueo."""
+
+    def __init__(self, saldo_actual: int):
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "detail": "El saldo de puntos cambió; revisa nuevamente.",
+                "codigo": "SALDO_PUNTOS_CAMBIO",
+                "saldo_actual": int(saldo_actual),
+            },
+        )
+
+
 class DatosInvalidosException(HTTPException):
     def __init__(self, detalle: str):
         super().__init__(

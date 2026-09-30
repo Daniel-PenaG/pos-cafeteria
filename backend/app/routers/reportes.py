@@ -33,7 +33,7 @@ from app.utils.timezone_mx import (
     isoformat_utc,
     fecha_mx_desde_utc_naive,
 )
-from app.utils.forma_pago import bucket_forma_pago, etiqueta_forma_pago, agregar_por_forma_pago
+from app.utils.forma_pago import _componentes_monetarios, etiqueta_forma_pago
 from app.services.pago_reporte_service import desglose_pagos_periodo
 from app.services.reporte_ventas_service import (
     resumen_ventas_dia,
@@ -288,16 +288,19 @@ def cuentas_por_cajero(fecha: date, db: Session = Depends(get_db)):
         entry["numero_ventas"] += 1
         entry["total"] += float(venta.total)
 
-        fp = bucket_forma_pago(venta.forma_pago)
-        if fp == "EFECTIVO":
-            entry["total_efectivo"] += float(venta.total)
-            entry["num_efectivo"] += 1
-        elif fp == "TRANSFERENCIA":
-            entry["total_transferencia"] += float(venta.total)
-            entry["num_transferencia"] += 1
-        elif fp == "TARJETA":
-            entry["total_tarjeta"] += float(venta.total)
-            entry["num_tarjeta"] += 1
+        vistos = set()
+        for fp, monto in _componentes_monetarios(venta):
+            if fp == "EFECTIVO":
+                entry["total_efectivo"] += monto
+            elif fp == "TRANSFERENCIA":
+                entry["total_transferencia"] += monto
+            elif fp == "TARJETA":
+                entry["total_tarjeta"] += monto
+            else:
+                continue
+            if fp not in vistos and monto > 0:
+                entry[f"num_{fp.lower()}"] += 1
+                vistos.add(fp)
 
         if venta.para_llevar or venta.numero_mesa == 99:
             mesa_label = "Para llevar"

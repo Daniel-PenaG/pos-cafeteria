@@ -6,6 +6,7 @@
 --   La tabla cierres_caja se conserva. Los arqueos por día/usuario siguen consultables.
 --   Las nuevas sesiones viven en sesiones_caja. No se asignan ventas históricas
 --   a sesiones nuevas. venta_pagos se rellena una vez por venta (anti doble backfill).
+--   Si la venta ya tiene cualquier componente, no se inserta otro ni se reescribe el importe.
 
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS tolerancia_efectivo NUMERIC(10, 2) NOT NULL DEFAULT 5;
 UPDATE configuracion SET tolerancia_efectivo = 5 WHERE tolerancia_efectivo IS NULL;
@@ -127,4 +128,8 @@ FROM ventas v
 WHERE NOT EXISTS (
     SELECT 1 FROM venta_pagos p
     WHERE p.operation_id = 'backfill-venta-' || v.id_venta::text
+)
+AND NOT EXISTS (
+    SELECT 1 FROM venta_pagos p2
+    WHERE p2.id_venta = v.id_venta
 );

@@ -247,6 +247,10 @@
     white-space: normal;
   }
 
+  .page--ventas {
+    overflow-x: hidden;
+  }
+
   .modal-overlay {
     padding: 0.5rem;
     padding-top: max(0.5rem, env(safe-area-inset-top));

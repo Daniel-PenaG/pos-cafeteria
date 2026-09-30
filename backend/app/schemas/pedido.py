@@ -53,6 +53,9 @@ class Pedido(BaseModel):
     total: float
     lineas: List[DetallePedidoLinea] = []
     cliente_nombre: Optional[str] = None
+    cliente_telefono: Optional[str] = None
+    cliente_puntos_saldo: Optional[int] = None
+    cliente_activo: Optional[bool] = None
     subtotal_normal: Optional[float] = None
     descuento_promociones: Optional[float] = None
     resumen_promociones: List[dict] = []
@@ -106,6 +109,9 @@ class PedidoCobrar(BaseModel):
     forma_pago: str
     id_cliente: Optional[int] = None
     origen: Optional[str] = "VENTAS"
+    puntos_canje: int = 0
+    operation_id: Optional[str] = Field(None, max_length=64)
+    desasociar_cliente: bool = False
 
 
 class ComboPedidoCreate(BaseModel):

@@ -1,10 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import logging
 import os
 
 from app.utils.config import get_cors_origins
 from app.database import Base, engine, aplicar_migraciones_sqlite, ensure_cierres_caja_table, crear_admin_inicial_si_vacio, crear_catalogo_demo_si_vacio
+from app.exceptions import SaldoPuntosCambioException
 from app.models import models
 from app.routers import auth, productos, recetas, ventas, reportes, compras, configuracion, extras_venta, promociones, clientes, pedidos, comandera, usuarios, gastos, cierres, auditoria, caja
 from app.middleware.performance import PerformanceMiddleware
@@ -52,6 +54,11 @@ app.include_router(gastos.router)
 app.include_router(cierres.router)
 app.include_router(caja.router)
 app.include_router(auditoria.router)
+
+
+@app.exception_handler(SaldoPuntosCambioException)
+async def saldo_puntos_cambio(_request: Request, exc: SaldoPuntosCambioException):
+    return JSONResponse(status_code=exc.status_code, content=exc.detail)
 
 
 @app.get("/")

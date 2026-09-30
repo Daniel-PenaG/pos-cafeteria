@@ -14,6 +14,7 @@ from app.models.models import (
     ProductoModel,
     ClienteModel,
     PromocionModel,
+    UsuarioModel,
 )
 from app.schemas.pedido import PedidoLineaCreate
 from app.schemas.ventas import VentaCreate, DetalleVentaItem
@@ -87,12 +88,15 @@ def _pedido_a_dict(p: PedidoModel, promo_resumen: dict | None = None) -> dict:
         "para_llevar": bool(getattr(p, "para_llevar", False)),
         "estado": p.estado,
         "id_cliente": p.id_cliente,
+        "cliente_puntos_saldo": int(p.cliente.puntos_saldo or 0) if p.cliente else None,
+        "cliente_activo": bool(p.cliente.activo) if p.cliente else None,
         "id_usuario": p.id_usuario,
         "id_venta": p.id_venta,
         "fecha_apertura": isoformat_utc(p.fecha_apertura),
         "total": round(total, 2),
         "lineas": lineas,
         "cliente_nombre": cliente_nombre,
+        "cliente_telefono": p.cliente.telefono if p.cliente else None,
         "sin_pedido": False,
     }
     if promo_resumen:
@@ -408,6 +412,9 @@ def _pedido_a_dict_con_recalc_en_lectura(pedido: PedidoModel, recalc: dict) -> d
         "total": round(total, 2),
         "lineas": lineas,
         "cliente_nombre": cliente_nombre,
+        "cliente_telefono": pedido.cliente.telefono if pedido.cliente else None,
+        "cliente_puntos_saldo": int(pedido.cliente.puntos_saldo or 0) if pedido.cliente else None,
+        "cliente_activo": bool(pedido.cliente.activo) if pedido.cliente else None,
         "subtotal_normal": recalc.get("subtotal_normal"),
         "descuento_promociones": recalc.get("descuento_promociones"),
         "resumen_promociones": recalc.get("resumen_promociones", []),
@@ -735,13 +742,73 @@ def cobrar_pedido(
     id_usuario: int,
     forma_pago: str,
     origen_cobro: str | None = None,
+    puntos_canje: int = 0,
+    operation_id: str | None = None,
+    id_cliente: int | None = None,
+    desasociar_cliente: bool = False,
+    actor: UsuarioModel | None = None,
+    auditoria_meta: dict | None = None,
 ):
+    """Bloqueos: sesión → pedido → detalles → cliente → idempotencia → venta."""
+    from app.constants import auditoria as A
     from app.utils.forma_pago import normalizar_forma_pago
     from app.services.pedido_locks import lock_detalles_de_pedido, lock_pedido
+    from app.services.cobro_bloqueos import bloquear_cliente_cobro, bloquear_sesion_de_cobro
+    from app.services.auditoria_service import registrar_auditoria
+    from app.services.cobro_operacion import (
+        huella_cobro,
+        lineas_huella,
+        reclamar_cobro,
+        respuesta_cobro_guardado,
+    )
+    from app.exceptions import RecursoNoEncontradoException
 
     forma_pago = normalizar_forma_pago(forma_pago)
+    operation_id = _normalizar_operation_id(operation_id)
+    sesion_id = bloquear_sesion_de_cobro(db, id_usuario)
     pedido = lock_pedido(db, pedido.id_pedido) or pedido
     detalles_bloqueados = lock_detalles_de_pedido(db, pedido.id_pedido)
+    cliente_quitado = None
+    if desasociar_cliente:
+        cliente_quitado = pedido.id_cliente
+        pedido.id_cliente = None
+    elif id_cliente:
+        pedido.id_cliente = id_cliente
+    cliente = None
+    saldo_visto = None
+    if pedido.id_cliente:
+        cliente, saldo_visto = bloquear_cliente_cobro(db, pedido.id_cliente)
+        if cliente is None:
+            raise RecursoNoEncontradoException("Cliente no encontrado o inactivo")
+    if cliente_quitado:
+        meta = auditoria_meta or {}
+        registrar_auditoria(
+            db,
+            usuario=actor,
+            accion=A.CLIENTE_DESASOCIADO,
+            entidad="pedido",
+            entidad_id=pedido.id_pedido,
+            detalles={
+                "id_pedido": pedido.id_pedido,
+                "id_cliente": int(cliente_quitado),
+            },
+            origen=origen_cobro,
+            ip=meta.get("ip"),
+            user_agent=meta.get("user_agent"),
+        )
+    if operation_id:
+        huella = huella_cobro(
+            id_pedido=pedido.id_pedido,
+            id_cliente=pedido.id_cliente,
+            forma_pago=forma_pago,
+            puntos_canje=puntos_canje,
+            lineas=lineas_huella([d for d in detalles_bloqueados if float(d.cantidad or 0) > 0]),
+        )
+        op = reclamar_cobro(db, operation_id, huella, id_usuario, pedido.id_pedido)
+        if op.id_venta:
+            guardada = respuesta_cobro_guardado(db, operation_id)
+            if guardada:
+                return guardada
     if pedido.estado != "ABIERTO":
         raise DatosInvalidosException("El pedido ya fue cobrado o cancelado")
     detalles_activos = [d for d in detalles_bloqueados if float(d.cantidad) > 0]
@@ -770,9 +837,17 @@ def cobrar_pedido(
         para_llevar=bool(getattr(pedido, "para_llevar", False)),
         id_pedido=pedido.id_pedido,
         origen_cobro=origen_cobro,
+        puntos_canje=int(puntos_canje or 0),
+        operation_id=operation_id,
         detalles=detalles_venta,
     )
-    return registrar_venta(db, venta_data)
+    return registrar_venta(
+        db,
+        venta_data,
+        sesion_ya_bloqueada=True,
+        sesion_id_bloqueada=sesion_id,
+        cliente_preparado=(cliente, saldo_visto),
+    )
 
 
 def listar_pedidos_activos_resumen(db: Session) -> list:

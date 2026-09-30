@@ -34,11 +34,11 @@ Impresión: ESC/POS 58 mm existente. El resumen de cierre se genera **después**
 - Un cajero y una terminal solo pueden tener una sesión `ABIERTA` o `EN_ARQUEO` (índice único parcial + validación de servicio).
 - El backend elige la sesión del usuario autenticado. El frontend no elige una sesión ajena.
 - Ventas históricas **no** se reasignan a sesiones nuevas (`id_sesion_caja` queda NULL).
-- `venta_pagos` se crea ahora (un pago monetario por venta). **PUNTOS no se habilita** en API ni UI.
+- `venta_pagos` se crea ahora (un pago monetario por venta). En Fase 3A los puntos no estaban habilitados. Fase 3B los habilita como componente aparte; el efectivo del cierre sigue siendo solo el importe monetario.
 - `CAJA_REQUERIDA_PARA_COBRAR` default `0` para no romper el APK anterior. Activarla a `1` cuando todos los cajeros abran caja y se haya validado el flujo.
 - Métodos nulos/vacíos históricos → EFECTIVO. Un valor explícito desconocido (incl. PUNTOS) → `DESCONOCIDO` y **no** suma al efectivo.
 - Gastos del módulo Gastos no se descuentan de caja. `GASTO_CAJA` es un movimiento explícito del cajón; `id_gasto` es referencia única opcional.
-- Orden de bloqueo: **sesión de caja primero**, luego pedido/venta. `SELECT FOR UPDATE` solo en PostgreSQL.
+- Orden de bloqueo del cobro: sesión de caja, pedido, detalles por id, cliente, idempotencia, venta. `SELECT FOR UPDATE` solo en PostgreSQL. Cancelar solo toma pedido y detalle. Cerrar caja solo toma la sesión.
 - Ajustes (`AJUSTE`) solo ADMIN.
 - Un cajero no revisa su propio cierre.
 - Forzar cierre con pedidos abiertos no cobra ni cancela.

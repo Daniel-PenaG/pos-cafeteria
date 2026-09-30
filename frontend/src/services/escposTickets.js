@@ -1,5 +1,5 @@
 import ThermalPrinterEncoder from "thermal-printer-encoder";
-import { etiquetaFormaPago } from "../utils/formaPago";
+import { lineasCobroTicket } from "../utils/ticketCobro";
 import { lineasResumenCierre } from "../utils/cajaTicketResumen";
 
 const WIDTH = 32; // 58 mm ~ 32 chars
@@ -222,13 +222,16 @@ export function buildCobroTicket({
   }
 
   enc.line("-".repeat(WIDTH));
-  enc.bold(true).line(`TOTAL: $${Number(venta?.total ?? 0).toFixed(2)}`).bold(false);
-  enc.line(`Pago: ${etiquetaFormaPago(venta?.forma_pago)}`);
-  if (
-    venta?.forma_pago === "EFECTIVO" &&
-    montoRecibido != null &&
-    !isNaN(Number(montoRecibido))
-  ) {
+  const cobro = lineasCobroTicket(venta);
+  enc.bold(true).line(cobro.lineas[0]).bold(false);
+  for (const linea of cobro.lineas.slice(1)) {
+    if (linea === "PAGADO CON PUNTOS") enc.bold(true).line(linea).bold(false);
+    else enc.line(linea);
+  }
+  const pagoEfectivo =
+    !cobro.pagoTotal &&
+    (venta?.forma_pago === "EFECTIVO" || venta?.forma_pago_monetaria === "EFECTIVO");
+  if (pagoEfectivo && montoRecibido != null && !isNaN(Number(montoRecibido))) {
     enc.line(`Recibido: $${Number(montoRecibido).toFixed(2)}`);
     if (cambio != null && !isNaN(Number(cambio))) {
       enc.bold(true).line(`Cambio: $${Number(cambio).toFixed(2)}`).bold(false);

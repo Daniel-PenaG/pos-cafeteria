@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from decimal import Decimal
 from typing import List
 
 from sqlalchemy.orm import Session
@@ -22,7 +23,14 @@ from app.models import (
 from app.schemas.ventas import VentaCreate, VentaResponse, ExtraVentaLinea
 from app.services.promocion_service import calcular_linea
 from app.services.promocion_ticket_service import recalcular_lineas_ticket
-from app.services.fidelidad_service import obtener_config, calcular_puntos_ganados, acumular_puntos_venta
+from app.services.cobro_operacion import completar_cobro
+from app.services.fidelidad_service import (
+    obtener_config,
+    acumular_puntos_venta,
+    canjear_puntos_venta,
+    resolver_pago_puntos,
+    _dinero,
+)
 from app.services.extras_validacion_service import validar_extras_producto
 from app.exceptions import (
     ConflictoOperacionException,
@@ -162,7 +170,14 @@ def _cerrar_pedido_tras_venta(db: Session, id_pedido: int, id_venta: int) -> Non
     pedido.fecha_cierre = now_utc_naive()
 
 
-def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
+def registrar_venta(
+    db: Session,
+    data: VentaCreate,
+    *,
+    sesion_ya_bloqueada: bool = False,
+    sesion_id_bloqueada: int | None = None,
+    cliente_preparado: tuple | None = None,
+) -> VentaResponse:
     usuario = db.query(UsuarioModel).filter(UsuarioModel.id_usuario == data.id_usuario).first()
     if not usuario:
         raise RecursoNoEncontradoException("Usuario no encontrado")
@@ -197,7 +212,8 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
 
     from app.utils.forma_pago import normalizar_forma_pago
 
-    forma_pago = normalizar_forma_pago(data.forma_pago)
+    forma_solicitada = normalizar_forma_pago(data.forma_pago)
+    puntos_canje = int(getattr(data, "puntos_canje", 0) or 0)
 
     lineas_entrada = []
     for item in data.detalles:
@@ -225,7 +241,7 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
     if len(recalc["lineas"]) != len(data.detalles):
         raise DatosInvalidosException("Error al recalcular promociones del ticket")
 
-    total_calculado = 0.0
+    total_calculado = _dinero(0)
     for item, calculo in zip(data.detalles, recalc["lineas"]):
         if not calculo.get("margen_ok", True):
             producto = db.query(ProductoModel).filter(ProductoModel.id_producto == item.id_producto).first()
@@ -241,42 +257,46 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
             )
         if item.precio_unitario <= 0:
             raise DatosInvalidosException("El precio debe ser positivo")
-        total_calculado += float(item.cantidad) * esperado
-
-    cliente = None
-    puntos_generados = 0
-    if data.id_cliente:
-        cliente = (
-            db.query(ClienteModel)
-            .filter(ClienteModel.id_cliente == data.id_cliente, ClienteModel.activo == True)
-            .first()
+        total_calculado = (total_calculado + (_dinero(item.cantidad) * _dinero(esperado))).quantize(
+            Decimal("0.01")
         )
-        if not cliente:
-            raise RecursoNoEncontradoException("Cliente no encontrado o inactivo")
-        config_fid = obtener_config(db)
-        puntos_generados = calcular_puntos_ganados(total_calculado, config_fid)
 
     advertencias_stock: List[str] = []
     _revisar_stock_receta(db, data.detalles, advertencias_stock)
     _revisar_stock_extras(db, data.detalles, advertencias_stock)
 
-    from app.constants.caja import ESTADO_ABIERTA, MSG_CAJA_CERRANDO, MSG_SIN_CAJA
-    from app.services.caja_service import (
-        caja_requerida_para_cobrar,
-        lock_sesion,
-        registrar_pago_venta,
-        sesion_activa_usuario,
-    )
+    from app.services.caja_service import registrar_pago_venta
+    from app.services.cobro_bloqueos import bloquear_cliente_cobro, bloquear_sesion_de_cobro
+    from app.services.pedido_locks import lock_detalles_de_pedido, lock_pedido
 
-    sesion_id = None
-    activa = sesion_activa_usuario(db, usuario.id_usuario)
-    if activa:
-        locked = lock_sesion(db, activa.id_sesion_caja)
-        if not locked or locked.estado != ESTADO_ABIERTA:
-            raise ConflictoOperacionException(MSG_CAJA_CERRANDO)
-        sesion_id = locked.id_sesion_caja
-    elif caja_requerida_para_cobrar():
-        raise DatosInvalidosException(MSG_SIN_CAJA)
+    if sesion_ya_bloqueada:
+        sesion_id = sesion_id_bloqueada
+    else:
+        sesion_id = bloquear_sesion_de_cobro(db, usuario.id_usuario)
+        if data.id_pedido is not None:
+            lock_pedido(db, data.id_pedido)
+            lock_detalles_de_pedido(db, data.id_pedido)
+
+    cliente = None
+    saldo_visto = None
+    if cliente_preparado is not None:
+        cliente, saldo_visto = cliente_preparado
+    elif data.id_cliente:
+        cliente, saldo_visto = bloquear_cliente_cobro(db, data.id_cliente)
+        if not cliente:
+            raise RecursoNoEncontradoException("Cliente no encontrado o inactivo")
+    config_fid = obtener_config(db)
+    pago_pts = resolver_pago_puntos(
+        cliente=cliente,
+        puntos_solicitados=puntos_canje,
+        total=total_calculado,
+        forma_monetaria=forma_solicitada,
+        config=config_fid,
+        saldo_visto=saldo_visto,
+    )
+    forma_pago = pago_pts.forma_pago
+    puntos_generados = pago_pts.puntos_generados if cliente else 0
+    saldo_anterior = int(cliente.puntos_saldo or 0) if cliente else None
 
     try:
         venta = VentaModel(
@@ -320,13 +340,33 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
         _descontar_stock_receta(db, venta.id_venta, data.detalles)
         _descontar_stock_extras(db, venta.id_venta, data.detalles)
 
+        if cliente and pago_pts.puntos_usados > 0:
+            canjear_puntos_venta(
+                db, cliente, pago_pts.puntos_usados, venta.id_venta, data.id_usuario
+            )
         if cliente and puntos_generados > 0:
             acumular_puntos_venta(db, cliente, puntos_generados, venta.id_venta, data.id_usuario)
+        saldo_final = int(cliente.puntos_saldo or 0) if cliente else None
 
         if data.id_pedido is not None:
             _cerrar_pedido_tras_venta(db, data.id_pedido, venta.id_venta)
 
-        registrar_pago_venta(db, venta)
+        registrar_pago_venta(
+            db,
+            venta,
+            puntos_usados=pago_pts.puntos_usados,
+            equivalencia_puntos=pago_pts.equivalencia,
+            metodo_monetario=pago_pts.metodo_monetario,
+            importe_monetario=pago_pts.importe_monetario,
+            operation_id=getattr(data, "operation_id", None),
+        )
+        completar_cobro(
+            db,
+            getattr(data, "operation_id", None),
+            venta.id_venta,
+            saldo_anterior,
+            saldo_final,
+        )
         db.commit()
         db.refresh(venta)
     except Exception:
@@ -338,7 +378,7 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
     if cliente:
         db.refresh(cliente)
         cliente_nombre = cliente.nombre
-        cliente_puntos_saldo = int(cliente.puntos_saldo)
+        cliente_puntos_saldo = saldo_final if saldo_final is not None else int(cliente.puntos_saldo)
 
     return VentaResponse(
         id_venta=venta.id_venta,
@@ -349,6 +389,12 @@ def registrar_venta(db: Session, data: VentaCreate) -> VentaResponse:
         forma_pago=venta.forma_pago,
         id_cliente=venta.id_cliente,
         puntos_generados=int(venta.puntos_generados or 0),
+        puntos_canje=pago_pts.puntos_usados,
+        equivalencia_puntos=float(pago_pts.equivalencia),
+        importe_monetario=float(pago_pts.importe_monetario),
+        forma_pago_monetaria=pago_pts.metodo_monetario,
+        saldo_anterior=saldo_anterior,
+        saldo_final=saldo_final,
         cliente_nombre=cliente_nombre,
         cliente_puntos_saldo=cliente_puntos_saldo,
         para_llevar=bool(venta.para_llevar),
