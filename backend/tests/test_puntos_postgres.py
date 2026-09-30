@@ -876,6 +876,28 @@ def test_arranque_006_desde_esquema_005(pg_engine, pg_db):
     assert antes == despues
 
 
+def test_postgres_exige_el_check_fisico(pg_engine):
+    from app.services.migracion_puntos import (
+        aplicar_migracion_006_puntos,
+        verificar_esquema_puntos_mixtos,
+    )
+
+    verificar_esquema_puntos_mixtos(pg_engine)
+    with pg_engine.begin() as conn:
+        conn.execute(text("ALTER TABLE venta_pagos DROP CONSTRAINT ck_venta_pago_componente"))
+    with pytest.raises(RuntimeError) as exc:
+        verificar_esquema_puntos_mixtos(pg_engine)
+    assert "ck_venta_pago_componente" in str(exc.value)
+    assert "://" not in str(exc.value)
+    aplicar_migracion_006_puntos(pg_engine)
+    verificar_esquema_puntos_mixtos(pg_engine)
+    with pg_engine.connect() as conn:
+        existe = conn.execute(
+            text("SELECT 1 FROM pg_constraint WHERE conname = 'ck_venta_pago_componente'")
+        ).scalar()
+    assert existe == 1
+
+
 def test_006_no_arranca_con_duplicados_historicos(pg_engine, pg_db):
     from app.services.migracion_puntos import aplicar_migracion_006_puntos
 

@@ -1,5 +1,6 @@
 -- Fase 3B. Idempotente. No reescribe ventas históricas.
--- Aplicar a mano en el destino. No forma parte del arranque automático.
+-- El backend la aplica y verifica automáticamente durante el arranque.
+-- También puede ejecutarse explícitamente por operaciones; es seguro repetirla.
 
 ALTER TABLE venta_pagos ALTER COLUMN operation_id TYPE VARCHAR(80);
 

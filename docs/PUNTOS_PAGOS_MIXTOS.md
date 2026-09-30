@@ -39,7 +39,9 @@ El INSERT de 005 solo agrega un pago monetario cuando la venta no tiene ninguna 
 - tabla `cobro_operaciones`;
 - `operation_id` de `venta_pagos` a `VARCHAR(80)` para `{clave}:MONETARIO`.
 
-No se ejecuta en el arranque ni en producción. Hay que aplicarla a mano antes de publicar esta rama. El relleno de 005 ahora también omite una venta que ya tiene fila monetaria, para no chocar con ese índice si 005 se vuelve a correr.
+El backend la aplica y la verifica al arrancar, igual que 002–005. También se puede ejecutar a mano; repetirla es seguro y no reescribe ventas. El relleno de 005 omite una venta que ya tiene cualquier fila en `venta_pagos`, para no crear otro componente si 005 se vuelve a correr.
+
+En PostgreSQL el arranque exige el `CHECK ck_venta_pago_componente`. En SQLite, usada solo en local y en pruebas, no se reconstruye `venta_pagos` para agregar ese `CHECK`: una base nueva lo trae desde el modelo, y una base anterior arranca con los índices únicos y las validaciones del servicio. Esa diferencia no aplica al destino en PostgreSQL.
 
 ## venta_pagos
 
@@ -75,7 +77,7 @@ Dos dispositivos que gastan el mismo saldo se serializan en el cliente. Si el ca
 
 ## Migración 006 en el arranque
 
-`aplicar_migracion_006_puntos()` corre después de 005. `verificar_esquema_puntos_mixtos()` impide iniciar si falta el check, un índice, la capacidad de `operation_id` o `cobro_operaciones`. No imprime la URL ni credenciales.
+`aplicar_migracion_006_puntos()` corre después de 005. `verificar_esquema_puntos_mixtos()` impide iniciar si falta un índice, la capacidad de `operation_id` o `cobro_operaciones`. En PostgreSQL también exige el `CHECK` físico. No imprime la URL ni credenciales.
 
 Antes del índice único, consulta de solo lectura para ejecutar en el destino antes de publicar:
 

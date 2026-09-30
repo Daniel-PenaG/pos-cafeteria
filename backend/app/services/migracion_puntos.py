@@ -119,6 +119,7 @@ def _statements(sql: str) -> list[str]:
 
 
 def _aplicar_sqlite(conn) -> None:
+    """Índices y cobro_operaciones. No reconstruye venta_pagos para agregar el CHECK."""
     conn.execute(
         text(
             """
@@ -226,7 +227,7 @@ def verificar_esquema_puntos_mixtos(bind: Engine | None = None) -> None:
                 ).scalar()
             if largo is not None and int(largo) < 80:
                 faltantes.append("venta_pagos.operation_id VARCHAR(80)")
-        if not _tiene_check(engine, insp):
+        if engine.dialect.name == "postgresql" and not _tiene_check(engine):
             faltantes.append("CHECK ck_venta_pago_componente")
     if "cobro_operaciones" not in tablas:
         faltantes.append("tabla cobro_operaciones")
@@ -265,21 +266,17 @@ def _indices(engine: Engine) -> set[str]:
         return {r[0] for r in rows}
 
 
-def _tiene_check(engine: Engine, insp) -> bool:
-    if "venta_pagos" not in set(insp.get_table_names()):
-        return False
+def _tiene_check(engine: Engine) -> bool:
+    """PostgreSQL exige el CHECK físico. SQLite no reconstruye la tabla para agregarlo."""
+    if engine.dialect.name != "postgresql":
+        return True
     with engine.connect() as conn:
-        if engine.dialect.name == "postgresql":
-            encontrado = conn.execute(
-                text(
-                    """
-                    SELECT 1 FROM pg_constraint
-                    WHERE conname = 'ck_venta_pago_componente'
-                    """
-                )
-            ).scalar()
-            return bool(encontrado)
-        sql = conn.execute(
-            text("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'venta_pagos'")
+        encontrado = conn.execute(
+            text(
+                """
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'ck_venta_pago_componente'
+                """
+            )
         ).scalar()
-    return bool(sql and "ck_venta_pago_componente" in sql)
+    return bool(encontrado)

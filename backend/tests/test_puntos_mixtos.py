@@ -492,3 +492,189 @@ def test_id_usuario_del_body_no_atribuye_puntos(client, auth_headers):
     assert body["id_usuario"] != 99999
     assert body["puntos_generados"] > 0
     assert body["saldo_final"] == body["saldo_anterior"] + body["puntos_generados"]
+
+
+def _sqlite_pre006(pagos):
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE usuarios (
+                    id_usuario INTEGER PRIMARY KEY,
+                    nombre TEXT NOT NULL
+                )
+                """
+            )
+        )
+        conn.execute(text("INSERT INTO usuarios (id_usuario, nombre) VALUES (1, 'Cajero demo')"))
+        conn.execute(
+            text(
+                """
+                CREATE TABLE ventas (
+                    id_venta INTEGER PRIMARY KEY,
+                    fecha_hora TEXT NOT NULL,
+                    id_usuario INTEGER NOT NULL,
+                    numero_mesa INTEGER NOT NULL,
+                    total NUMERIC NOT NULL,
+                    forma_pago TEXT NOT NULL
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO ventas (id_venta, fecha_hora, id_usuario, numero_mesa, total, forma_pago)
+                VALUES (1, '2026-01-01', 1, 1, 40, 'EFECTIVO')
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE venta_pagos (
+                    id_pago INTEGER PRIMARY KEY,
+                    id_venta INTEGER NOT NULL,
+                    metodo TEXT NOT NULL,
+                    importe_monetario NUMERIC NOT NULL,
+                    cantidad_puntos INTEGER,
+                    equivalencia_puntos NUMERIC,
+                    fecha_hora TEXT NOT NULL,
+                    id_usuario INTEGER NOT NULL,
+                    operation_id TEXT NOT NULL
+                )
+                """
+            )
+        )
+        for pago in pagos:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO venta_pagos (
+                        id_venta, metodo, importe_monetario, fecha_hora, id_usuario, operation_id
+                    ) VALUES (1, :metodo, :importe, '2026-01-01', 1, :oid)
+                    """
+                ),
+                pago,
+            )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE fidelidad_movimientos (
+                    id_movimiento INTEGER PRIMARY KEY,
+                    id_cliente INTEGER NOT NULL,
+                    tipo TEXT NOT NULL,
+                    puntos INTEGER NOT NULL,
+                    saldo_despues INTEGER NOT NULL,
+                    id_venta INTEGER,
+                    fecha_hora TEXT NOT NULL
+                )
+                """
+            )
+        )
+    return engine
+
+
+def test_sqlite_pre_006_valida_actualiza_y_arranca():
+    from sqlalchemy import text
+
+    from app.services.migracion_puntos import (
+        aplicar_migracion_006_puntos,
+        verificar_esquema_puntos_mixtos,
+    )
+
+    engine = _sqlite_pre006(
+        [{"metodo": "EFECTIVO", "importe": 40, "oid": "hist-1"}]
+    )
+    aplicar_migracion_006_puntos(engine)
+    verificar_esquema_puntos_mixtos(engine)
+    aplicar_migracion_006_puntos(engine)
+    verificar_esquema_puntos_mixtos(engine)
+    with engine.connect() as conn:
+        fila = conn.execute(
+            text("SELECT metodo, importe_monetario, operation_id FROM venta_pagos")
+        ).one()
+        n = conn.execute(text("SELECT COUNT(*) FROM venta_pagos")).scalar()
+        sql = conn.execute(
+            text("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'venta_pagos'")
+        ).scalar()
+        idx = {
+            r[0]
+            for r in conn.execute(text("SELECT name FROM sqlite_master WHERE type = 'index'"))
+        }
+        tablas = {
+            r[0]
+            for r in conn.execute(text("SELECT name FROM sqlite_master WHERE type = 'table'"))
+        }
+    assert int(n) == 1
+    assert fila[0] == "EFECTIVO"
+    assert float(fila[1]) == 40
+    assert fila[2] == "hist-1"
+    assert "ck_venta_pago_componente" not in (sql or "")
+    assert "uq_venta_pago_un_monetario" in idx
+    assert "cobro_operaciones" in tablas
+
+
+def test_sqlite_nueva_incluye_el_check_del_modelo():
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.pool import StaticPool
+
+    from app.database import Base
+    from app.services.migracion_puntos import (
+        aplicar_migracion_006_puntos,
+        verificar_esquema_puntos_mixtos,
+    )
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    with engine.connect() as conn:
+        sql = conn.execute(
+            text("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'venta_pagos'")
+        ).scalar()
+    assert "ck_venta_pago_componente" in sql
+    aplicar_migracion_006_puntos(engine)
+    verificar_esquema_puntos_mixtos(engine)
+
+
+def test_sqlite_componentes_duplicados_detienen_sin_borrar():
+    from sqlalchemy import text
+
+    from app.services.migracion_puntos import aplicar_migracion_006_puntos
+
+    engine = _sqlite_pre006(
+        [
+            {"metodo": "EFECTIVO", "importe": 20, "oid": "dup-a"},
+            {"metodo": "TARJETA", "importe": 20, "oid": "dup-b"},
+        ]
+    )
+    with pytest.raises(RuntimeError) as exc:
+        aplicar_migracion_006_puntos(engine)
+    texto = str(exc.value)
+    assert "1" in texto
+    assert "://" not in texto
+    assert "password" not in texto.lower()
+    with engine.connect() as conn:
+        n = conn.execute(text("SELECT COUNT(*) FROM venta_pagos")).scalar()
+        importes = [
+            float(r[0])
+            for r in conn.execute(text("SELECT importe_monetario FROM venta_pagos ORDER BY operation_id"))
+        ]
+        idx = {
+            r[0]
+            for r in conn.execute(text("SELECT name FROM sqlite_master WHERE type = 'index'"))
+        }
+    assert int(n) == 2
+    assert importes == [20.0, 20.0]
+    assert "uq_venta_pago_un_monetario" not in idx
