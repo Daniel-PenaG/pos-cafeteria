@@ -10,8 +10,12 @@ describe("forma de pago", () => {
 
   it("PUNTOS y desconocidos no incrementan efectivo", () => {
     assert.equal(bucketFormaPago("PUNTOS"), "DESCONOCIDO");
+    assert.equal(bucketFormaPago("MIXTO"), "DESCONOCIDO");
     assert.equal(bucketFormaPago("BITCOIN"), "DESCONOCIDO");
     assert.equal(esEfectivo("PUNTOS"), false);
+    assert.equal(esEfectivo("MIXTO"), false);
+    assert.equal(etiquetaFormaPago("PUNTOS"), "Puntos");
+    assert.equal(etiquetaFormaPago("MIXTO"), "Puntos + pago");
     assert.equal(esEfectivo("DESCONOCIDO"), false);
     assert.equal(etiquetaFormaPago("DESCONOCIDO"), "Desconocido");
   });

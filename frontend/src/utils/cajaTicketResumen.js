@@ -6,6 +6,7 @@ export function lineasResumenCierre({ sesion, usuario, cafeteria = "Coffe Song" 
     `Terminal: ${sesion?.terminal || "—"}`,
     `Estado: ${sesion?.estado || "—"}`,
     `Ventas total: ${money(sesion?.ventas_total)}`,
+    `Ingreso monetario: ${money(sesion?.ingreso_monetario)}`,
     `Tickets: ${sesion?.num_ventas ?? 0}`,
     `Fondo inicial: ${money(sesion?.fondo_inicial)}`,
     `Entradas: ${money(sesion?.entradas)}`,

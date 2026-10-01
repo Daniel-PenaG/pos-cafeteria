@@ -24,6 +24,7 @@ import {
 } from "../services/promocionesService";
 import {
   buscarClientes,
+  getCliente,
   getClientePorCodigo,
   createCliente,
   previewPuntos,
@@ -41,6 +42,15 @@ import PrinterSettings from "../components/PrinterSettings";
 import { canUseBluetoothPrinter, printTicketSafely } from "../services/printerService";
 import { buildCobroTicket, buildPrecuentaTicket } from "../services/escposTickets";
 import { FORMAS_PAGO, esEfectivo } from "../utils/formaPago";
+import {
+  botonCobroBloqueado,
+  cambioEfectivo,
+  clientePrecargado,
+  evaluarCanjeCliente,
+  ocultaMetodoMonetario,
+  payloadCobro,
+  resolverErrorCobro,
+} from "../utils/puntosPago";
 import { getSavedPrinter } from "../services/printerStorage";
 import { formatDuration } from "../utils/formatDuration";
 import {
@@ -118,6 +128,7 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [nuevoTelefono, setNuevoTelefono] = useState("");
   const [puntosPreviewCobro, setPuntosPreviewCobro] = useState(0);
+  const [puntosCanjeInput, setPuntosCanjeInput] = useState("");
   const [qrCobro, setQrCobro] = useState("");
   const [showQrScanner, setShowQrScanner] = useState(false);
   const [clienteQrRecienCreado, setClienteQrRecienCreado] = useState(null);
@@ -154,20 +165,26 @@ export default function Ventas({ modoParaLlevar = false }) {
   const descuentoPromos = pedido?.descuento_promociones;
   const resumenPromos = pedido?.resumen_promociones ?? [];
 
-  const cobroEfectivo = esEfectivo(formaPago);
+  const canjeCobro = useMemo(
+    () => evaluarCanjeCliente(total, clienteCobro, puntosCanjeInput),
+    [total, clienteCobro, puntosCanjeInput]
+  );
+  const aCubrir = canjeCobro.bloquea ? total : canjeCobro.importe;
+  const cobroEfectivo = esEfectivo(formaPago) && aCubrir > 0;
   const montoRecibidoNum = parseFloat(montoRecibido);
   const cambioCobro = useMemo(() => {
     if (!cobroEfectivo || montoRecibido === "" || isNaN(montoRecibidoNum)) return null;
-    return Math.round((montoRecibidoNum - total) * 100) / 100;
-  }, [cobroEfectivo, montoRecibido, montoRecibidoNum, total]);
+    return cambioEfectivo(montoRecibidoNum, aCubrir);
+  }, [cobroEfectivo, montoRecibido, montoRecibidoNum, aCubrir]);
   const montoRecibidoInsuficiente =
     cobroEfectivo &&
     montoRecibido !== "" &&
     !isNaN(montoRecibidoNum) &&
-    montoRecibidoNum < total;
+    montoRecibidoNum < aCubrir;
   const cobroEfectivoInvalido =
     cobroEfectivo &&
-    (montoRecibido === "" || isNaN(montoRecibidoNum) || montoRecibidoNum < total);
+    (montoRecibido === "" || isNaN(montoRecibidoNum) || montoRecibidoNum < aCubrir);
+  const cobroBloqueado = canjeCobro.bloquea || cobroEfectivoInvalido;
 
   const lineasPendientesConfirmar = useMemo(
     () =>
@@ -413,14 +430,15 @@ export default function Ventas({ modoParaLlevar = false }) {
   };
 
   useEffect(() => {
-    if (!showCobroModal || total <= 0) {
-      setPuntosPreviewCobro(0);
+    if (!showCobroModal || total <= 0 || canjeCobro.bloquea) {
+      if (!showCobroModal || total <= 0) setPuntosPreviewCobro(0);
       return;
     }
-    previewPuntos(total)
+    const base = clienteCobro ? aCubrir : total;
+    previewPuntos(base)
       .then((r) => setPuntosPreviewCobro(r.puntos_a_ganar))
       .catch(() => setPuntosPreviewCobro(0));
-  }, [showCobroModal, total]);
+  }, [showCobroModal, total, clienteCobro, aCubrir, canjeCobro.bloquea]);
 
   const buscarClienteCobro = async (termino) => {
     const q = termino.trim();
@@ -482,12 +500,13 @@ export default function Ventas({ modoParaLlevar = false }) {
   };
 
   const abrirCobroModal = () => {
-    setClienteCobro(null);
+    setClienteCobro(clientePrecargado(pedido));
     setBusquedaCobro("");
     setResultadosCobro([]);
     setQrCobro("");
     setMontoRecibido("");
     setFormaPago("EFECTIVO");
+    setPuntosCanjeInput("");
     setShowCobroModal(true);
   };
 
@@ -554,11 +573,11 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const cerrarCobroModal = () => {
     setShowCobroModal(false);
-    setClienteCobro(null);
     setBusquedaCobro("");
     setResultadosCobro([]);
     setQrCobro("");
     setMontoRecibido("");
+    setPuntosCanjeInput("");
     setPrecuentaImpresa(false);
   };
 
@@ -1000,8 +1019,16 @@ export default function Ventas({ modoParaLlevar = false }) {
   };
 
   const iniciarConfirmacionCobro = (conCliente) => {
+    if (canjeCobro.bloquea) {
+      alert(canjeCobro.error);
+      return;
+    }
+    if (!conCliente && canjeCobro.puntos > 0) {
+      alert("Selecciona el cliente para usar puntos");
+      return;
+    }
     if (cobroEfectivoInvalido) {
-      alert(`Indica cuánto paga el cliente (mínimo $${total.toFixed(2)})`);
+      alert(`Indica cuánto paga el cliente (mínimo $${aCubrir.toFixed(2)})`);
       return;
     }
     if (modoParaLlevar && canUseBluetoothPrinter()) {
@@ -1012,25 +1039,56 @@ export default function Ventas({ modoParaLlevar = false }) {
     ejecutarCobro(conCliente, false);
   };
 
-  const ejecutarCobro = async (conCliente, imprimirTicket = false) => {
+  const ejecutarCobro = async (conCliente, imprimirTicket = false, desasociarCliente = false) => {
     if (!usuario?.id_usuario || !pedido?.id_pedido) return;
+    const usaCliente = Boolean(conCliente) && !desasociarCliente;
 
+    if (!desasociarCliente && canjeCobro.bloquea) {
+      alert(canjeCobro.error);
+      return;
+    }
+    if (!usaCliente && !desasociarCliente && canjeCobro.puntos > 0) {
+      alert("Selecciona el cliente para usar puntos");
+      return;
+    }
     if (cobroEfectivoInvalido) {
-      alert(`Indica cuánto paga el cliente (mínimo $${total.toFixed(2)})`);
+      alert(`Indica cuánto paga el cliente (mínimo $${aCubrir.toFixed(2)})`);
       return;
     }
 
     const pagaCon = cobroEfectivo ? montoRecibidoNum : null;
     const cambio = cobroEfectivo ? cambioCobro : null;
+    const payload = payloadCobro({
+      idUsuario: usuario.id_usuario,
+      formaPago: !desasociarCliente && aCubrir === 0 ? "EFECTIVO" : formaPago,
+      cliente: clienteCobro,
+      conCliente: usaCliente,
+      puntos: desasociarCliente ? 0 : canjeCobro.puntos,
+      desasociarCliente,
+      operationId: intentStoreRef.current.beginIntent(
+        JSON.stringify({
+          tipo: "cobro",
+          id_pedido: pedido.id_pedido,
+          id_cliente: usaCliente && clienteCobro ? clienteCobro.id_cliente : null,
+          forma_pago: !desasociarCliente && aCubrir === 0 ? "EFECTIVO" : formaPago,
+          puntos_canje: usaCliente && clienteCobro ? canjeCobro.puntos : 0,
+          desasociar_cliente: desasociarCliente,
+        })
+      ),
+    });
+    const huellaCobro = JSON.stringify({
+      tipo: "cobro",
+      id_pedido: pedido.id_pedido,
+      id_cliente: payload.id_cliente,
+      forma_pago: payload.forma_pago,
+      puntos_canje: payload.puntos_canje,
+    });
 
     try {
       setLoading(true);
       const pedidoParaTicket = pedido;
-      const res = await cobrarPedido(pedido.id_pedido, {
-        id_usuario: usuario.id_usuario,
-        forma_pago: formaPago,
-        id_cliente: conCliente && clienteCobro ? clienteCobro.id_cliente : null,
-      });
+      const res = await withIntentRetry(() => cobrarPedido(pedido.id_pedido, payload));
+      intentStoreRef.current.completeIntent(huellaCobro);
 
       let printResult = { skipped: true };
       if (modoParaLlevar && imprimirTicket) {
@@ -1038,7 +1096,7 @@ export default function Ventas({ modoParaLlevar = false }) {
           venta: res,
           pedido: pedidoParaTicket,
           usuario,
-          clienteNombre: conCliente && clienteCobro ? clienteCobro.nombre : null,
+          clienteNombre: usaCliente && clienteCobro ? clienteCobro.nombre : null,
           montoRecibido: pagaCon,
           cambio,
         });
@@ -1061,8 +1119,11 @@ export default function Ventas({ modoParaLlevar = false }) {
       if (res.advertencias_stock?.length) {
         msg += `\n\n⚠ Avisos de inventario (la venta se completó):\n${res.advertencias_stock.join("\n")}`;
       }
-      if (res.puntos_generados > 0) {
-        msg += `\n\n+${res.puntos_generados} pts → ${res.cliente_nombre}\nNuevo saldo: ${res.cliente_puntos_saldo} pts`;
+      if (res.saldo_anterior != null) {
+        msg += `\n\nSaldo anterior: ${res.saldo_anterior}`;
+        msg += `\nPuntos usados: ${res.puntos_canje || 0}`;
+        msg += `\nPuntos generados: ${res.puntos_generados || 0}`;
+        msg += `\nSaldo final: ${res.saldo_final}`;
       }
       if (!printResult.skipped && !printResult.ok) {
         msg += `\n\n⚠ Impresión: ${printResult.message}`;
@@ -1089,6 +1150,32 @@ export default function Ventas({ modoParaLlevar = false }) {
       }
     } catch (err) {
       console.error(err);
+      if (!shouldKeepPendingKey(err)) {
+        intentStoreRef.current.completeIntent(huellaCobro);
+      }
+      const status = err.response?.status;
+      const cuerpo = err.response?.data;
+      const efecto = resolverErrorCobro(status, cuerpo);
+      if (efecto.saldoActual != null && clienteCobro) {
+        setClienteCobro((prev) => (prev ? { ...prev, puntos_saldo: efecto.saldoActual } : prev));
+        setPuntosCanjeInput("");
+      }
+      if (efecto.refrescaSaldo && clienteCobro?.id_cliente) {
+        try {
+          const fresco = await getCliente(clienteCobro.id_cliente);
+          if (fresco) setClienteCobro(fresco);
+        } catch {
+          /* El pedido sigue abierto con el saldo que ya se mostraba. */
+        }
+      }
+      if (status === 409) {
+        const texto =
+          (typeof cuerpo?.detail === "string" && cuerpo.detail) ||
+          cuerpo?.detail?.detail ||
+          "Ese cobro ya se usó con otros datos. El pedido sigue abierto si no se registró.";
+        alert(texto);
+        return;
+      }
       alert(err.response?.data?.detail || "Error al cobrar");
     } finally {
       setLoading(false);
@@ -1769,7 +1856,8 @@ export default function Ventas({ modoParaLlevar = false }) {
 
       {showCobroModal && (
         <div className="modal-overlay" onClick={cerrarCobroModal}>
-          <div className="modal-box modal-box--wide" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-box modal-box--wide modal-box--cobro" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-cobro-body">
             <h2>{modoParaLlevar ? "Registrar pago — Para llevar" : `Registrar pago — Mesa ${numeroMesa}`}</h2>
             {!modoParaLlevar && precuentaImpresa && (
               <p className="hint">La precuenta ya fue impresa. Selecciona la forma de pago.</p>
@@ -1781,6 +1869,11 @@ export default function Ventas({ modoParaLlevar = false }) {
               Total: ${total.toFixed(2)}
             </p>
 
+            {ocultaMetodoMonetario(canjeCobro) ? (
+              <p className="hint panel-muted" style={{ marginBottom: "1rem" }}>
+                Pago total con puntos. No hay efectivo, transferencia ni terminal.
+              </p>
+            ) : (
             <div className="form-row">
               <label>Forma de pago</label>
               <select
@@ -1798,15 +1891,23 @@ export default function Ventas({ modoParaLlevar = false }) {
                 ))}
               </select>
             </div>
+            )}
 
-            {formaPago === "TRANSFERENCIA" && (
+            {formaPago === "TRANSFERENCIA" && aCubrir > 0 && (
               <p className="hint panel-muted" style={{ marginBottom: "1rem" }}>
-                Pago por <strong>Transferencia</strong>. No se solicita importe recibido ni cambio.
+                Pago por <strong>Transferencia</strong>
+                {canjeCobro.puntos > 0 ? ` de $${aCubrir.toFixed(2)}` : ""}. No se solicita importe recibido ni cambio.
               </p>
             )}
-            {formaPago === "TARJETA" && (
+            {formaPago === "TARJETA" && aCubrir > 0 && (
               <p className="hint panel-muted" style={{ marginBottom: "1rem" }}>
-                Pago con <strong>Terminal</strong>. No se solicita importe recibido ni cambio.
+                Pago con <strong>Terminal</strong>
+                {canjeCobro.puntos > 0 ? ` de $${aCubrir.toFixed(2)}` : ""}. No se solicita importe recibido ni cambio.
+              </p>
+            )}
+            {ocultaMetodoMonetario(canjeCobro) && (
+              <p className="hint panel-muted" style={{ marginBottom: "1rem" }}>
+                El ticket queda cubierto con puntos. No hay importe monetario.
               </p>
             )}
 
@@ -1822,7 +1923,7 @@ export default function Ventas({ modoParaLlevar = false }) {
                     step="0.01"
                     value={montoRecibido}
                     onChange={(e) => setMontoRecibido(e.target.value)}
-                    placeholder={`Mín. $${total.toFixed(2)}`}
+                    placeholder={`Mín. $${aCubrir.toFixed(2)}`}
                     autoFocus
                   />
                 </div>
@@ -1838,7 +1939,7 @@ export default function Ventas({ modoParaLlevar = false }) {
                   >
                     {montoRecibidoInsuficiente ? (
                       <p style={{ margin: 0, color: "var(--berry)" }}>
-                        Falta ${(total - montoRecibidoNum).toFixed(2)} para cubrir el total
+                        Falta ${(aCubrir - montoRecibidoNum).toFixed(2)} para cubrir el resto
                       </p>
                     ) : (
                       <p style={{ margin: 0 }}>
@@ -1871,10 +1972,39 @@ export default function Ventas({ modoParaLlevar = false }) {
                     </span>
                   )}
                 </div>
+                {canjeCobro.habilitado ? (
+                  <div className="form-row" style={{ marginTop: "0.75rem" }}>
+                    <label htmlFor="puntos-canje">Usar puntos</label>
+                    <input
+                      id="puntos-canje"
+                      type="number"
+                      className="input"
+                      min="0"
+                      step="10"
+                      value={puntosCanjeInput}
+                      onChange={(e) => setPuntosCanjeInput(e.target.value)}
+                      placeholder={`Máx. ${canjeCobro.max} pts`}
+                    />
+                    <p className="hint">10 puntos = $1. Mínimo 50. Solo múltiplos de 10.</p>
+                    {canjeCobro.error && (
+                      <p style={{ margin: "0.25rem 0 0", color: "var(--berry)" }}>{canjeCobro.error}</p>
+                    )}
+                    {canjeCobro.puntos > 0 && (
+                      <p className="hint">
+                        Equivale a ${canjeCobro.equivalencia.toFixed(2)}. Resta ${canjeCobro.importe.toFixed(2)}.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="hint">Canje disponible desde 50 puntos y tickets de $5 o más.</p>
+                )}
                 <button
                   type="button"
                   className="btn btn--secondary btn--sm"
-                  onClick={() => setClienteCobro(null)}
+                  onClick={() => {
+                    setClienteCobro(null);
+                    setPuntosCanjeInput("");
+                  }}
                 >
                   Cambiar
                 </button>
@@ -1941,7 +2071,8 @@ export default function Ventas({ modoParaLlevar = false }) {
               </>
             )}
 
-            <div className="modal-footer" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+            </div>
+            <div className="modal-footer modal-footer--cobro" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
               {!modoParaLlevar && canUseBluetoothPrinter() && (
                 <button
                   type="button"
@@ -1956,26 +2087,42 @@ export default function Ventas({ modoParaLlevar = false }) {
               <button type="button" className="btn btn--secondary" onClick={cerrarCobroModal} disabled={loading || imprimiendoPrecuenta}>
                 Cancelar
               </button>
-              <button
-                type="button"
-                className="btn btn--secondary"
-                onClick={() => iniciarConfirmacionCobro(false)}
-                disabled={loading || cobroEfectivoInvalido}
-              >
-                Cobrar sin cliente
-              </button>
+              {!pedido?.id_cliente && (
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  onClick={() => iniciarConfirmacionCobro(false)}
+                  disabled={botonCobroBloqueado({ loading, bloquea: cobroBloqueado }) || canjeCobro.puntos > 0}
+                >
+                  Cobrar sin cliente
+                </button>
+              )}
+              {pedido?.id_cliente && (
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  onClick={() => {
+                    const nombre = clienteCobro?.nombre || pedido.cliente_nombre || "el cliente";
+                    if (!window.confirm(`¿Quitar a ${nombre} de este pedido y cobrar sin puntos?`)) return;
+                    ejecutarCobro(false, false, true);
+                  }}
+                  disabled={botonCobroBloqueado({ loading, bloquea: false })}
+                >
+                  Quitar cliente y cobrar sin puntos
+                </button>
+              )}
               <button
                 type="button"
                 className="btn btn--success"
                 onClick={() => iniciarConfirmacionCobro(true)}
-                disabled={loading || !clienteCobro || cobroEfectivoInvalido}
+                disabled={botonCobroBloqueado({ loading, bloquea: cobroBloqueado }) || !clienteCobro}
               >
                 {loading
                   ? "Procesando…"
                   : clienteCobro
                     ? puntosPreviewCobro > 0
-                      ? `Cobrar y sumar ${puntosPreviewCobro} pts`
-                      : "Cobrar con cliente"
+                      ? `Cobrar con ${clienteCobro.nombre} y sumar ${puntosPreviewCobro} pts`
+                      : `Cobrar con ${clienteCobro.nombre}`
                     : "Selecciona un cliente"}
               </button>
             </div>

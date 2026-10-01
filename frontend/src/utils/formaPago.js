@@ -9,6 +9,8 @@ const ETIQUETAS = {
   EFECTIVO: "Efectivo",
   TRANSFERENCIA: "Transferencia",
   TARJETA: "Terminal",
+  PUNTOS: "Puntos",
+  MIXTO: "Puntos + pago",
   DESCONOCIDO: "Desconocido",
 };
 

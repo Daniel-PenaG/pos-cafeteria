@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     UniqueConstraint,
+    CheckConstraint,
     text,
 )
 from datetime import datetime
@@ -444,10 +445,33 @@ class ArqueoDenominacionModel(Base):
 
 
 class VentaPagoModel(Base):
-    """Componentes de pago de una venta. En Fase 3A solo métodos monetarios."""
+    """Un componente PUNTOS y, si queda remanente, un solo componente monetario."""
 
     __tablename__ = "venta_pagos"
-    __table_args__ = (UniqueConstraint("operation_id", name="uq_venta_pago_operation_id"),)
+    __table_args__ = (
+        UniqueConstraint("operation_id", name="uq_venta_pago_operation_id"),
+        CheckConstraint(
+            "(metodo = 'PUNTOS' AND importe_monetario = 0 AND cantidad_puntos > 0 "
+            "AND equivalencia_puntos > 0) OR "
+            "(metodo <> 'PUNTOS' AND importe_monetario >= 0 "
+            "AND COALESCE(cantidad_puntos, 0) = 0 AND COALESCE(equivalencia_puntos, 0) = 0)",
+            name="ck_venta_pago_componente",
+        ),
+        Index(
+            "uq_venta_pago_un_puntos",
+            "id_venta",
+            unique=True,
+            sqlite_where=text("metodo = 'PUNTOS'"),
+            postgresql_where=text("metodo = 'PUNTOS'"),
+        ),
+        Index(
+            "uq_venta_pago_un_monetario",
+            "id_venta",
+            unique=True,
+            sqlite_where=text("metodo <> 'PUNTOS'"),
+            postgresql_where=text("metodo <> 'PUNTOS'"),
+        ),
+    )
 
     id_pago = Column(Integer, primary_key=True)
     id_venta = Column(Integer, ForeignKey("ventas.id_venta"), nullable=False, index=True)
@@ -459,7 +483,7 @@ class VentaPagoModel(Base):
     fecha_hora = Column(DateTime, nullable=False)
     id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
     id_sesion_caja = Column(Integer, ForeignKey("sesiones_caja.id_sesion_caja"), nullable=True)
-    operation_id = Column(String(64), nullable=False)
+    operation_id = Column(String(80), nullable=False)
 
     venta = relationship("VentaModel", back_populates="pagos")
 
@@ -624,10 +648,22 @@ class ClienteModel(Base):
 
 class FidelidadMovimientoModel(Base):
     __tablename__ = "fidelidad_movimientos"
+    __table_args__ = (
+        Index("ix_fidelidad_movimientos_id_cliente", "id_cliente"),
+        Index("ix_fidelidad_movimientos_id_venta", "id_venta"),
+        Index(
+            "uq_fidelidad_venta_tipo",
+            "id_venta",
+            "tipo",
+            unique=True,
+            sqlite_where=text("id_venta IS NOT NULL AND tipo IN ('REDENCION', 'ACUMULACION')"),
+            postgresql_where=text("id_venta IS NOT NULL AND tipo IN ('REDENCION', 'ACUMULACION')"),
+        ),
+    )
 
     id_movimiento = Column(Integer, primary_key=True, index=True)
     id_cliente = Column(Integer, ForeignKey("clientes.id_cliente"), nullable=False)
-    tipo = Column(String(30), nullable=False)  # ACUMULACION, AJUSTE, REVERSO
+    tipo = Column(String(30), nullable=False)  # REDENCION, ACUMULACION, AJUSTE, REVERSO
     puntos = Column(Integer, nullable=False)
     saldo_despues = Column(Integer, nullable=False)
     id_venta = Column(Integer, ForeignKey("ventas.id_venta"), nullable=True)
@@ -636,6 +672,23 @@ class FidelidadMovimientoModel(Base):
     id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=True)
 
     cliente = relationship("ClienteModel", back_populates="movimientos")
+
+
+class CobroOperacionModel(Base):
+    """Idempotencia del cobro. La misma clave y la misma huella repiten la venta."""
+
+    __tablename__ = "cobro_operaciones"
+    __table_args__ = (UniqueConstraint("operation_id", name="uq_cobro_operaciones_operation_id"),)
+
+    id_operacion = Column(Integer, primary_key=True)
+    operation_id = Column(String(64), nullable=False)
+    payload_hash = Column(String(64), nullable=False)
+    id_pedido = Column(Integer, ForeignKey("pedidos.id_pedido"), nullable=True)
+    id_venta = Column(Integer, ForeignKey("ventas.id_venta"), nullable=True)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+    saldo_anterior = Column(Integer, nullable=True)
+    saldo_final = Column(Integer, nullable=True)
+    fecha = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
 class FidelidadConfigModel(Base):

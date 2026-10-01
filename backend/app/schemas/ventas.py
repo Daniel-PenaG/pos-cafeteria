@@ -45,6 +45,8 @@ class VentaCreate(BaseModel):
     # Compatibilidad: POST /ventas/ ignora este campo y fuerza VENTAS.
     # COMANDERA solo en POST /pedidos/{id_pedido}/cobrar vía autorizar_cobro().
     origen_cobro: Optional[str] = None
+    puntos_canje: int = 0
+    operation_id: Optional[str] = None
     detalles: List[DetalleVentaItem]
 
 
@@ -57,6 +59,12 @@ class VentaResponse(BaseModel):
     forma_pago: str
     id_cliente: Optional[int] = None
     puntos_generados: int = 0
+    puntos_canje: int = 0
+    equivalencia_puntos: float = 0
+    importe_monetario: float = 0
+    forma_pago_monetaria: Optional[str] = None
+    saldo_anterior: Optional[int] = None
+    saldo_final: Optional[int] = None
     cliente_nombre: Optional[str] = None
     cliente_puntos_saldo: Optional[int] = None
     para_llevar: bool = False

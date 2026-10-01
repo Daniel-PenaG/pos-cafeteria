@@ -738,6 +738,10 @@ def aplicar_migraciones_sqlite():
         WHERE NOT EXISTS (
             SELECT 1 FROM venta_pagos p
             WHERE p.operation_id = 'backfill-venta-' || v.id_venta::text
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM venta_pagos p2
+            WHERE p2.id_venta = v.id_venta
         )""",
     ]
     migraciones_caja_sqlite = [
@@ -849,6 +853,10 @@ def aplicar_migraciones_sqlite():
         WHERE NOT EXISTS (
             SELECT 1 FROM venta_pagos p
             WHERE p.operation_id = 'backfill-venta-' || v.id_venta
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM venta_pagos p2
+            WHERE p2.id_venta = v.id_venta
         )""",
     ]
     migraciones = (
@@ -927,6 +935,13 @@ def aplicar_migraciones_sqlite():
     normalizar_roles_usuarios()
     verificar_esquema_cancelacion()
     verificar_esquema_caja()
+    from app.services.migracion_puntos import (
+        aplicar_migracion_006_puntos,
+        verificar_esquema_puntos_mixtos,
+    )
+
+    aplicar_migracion_006_puntos()
+    verificar_esquema_puntos_mixtos()
 
 
 def verificar_esquema_cancelacion() -> None:

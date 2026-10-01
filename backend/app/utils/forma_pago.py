@@ -10,6 +10,8 @@ ETIQUETAS_FORMA_PAGO = {
     "EFECTIVO": "Efectivo",
     "TRANSFERENCIA": "Transferencia",
     "TARJETA": "Terminal",
+    "PUNTOS": "Puntos",
+    "MIXTO": "Puntos + pago",
     FORMA_DESCONOCIDO: "Desconocido",
 }
 
@@ -41,8 +43,22 @@ def bucket_forma_pago(forma: str | None) -> str:
     return FORMA_DESCONOCIDO
 
 
+def _componentes_monetarios(venta) -> list[tuple[str, float]]:
+    """Importes de caja/reporte. PUNTOS no entra. Sin pagos, usa la cabecera histórica."""
+    pagos = list(getattr(venta, "pagos", None) or [])
+    monetarios = [p for p in pagos if str(getattr(p, "metodo", "") or "").upper() != "PUNTOS"]
+    if pagos and not monetarios:
+        return []
+    if monetarios:
+        return [
+            (bucket_forma_pago(p.metodo), float(p.importe_monetario or 0))
+            for p in monetarios
+        ]
+    return [(bucket_forma_pago(venta.forma_pago), float(venta.total or 0))]
+
+
 def agregar_por_forma_pago(ventas) -> dict:
-    """Totales e importes por método desde iterable de VentaModel."""
+    """Totales monetarios. Si hay venta_pagos, no usa el total del ticket como efectivo."""
     ventas_list = list(ventas)
     por_metodo = {
         "EFECTIVO": {"importe": 0.0, "cantidad": 0},
@@ -52,11 +68,13 @@ def agregar_por_forma_pago(ventas) -> dict:
     }
     total = 0.0
     for v in ventas_list:
-        fp = bucket_forma_pago(v.forma_pago)
-        monto = float(v.total or 0)
-        por_metodo[fp]["importe"] += monto
-        por_metodo[fp]["cantidad"] += 1
-        total += monto
+        total += float(v.total or 0)
+        vistos = set()
+        for fp, monto in _componentes_monetarios(v):
+            por_metodo[fp]["importe"] += monto
+            if fp not in vistos and monto > 0:
+                por_metodo[fp]["cantidad"] += 1
+                vistos.add(fp)
     for metodo in por_metodo:
         por_metodo[metodo]["importe"] = round(por_metodo[metodo]["importe"], 2)
     return {

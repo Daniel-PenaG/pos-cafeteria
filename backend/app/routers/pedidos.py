@@ -380,25 +380,31 @@ def cobrar(
         raise RecursoNoEncontradoException("Pedido no encontrado")
     origen = autorizar_cobro(current, data.origen, para_llevar=bool(pedido.para_llevar))
 
-    if data.id_cliente:
-        cliente = db.query(ClienteModel).filter(
-            ClienteModel.id_cliente == data.id_cliente, ClienteModel.activo == True
-        ).first()
-        if not cliente:
-            raise RecursoNoEncontradoException("Cliente no encontrado o inactivo")
-        pedido.id_cliente = data.id_cliente
-    else:
-        pedido.id_cliente = None
-
-    db.flush()
-    venta = cobrar_pedido(db, pedido, uid, data.forma_pago, origen_cobro=origen)
+    venta = cobrar_pedido(
+        db,
+        pedido,
+        uid,
+        data.forma_pago,
+        origen_cobro=origen,
+        puntos_canje=int(data.puntos_canje or 0),
+        operation_id=data.operation_id,
+        id_cliente=data.id_cliente,
+        desasociar_cliente=bool(data.desasociar_cliente),
+        actor=current,
+        auditoria_meta=_meta(request),
+    )
     registrar_auditoria(
         db,
         usuario=current,
         accion=A.COBRO,
         entidad="venta",
         entidad_id=venta.id_venta,
-        detalles={"origen": origen, "forma_pago": data.forma_pago, "id_pedido": id_pedido},
+        detalles={
+            "origen": origen,
+            "forma_pago": venta.forma_pago,
+            "puntos_canje": int(venta.puntos_canje or 0),
+            "id_pedido": id_pedido,
+        },
         origen=origen,
         **_meta(request),
     )

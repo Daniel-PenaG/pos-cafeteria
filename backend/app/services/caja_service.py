@@ -340,21 +340,50 @@ def reversar_movimiento(db: Session, current: UsuarioModel, id_movimiento: int, 
     return movimiento_a_dict(reverso)
 
 
+def _acu_metodo(bucket: str, monto: float, efectivo: float, trans: float, tarjeta: float, desconocido: float):
+    if bucket == "EFECTIVO":
+        efectivo += monto
+    elif bucket == "TRANSFERENCIA":
+        trans += monto
+    elif bucket == "TARJETA":
+        tarjeta += monto
+    else:
+        desconocido += monto
+    return efectivo, trans, tarjeta, desconocido
+
+
 def _totales_sesion(db: Session, sesion: SesionCajaModel) -> dict:
     ventas = db.query(VentaModel).filter(VentaModel.id_sesion_caja == sesion.id_sesion_caja).all()
     efectivo = trans = tarjeta = 0.0
     desconocido = 0.0
+    ventas_total = 0.0
     for v in ventas:
-        bucket = bucket_forma_pago(v.forma_pago)
-        monto = _money(v.total)
-        if bucket == "EFECTIVO":
-            efectivo += monto
-        elif bucket == "TRANSFERENCIA":
-            trans += monto
-        elif bucket == "TARJETA":
-            tarjeta += monto
-        else:
-            desconocido += monto
+        ventas_total += _money(v.total)
+        pagos = (
+            db.query(VentaPagoModel)
+            .filter(VentaPagoModel.id_venta == v.id_venta)
+            .all()
+        )
+        monetarios = [p for p in pagos if str(p.metodo or "").upper() != "PUNTOS"]
+        if not pagos:
+            efectivo, trans, tarjeta, desconocido = _acu_metodo(
+                bucket_forma_pago(v.forma_pago),
+                _money(v.total),
+                efectivo,
+                trans,
+                tarjeta,
+                desconocido,
+            )
+            continue
+        for pago in monetarios:
+            efectivo, trans, tarjeta, desconocido = _acu_metodo(
+                bucket_forma_pago(pago.metodo),
+                _money(pago.importe_monetario),
+                efectivo,
+                trans,
+                tarjeta,
+                desconocido,
+            )
     movs = (
         db.query(MovimientoCajaModel)
         .filter(
@@ -399,7 +428,7 @@ def _totales_sesion(db: Session, sesion: SesionCajaModel) -> dict:
         "devoluciones": _money(devoluciones),
         "ajustes": _money(ajustes),
         "efectivo_esperado": esperado,
-        "ventas_total": _money(efectivo + trans + tarjeta + desconocido),
+        "ventas_total": _money(ventas_total),
         "num_ventas": len(ventas),
         "ingreso_monetario": _money(efectivo + trans + tarjeta),
     }
@@ -685,25 +714,63 @@ def asociar_venta_a_caja(db: Session, current: UsuarioModel, venta: VentaModel) 
     return None
 
 
-def registrar_pago_venta(db: Session, venta: VentaModel) -> None:
-    existe = (
+def clave_componente_pago(operation_id: str | None, id_venta: int, sufijo: str) -> str:
+    """{operation_id}:PUNTOS o {operation_id}:MONETARIO. Cabe en VARCHAR(80)."""
+    base = (operation_id or f"venta-{id_venta}").strip()
+    pieza = f":{sufijo}"
+    if len(base) + len(pieza) <= 80:
+        return f"{base}{pieza}"
+    return f"{base[: 80 - len(pieza)]}{pieza}"
+
+
+def registrar_pago_venta(
+    db: Session,
+    venta: VentaModel,
+    *,
+    puntos_usados: int = 0,
+    equivalencia_puntos=None,
+    metodo_monetario: str | None = None,
+    importe_monetario=None,
+    operation_id: str | None = None,
+) -> None:
+    """Un componente PUNTOS y, si queda remanente, un solo componente monetario."""
+    ya = (
         db.query(VentaPagoModel)
-        .filter(VentaPagoModel.operation_id == f"venta-{venta.id_venta}")
-        .first()
+        .filter(VentaPagoModel.id_venta == venta.id_venta)
+        .count()
     )
-    if existe:
+    if ya:
         return
-    db.add(
-        VentaPagoModel(
-            id_venta=venta.id_venta,
-            metodo=venta.forma_pago,
-            importe_monetario=venta.total,
-            fecha_hora=venta.fecha_hora,
-            id_usuario=venta.id_usuario,
-            id_sesion_caja=venta.id_sesion_caja,
-            operation_id=f"venta-{venta.id_venta}",
+    if puntos_usados > 0:
+        db.add(
+            VentaPagoModel(
+                id_venta=venta.id_venta,
+                metodo="PUNTOS",
+                importe_monetario=Decimal("0.00"),
+                cantidad_puntos=int(puntos_usados),
+                equivalencia_puntos=equivalencia_puntos,
+                fecha_hora=venta.fecha_hora,
+                id_usuario=venta.id_usuario,
+                id_sesion_caja=venta.id_sesion_caja,
+                operation_id=clave_componente_pago(operation_id, venta.id_venta, "PUNTOS"),
+            )
         )
-    )
+    importe = venta.total if importe_monetario is None else importe_monetario
+    metodo = metodo_monetario or venta.forma_pago
+    if metodo and str(metodo).upper() != "PUNTOS" and _money(importe) > 0:
+        db.add(
+            VentaPagoModel(
+                id_venta=venta.id_venta,
+                metodo=metodo,
+                importe_monetario=importe,
+                cantidad_puntos=None,
+                equivalencia_puntos=None,
+                fecha_hora=venta.fecha_hora,
+                id_usuario=venta.id_usuario,
+                id_sesion_caja=venta.id_sesion_caja,
+                operation_id=clave_componente_pago(operation_id, venta.id_venta, "MONETARIO"),
+            )
+        )
 
 
 def movimiento_a_dict(m: MovimientoCajaModel) -> dict:

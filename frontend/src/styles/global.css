@@ -1280,6 +1280,7 @@ body {
   max-width: 520px;
   width: 100%;
   max-height: 90vh;
+  overflow-x: hidden;
   overflow-y: auto;
   box-shadow: var(--shadow-lg);
   border: 1px solid var(--cream-dark);
@@ -1295,6 +1296,29 @@ body {
   justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 1.25rem;
+}
+
+.modal-box--cobro {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 1rem;
+}
+
+.modal-cobro-body {
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.modal-footer--cobro {
+  position: static;
+  flex: 0 0 auto;
+  background: var(--paper);
+  z-index: 2;
+  padding-top: 0.75rem;
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
 
 .modal-box--wide {
