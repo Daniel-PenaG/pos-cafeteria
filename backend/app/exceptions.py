@@ -25,6 +25,26 @@ class ConflictoOperacionException(HTTPException):
         )
 
 
+class RecalculoTotalException(HTTPException):
+    """El recálculo cambiaría el total. El cobro no continúa sin confirmación del cajero."""
+
+    CODIGO = "RECALCULO"
+
+    def __init__(self, total_anterior, total_nuevo):
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "codigo": self.CODIGO,
+                "detail": (
+                    f"El total cambió de ${total_anterior} a ${total_nuevo} "
+                    "por vigencia o promociones. Confirma el nuevo total."
+                ),
+                "total_anterior": f"{total_anterior}",
+                "total_nuevo": f"{total_nuevo}",
+            },
+        )
+
+
 class SaldoPuntosCambioException(HTTPException):
     """El canje era válido con el saldo leído; otra operación lo consumió al esperar el bloqueo."""
 

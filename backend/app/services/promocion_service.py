@@ -1,4 +1,5 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from app.utils.timezone_mx import filtro_dia_mx, filtro_mes_mx, filtro_anio_mx, MX, now_utc_naive
 import math
 from typing import List, Optional
@@ -39,11 +40,21 @@ def _parse_dias(texto: Optional[str]) -> Optional[set[int]]:
     return {int(d.strip()) for d in texto.split(",") if d.strip() != ""}
 
 
+def _reloj_promo(ahora: Optional[datetime] = None) -> tuple[datetime, datetime]:
+    """UTC naive para vigencia, y hora de México para horario y días."""
+    if ahora is None:
+        return now_utc_naive(), datetime.now(MX)
+    if ahora.tzinfo is None:
+        utc = ahora.replace(tzinfo=timezone.utc)
+    else:
+        utc = ahora.astimezone(timezone.utc)
+    return utc.replace(tzinfo=None), utc.astimezone(MX)
+
+
 def promocion_vigente(promo: PromocionModel, ahora: Optional[datetime] = None) -> bool:
     if not promo.activa:
         return False
-    ahora_utc = ahora or now_utc_naive()
-    ahora_mx = datetime.now(MX)
+    ahora_utc, ahora_mx = _reloj_promo(ahora)
     if promo.fecha_inicio and ahora_utc < promo.fecha_inicio:
         return False
     if promo.fecha_fin and ahora_utc > promo.fecha_fin:
@@ -118,6 +129,21 @@ def es_promo_paquete(promo: PromocionModel) -> bool:
     if promo.tipo == "PRECIO_FIJO" and not promo.aplica_toda_tienda:
         return n >= 2
     return False
+
+
+def listar_promos_ticket_producto(
+    db: Session, producto: ProductoModel, ahora: Optional[datetime] = None
+) -> List[PromocionModel]:
+    promos = (
+        db.query(PromocionModel)
+        .options(joinedload(PromocionModel.productos), joinedload(PromocionModel.categorias))
+        .filter(PromocionModel.activa == True, PromocionModel.tipo.in_(list(TIPOS_TICKET)))
+        .all()
+    )
+    return [
+        p for p in promos
+        if promocion_vigente(p, ahora) and producto_elegible(p, producto)
+    ]
 
 
 def listar_aplicables(
@@ -262,14 +288,112 @@ def combo_a_dict(promo: PromocionModel, db: Session) -> dict:
     }
 
 
+def dinero(valor) -> Decimal:
+    return Decimal(str(valor)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def cerrar_unitario(subtotal, cantidad, precio_normal) -> tuple[float, float]:
+    """Unitario solo si cantidad × unitario cierra al centavo. Si no, precio normal."""
+    sub = dinero(subtotal)
+    cant = Decimal(str(cantidad or 0))
+    normal = dinero(precio_normal)
+    if cant <= 0:
+        return float(normal), 0.0
+    unit = dinero(sub / cant)
+    if dinero(unit * cant) == sub:
+        desc = dinero(max(Decimal("0"), normal - unit))
+        return float(unit), float(desc)
+    return float(normal), 0.0
+
+
+def armar_desglose(
+    *,
+    aplicaciones: int,
+    unidades_normales,
+    cantidad_requerida,
+    valor_paquete,
+    subtotal,
+    nombre: str | None = None,
+    tiene_promo: bool = False,
+) -> list[dict]:
+    """Desglose que suma el subtotal. No usa un promedio redondeado."""
+    sub = dinero(subtotal)
+    apps = int(aplicaciones or 0)
+    sobrantes = Decimal(str(unidades_normales or 0))
+    if apps <= 0:
+        etiqueta = (nombre or "Promoción") if tiene_promo else "Precio normal"
+        return [{"etiqueta": etiqueta, "importe": float(sub)}]
+    precio_paquete = dinero(valor_paquete) if valor_paquete is not None else None
+    n_req = int(cantidad_requerida or 0)
+    if precio_paquete is not None and n_req > 0:
+        importe_promo = dinero(precio_paquete * apps)
+    else:
+        importe_promo = sub
+    if importe_promo > sub:
+        importe_promo = sub
+    importe_normal = dinero(sub - importe_promo)
+    if apps == 1:
+        etiqueta = "1 promoción"
+    else:
+        etiqueta = f"{apps} promociones"
+    if n_req and precio_paquete is not None:
+        etiqueta = f"{etiqueta} ({n_req} por ${precio_paquete})"
+    partes = [{"etiqueta": etiqueta, "importe": float(importe_promo)}]
+    if sobrantes > 0:
+        n = int(sobrantes) if sobrantes == int(sobrantes) else float(sobrantes)
+        partes.append({"etiqueta": f"{n} a precio normal", "importe": float(importe_normal)})
+    elif importe_normal != 0:
+        partes.append({"etiqueta": "Ajuste", "importe": float(importe_normal)})
+    return partes
+
+
+def presentar_importes(
+    calc: dict,
+    *,
+    cantidad,
+    precio_normal,
+    aplicaciones: int = 0,
+    unidades_normales=0,
+    cantidad_requerida=None,
+    valor_paquete=None,
+) -> dict:
+    """El subtotal es la autoridad. El unitario no puede producir otro total."""
+    bruto = calc.get("subtotal")
+    if bruto is None:
+        bruto = calc.get("total_linea") or 0
+    sub = dinero(bruto)
+    unit, desc = cerrar_unitario(sub, cantidad, precio_normal)
+    if int(aplicaciones or 0) > 0 and Decimal(str(unidades_normales or 0)) > 0:
+        desc = 0.0
+    calc["precio_unitario"] = unit
+    calc["descuento_unitario"] = desc
+    calc["subtotal"] = float(sub)
+    calc["total_linea"] = float(sub)
+    calc["desglose"] = armar_desglose(
+        aplicaciones=int(aplicaciones or 0),
+        unidades_normales=unidades_normales or 0,
+        cantidad_requerida=cantidad_requerida,
+        valor_paquete=valor_paquete,
+        subtotal=sub,
+        nombre=calc.get("nombre_promocion"),
+        tiene_promo=bool(calc.get("id_promocion")),
+    )
+    return calc
+
+
 def _linea_sin_promocion(
     precio_base: float,
     precio_extras: float,
     costo: float,
     precio_original_unitario: float,
+    cantidad: float = 1,
 ) -> dict:
     margen = margen_porcentaje(precio_base, costo) if costo > 0 else None
-    return {
+    cant = Decimal(str(cantidad))
+    total = dinero(precio_original_unitario) * cant
+    total = dinero(total)
+    normales = int(cant) if cant == int(cant) else float(cant)
+    calc = {
         "id_promocion": None,
         "nombre_promocion": None,
         "tipo": None,
@@ -283,7 +407,119 @@ def _linea_sin_promocion(
         "margen_porcentaje": margen,
         "margen_ok": True,
         "mensaje": None,
+        "aplicaciones": 0,
+        "unidades_normales": normales,
+        "total_linea": float(total),
+        "subtotal": float(total),
+        "promocion_aplicaciones": 0,
     }
+    return presentar_importes(
+        calc,
+        cantidad=cant,
+        precio_normal=precio_original_unitario,
+        aplicaciones=0,
+        unidades_normales=normales,
+    )
+
+
+def _margen_insuficiente(promo: PromocionModel, precio: Decimal, costo: Decimal) -> bool:
+    if promo.margen_minimo is None or costo <= 0 or precio <= 0:
+        return False
+    margen = (precio - costo) / precio * Decimal("100")
+    return margen < Decimal(str(promo.margen_minimo))
+
+
+def total_nx_precio(
+    precio_normal: Decimal,
+    cantidad: int,
+    cantidad_requerida: int,
+    precio_paquete: Decimal,
+) -> tuple[Decimal, int, int]:
+    """N unidades por un precio. Lo que no completa el paquete queda a precio normal."""
+    requerida = max(1, int(cantidad_requerida))
+    cant = max(0, int(cantidad))
+    aplicaciones = cant // requerida
+    sobrantes = cant % requerida
+    total = dinero(precio_paquete) * aplicaciones + dinero(precio_normal) * sobrantes
+    return dinero(total), aplicaciones, sobrantes
+
+
+def _calcular_ticket_en_linea(
+    db: Session,
+    producto: ProductoModel,
+    promo: PromocionModel,
+    cantidad: float,
+    precio_extras: float,
+    precio_base: float,
+    costo: float,
+    precio_original_unitario: float,
+) -> dict:
+    """Precio de una línea con promoción N×precio. Cantidad incompleta = precio normal."""
+    cant = int(float(cantidad))
+    if cant < 1:
+        cant = 1
+    normal = _linea_sin_promocion(
+        precio_base, precio_extras, costo, precio_original_unitario, cant
+    )
+    precio_normal = dinero(precio_original_unitario)
+    n_req = max(1, int(promo.cantidad_requerida or 1))
+    if promo.tipo == "CANTIDAD_PRECIO":
+        total, aplicaciones, sobrantes = total_nx_precio(
+            precio_normal, cant, n_req, dinero(promo.valor)
+        )
+    elif promo.tipo == "DESCUENTO_FIJO":
+        aplicaciones = cant // n_req
+        sobrantes = cant % n_req
+        base_bundle = precio_normal * n_req
+        precio_bundle = max(Decimal("0"), base_bundle - dinero(promo.valor))
+        total = dinero(precio_bundle * aplicaciones + precio_normal * sobrantes)
+    else:
+        return normal
+    if aplicaciones < 1 or total >= precio_normal * cant:
+        return normal
+    costo_promo = dinero(costo) * (aplicaciones * n_req)
+    precio_promo = total - precio_normal * sobrantes
+    if _margen_insuficiente(promo, precio_promo, costo_promo):
+        normal["mensaje"] = (
+            f"La promoción '{promo.nombre}' no se aplicó: el margen quedaría "
+            "por debajo del mínimo. Se cobra precio normal."
+        )
+        return normal
+    precio_paquete = dinero(promo.valor) if promo.tipo == "CANTIDAD_PRECIO" else dinero(
+        max(Decimal("0"), precio_normal * n_req - dinero(promo.valor))
+    )
+    margen = margen_porcentaje(float(dinero(total / Decimal(cant))), costo) if costo > 0 else None
+    calc = {
+        "id_promocion": promo.id_promocion,
+        "nombre_promocion": promo.nombre,
+        "tipo": promo.tipo,
+        "precio_base": precio_base,
+        "precio_base_promo": precio_base,
+        "precio_extras": precio_extras,
+        "precio_unitario": precio_original_unitario,
+        "precio_original_unitario": precio_original_unitario,
+        "descuento_unitario": 0,
+        "costo_unitario": costo,
+        "margen_porcentaje": margen,
+        "margen_ok": True,
+        "mensaje": None,
+        "aplicaciones": aplicaciones,
+        "unidades_normales": sobrantes,
+        "total_linea": float(total),
+        "subtotal": float(total),
+        "promocion_aplicaciones": aplicaciones,
+        "valor_promocion": float(promo.valor),
+        "cantidad_requerida": n_req,
+    }
+    return presentar_importes(
+        calc,
+        cantidad=cant,
+        precio_normal=precio_original_unitario,
+        aplicaciones=aplicaciones,
+        unidades_normales=sobrantes,
+        cantidad_requerida=n_req,
+        valor_paquete=precio_paquete,
+    )
 
 
 def calcular_linea(
@@ -299,34 +535,36 @@ def calcular_linea(
     costo = costo_producto(db, producto.id_producto)
     precio_original_unitario = round(precio_base + precio_extras, 2)
 
+    normal = _linea_sin_promocion(
+        precio_base, precio_extras, costo, precio_original_unitario, cantidad
+    )
     if sin_promocion:
-        return _linea_sin_promocion(
-            precio_base, precio_extras, costo, precio_original_unitario
-        )
+        return normal
 
     promo = None
+    calc_ticket = normal
     if id_promocion:
         promo = (
             db.query(PromocionModel)
-            .options(joinedload(PromocionModel.productos))
+            .options(
+                joinedload(PromocionModel.productos),
+                joinedload(PromocionModel.categorias),
+            )
             .filter(PromocionModel.id_promocion == id_promocion)
             .first()
         )
         if not promo:
             raise DatosInvalidosException("Promoción no encontrada")
-        if not promocion_vigente(promo, ahora):
-            raise DatosInvalidosException(f"La promoción '{promo.nombre}' no está vigente")
+        if not promocion_vigente(promo, ahora) or es_promo_paquete(promo):
+            return normal
         if not producto_elegible(promo, producto):
             raise DatosInvalidosException(
                 f"La promoción '{promo.nombre}' no aplica a este producto"
             )
-        if es_promo_paquete(promo):
-            raise DatosInvalidosException(
-                f"La promoción '{promo.nombre}' es un paquete; agrégalo como combo"
-            )
         if es_promo_ticket(promo):
-            raise DatosInvalidosException(
-                f"La promoción '{promo.nombre}' se aplica automáticamente al ticket"
+            return _calcular_ticket_en_linea(
+                db, producto, promo, cantidad, precio_extras,
+                precio_base, costo, precio_original_unitario,
             )
     else:
         aplicables = listar_aplicables(db, producto, ahora)
@@ -337,6 +575,25 @@ def calcular_linea(
                     precio_base, p.tipo, float(p.valor), cantidad
                 ),
             )
+        tickets = [
+            p for p in listar_promos_ticket_producto(db, producto, ahora)
+            if p.tipo == "CANTIDAD_PRECIO"
+        ]
+        calc_ticket = normal
+        if tickets:
+            mejor_ticket = min(
+                tickets,
+                key=lambda p: _calcular_ticket_en_linea(
+                    db, producto, p, cantidad, precio_extras,
+                    precio_base, costo, precio_original_unitario,
+                )["total_linea"],
+            )
+            calc_ticket = _calcular_ticket_en_linea(
+                db, producto, mejor_ticket, cantidad, precio_extras,
+                precio_base, costo, precio_original_unitario,
+            )
+        if promo is None:
+            return calc_ticket if calc_ticket.get("id_promocion") else normal
 
     if promo:
         precio_base_promo = aplicar_promo_base(
@@ -353,8 +610,8 @@ def calcular_linea(
                 f"para la promoción '{promo.nombre}'"
             )
         precio_unitario = round(precio_base_promo + precio_extras, 2)
-        descuento = round(precio_original_unitario - precio_unitario, 2)
-        return {
+        total = dinero(Decimal(str(precio_unitario)) * Decimal(str(cantidad)))
+        calc_linea = {
             "id_promocion": promo.id_promocion,
             "nombre_promocion": promo.nombre,
             "tipo": promo.tipo,
@@ -363,16 +620,30 @@ def calcular_linea(
             "precio_extras": precio_extras,
             "precio_unitario": precio_unitario,
             "precio_original_unitario": precio_original_unitario,
-            "descuento_unitario": max(descuento, 0),
+            "descuento_unitario": 0,
             "costo_unitario": costo,
             "margen_porcentaje": margen,
             "margen_ok": margen_ok,
             "mensaje": mensaje,
+            "aplicaciones": 0,
+            "unidades_normales": 0,
+            "total_linea": float(total),
+            "subtotal": float(total),
+            "promocion_aplicaciones": 0,
         }
+        presentar_importes(
+            calc_linea,
+            cantidad=cantidad,
+            precio_normal=precio_original_unitario,
+        )
+        if id_promocion is None and not margen_ok:
+            return normal
+        if id_promocion is None and calc_ticket.get("id_promocion"):
+            if calc_ticket["total_linea"] < calc_linea["total_linea"]:
+                return calc_ticket
+        return calc_linea
 
-    return _linea_sin_promocion(
-        precio_base, precio_extras, costo, precio_original_unitario
-    )
+    return normal
 
 
 MESES_ES = (

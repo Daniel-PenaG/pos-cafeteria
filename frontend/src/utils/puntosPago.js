@@ -55,6 +55,9 @@ export function resolverErrorCobro(status, data) {
     codigo,
     saldoActual: cuerpo?.saldo_actual ?? null,
   };
+  if (status === 409 && codigo === "RECALCULO") {
+    return { ...base, confirmaRecalculo: true, refrescaSaldo: false };
+  }
   if (status === 409 && codigo === "SALDO_PUNTOS_CAMBIO") {
     return { ...base, refrescaSaldo: true };
   }

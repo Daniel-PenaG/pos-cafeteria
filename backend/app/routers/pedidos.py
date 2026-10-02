@@ -5,7 +5,7 @@ from typing import List, Optional
 from app.constants import auditoria as A
 from app.constants.cancelacion import MOTIVOS_CANCELACION
 from app.database import get_db
-from app.models.models import PedidoModel, ClienteModel, PromocionModel
+from app.models.models import PedidoModel, ClienteModel
 from app.schemas.pedido import (
     Pedido,
     PedidoResumen,
@@ -32,6 +32,7 @@ from app.services.pedido_service import (
     _detalle_a_dict,
     _line_key,
     _parse_extras,
+    modo_promocion_detalle,
 )
 from app.services.cancelacion_service import (
     actualizar_linea_no_enviada,
@@ -40,7 +41,6 @@ from app.services.cancelacion_service import (
 )
 from app.services.pedido_locks import lock_pedido_y_detalle
 from app.services.venta_service import MESA_PARA_LLEVAR
-from app.services.promocion_service import calcular_linea, es_promo_paquete, es_promo_ticket
 from app.models import ProductoModel
 from app.exceptions import DatosInvalidosException, RecursoNoEncontradoException
 from app.models.models import UsuarioModel
@@ -226,11 +226,16 @@ def actualizar_linea(
         class _Extra:
             def __init__(self, e):
                 self.id_extra = e.get("id_extra")
+        modo = modo_promocion_detalle(detalle)
+        token = {"PRECIO_NORMAL": "N", "AUTOMATICA": "A", "LEGACY": "L"}.get(
+            modo, f"S{detalle.id_promocion or 0}"
+        )
         detalle.line_key = _line_key(
             detalle.id_producto,
             [_Extra(e) for e in extras],
             detalle.id_promocion,
             comentario,
+            token,
         )
 
     if data.cantidad is None:
@@ -238,34 +243,13 @@ def actualizar_linea(
         db.refresh(detalle)
         return _detalle_a_dict(detalle)
 
-    if detalle.id_promocion:
-        promo = (
-            db.query(PromocionModel)
-            .options(joinedload(PromocionModel.productos))
-            .filter(PromocionModel.id_promocion == detalle.id_promocion)
-            .first()
-        )
-        if promo and es_promo_paquete(promo):
-            raise DatosInvalidosException(
-                "No se puede cambiar la cantidad de una línea de paquete; agrega otro paquete"
-            )
-        producto = db.query(ProductoModel).filter(ProductoModel.id_producto == detalle.id_producto).first()
-        import json
-        extras = json.loads(detalle.extras_json) if detalle.extras_json else []
-        precio_extras = sum(float(e.get("precio", 0)) for e in extras)
-        id_promo_calc = None if (promo and es_promo_ticket(promo)) else detalle.id_promocion
-        calc = calcular_linea(db, producto, float(data.cantidad), precio_extras, id_promo_calc)
-        if not calc["margen_ok"]:
-            raise DatosInvalidosException(calc["mensaje"] or "Cantidad no válida para promoción")
-        detalle.precio_unitario = calc["precio_unitario"]
-        detalle.precio_original = calc["precio_original_unitario"]
-        detalle.descuento_unitario = calc["descuento_unitario"]
-
     if float(data.cantidad) < float(detalle.cantidad_lista or 0):
         detalle.cantidad_lista = data.cantidad
 
     detalle.cantidad = data.cantidad
-    db.commit()
+    from app.services.pedido_service import recalcular_promociones_pedido
+
+    recalcular_promociones_pedido(db, pedido)
     db.refresh(detalle)
     return _detalle_a_dict(detalle)
 
@@ -392,6 +376,7 @@ def cobrar(
         desasociar_cliente=bool(data.desasociar_cliente),
         actor=current,
         auditoria_meta=_meta(request),
+        confirmar_recalculo=bool(data.confirmar_recalculo),
     )
     registrar_auditoria(
         db,

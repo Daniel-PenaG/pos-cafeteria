@@ -226,14 +226,17 @@ def registrar_venta(
             raise DatosInvalidosException(f"Producto {producto.nombre} no está activo")
         validar_extras_producto(db, item.id_producto, item.extras)
         precio_extras = sum(float(e.precio) for e in item.extras)
+        sin_promo = bool(getattr(item, "sin_promocion", False))
+        id_promo = None if sin_promo else item.id_promocion
         lineas_entrada.append(
             {
                 "id_producto": item.id_producto,
                 "cantidad": float(item.cantidad),
                 "precio_extras": precio_extras,
                 "extras": item.extras,
-                "id_promocion": item.id_promocion,
-                "sin_promocion": False,
+                "id_promocion": id_promo,
+                "sin_promocion": sin_promo,
+                "forzar_promo_linea": bool(getattr(item, "forzar_promocion", False)) and bool(id_promo),
             }
         )
 
@@ -249,6 +252,11 @@ def registrar_venta(
                 calculo.get("mensaje") or f"Margen insuficiente para '{producto.nombre if producto else item.id_producto}'"
             )
         esperado = calculo["precio_unitario"]
+        subtotal_linea = calculo.get("subtotal")
+        if subtotal_linea is None:
+            subtotal_linea = float(
+                (_dinero(item.cantidad) * _dinero(esperado)).quantize(Decimal("0.01"))
+            )
         if abs(float(item.precio_unitario) - esperado) > 0.02:
             producto = db.query(ProductoModel).filter(ProductoModel.id_producto == item.id_producto).first()
             raise DatosInvalidosException(
@@ -257,9 +265,7 @@ def registrar_venta(
             )
         if item.precio_unitario <= 0:
             raise DatosInvalidosException("El precio debe ser positivo")
-        total_calculado = (total_calculado + (_dinero(item.cantidad) * _dinero(esperado))).quantize(
-            Decimal("0.01")
-        )
+        total_calculado = (total_calculado + _dinero(subtotal_linea)).quantize(Decimal("0.01"))
 
     advertencias_stock: List[str] = []
     _revisar_stock_receta(db, data.detalles, advertencias_stock)
@@ -324,7 +330,7 @@ def registrar_venta(
                 id_producto=item.id_producto,
                 cantidad=item.cantidad,
                 precio_unitario=calculo["precio_unitario"],
-                subtotal=float(item.cantidad) * float(calculo["precio_unitario"]),
+                subtotal=float(calculo["subtotal"]) if calculo.get("subtotal") is not None else float(item.cantidad) * float(calculo["precio_unitario"]),
                 extras_json=extras_json,
                 id_promocion=calculo.get("id_promocion"),
                 precio_original=calculo.get("precio_original"),

@@ -24,36 +24,74 @@ from app.services.extras_validacion_service import (
     parsear_extras_json,
     extras_linea_desde_json,
 )
-from app.services.promocion_service import calcular_linea, calcular_combo, es_promo_paquete, es_promo_ticket
+from app.services.promocion_service import calcular_linea, calcular_combo
 from app.services.promocion_ticket_service import recalcular_lineas_ticket
 from app.services.venta_service import registrar_venta, MESA_PARA_LLEVAR
 from app.exceptions import (
     ConflictoOperacionException,
     DatosInvalidosException,
+    RecalculoTotalException,
     RecursoNoEncontradoException,
 )
 
 
-def _line_key(id_producto: int, extras: list, id_promocion, comentario: str | None = None) -> str:
+def _line_key(id_producto: int, extras: list, id_promocion, comentario: str | None = None, modo: str = "A") -> str:
     ids = sorted([e.id_extra for e in extras])
-    base = f"{id_producto}-{id_promocion or 'np'}-{'-'.join(map(str, ids))}"
+    base = f"{id_producto}-{modo}-{id_promocion or 'np'}-{'-'.join(map(str, ids))}"
     com = (comentario or "").strip().lower()[:50]
     if com:
         return f"{base}-c:{com}"[:120]
     return base[:120]
 
 
+def modo_promocion_detalle(detalle: DetallePedidoModel) -> str:
+    """AUTOMATICA, SELECCIONADA, PRECIO_NORMAL o LEGACY.
+
+    LEGACY: la columna sin_promocion no existía. No adopta una promoción nueva.
+    Un id_promocion ya guardado se trata como SELECCIONADA.
+    """
+    flag = getattr(detalle, "sin_promocion", None)
+    if flag is True:
+        return "PRECIO_NORMAL"
+    if flag is False:
+        return "SELECCIONADA" if detalle.id_promocion else "AUTOMATICA"
+    if detalle.id_promocion:
+        return "SELECCIONADA"
+    return "LEGACY"
+
+
+def _subtotal_guardado(detalle: DetallePedidoModel):
+    from decimal import Decimal
+    from app.services.promocion_service import dinero
+
+    guardado = getattr(detalle, "subtotal", None)
+    if guardado is not None:
+        return dinero(guardado)
+    return dinero(dinero(detalle.precio_unitario) * Decimal(str(detalle.cantidad or 0)))
+
+
 def _parse_extras(extras_json: str | None) -> list:
     return parsear_extras_json(extras_json)
 
 
-def _detalle_a_dict(d: DetallePedidoModel) -> dict:
+def _detalle_a_dict(d: DetallePedidoModel, calc: dict | None = None) -> dict:
+    from app.services.promocion_service import dinero
+
     extras = _parse_extras(d.extras_json)
     cant = float(d.cantidad)
     lista = float(d.cantidad_lista or 0)
     prep_secs = None
     if d.en_comanda and d.fecha_envio_comanda and lista < cant:
         prep_secs = segundos_desde(d.fecha_envio_comanda)
+    subtotal = _subtotal_guardado(d)
+    desglose = []
+    aplicaciones = 0
+    unidades_normales = 0
+    if calc and dinero(calc.get("subtotal") or 0) == subtotal:
+        desglose = calc.get("desglose") or []
+        aplicaciones = int(calc.get("aplicaciones") or 0)
+        unidades_normales = calc.get("unidades_normales") or 0
+    modo = modo_promocion_detalle(d)
     return {
         "id_detalle_pedido": d.id_detalle_pedido,
         "id_producto": d.id_producto,
@@ -65,7 +103,13 @@ def _detalle_a_dict(d: DetallePedidoModel) -> dict:
         "precio_original": float(d.precio_original) if d.precio_original else None,
         "descuento_unitario": float(d.descuento_unitario) if d.descuento_unitario else None,
         "id_promocion": d.id_promocion,
-        "nombre_promocion": d.nombre_promocion,
+        "nombre_promocion": d.nombre_promocion or None,
+        "sin_promocion": True if d.sin_promocion is True else False if d.sin_promocion is False else None,
+        "modo_promocion": modo,
+        "subtotal": float(subtotal),
+        "desglose": desglose,
+        "aplicaciones": aplicaciones,
+        "unidades_normales": unidades_normales,
         "extras": extras,
         "en_comanda": bool(d.en_comanda),
         "comentario": d.comentario,
@@ -78,9 +122,28 @@ def _detalle_a_dict(d: DetallePedidoModel) -> dict:
     }
 
 
+def _total_lineas(lineas: list) -> float:
+    from decimal import Decimal
+    from app.services.promocion_service import dinero
+
+    total = Decimal("0")
+    for linea in lineas:
+        if linea.get("cantidad", 0) <= 0:
+            continue
+        if linea.get("subtotal") is not None:
+            total += dinero(linea["subtotal"])
+        else:
+            total += dinero(linea["cantidad"]) * dinero(linea["precio_unitario"])
+    return float(dinero(total))
+
+
 def _pedido_a_dict(p: PedidoModel, promo_resumen: dict | None = None) -> dict:
-    lineas = [_detalle_a_dict(d) for d in p.detalles]
-    total = sum(l["cantidad"] * l["precio_unitario"] for l in lineas if l["cantidad"] > 0)
+    calcs = iter((promo_resumen or {}).get("lineas") or [])
+    lineas = []
+    for detalle in p.detalles:
+        calc = next(calcs, None) if _linea_participa_en_ticket(detalle) else None
+        lineas.append(_detalle_a_dict(detalle, calc))
+    total = _total_lineas(lineas)
     cliente_nombre = p.cliente.nombre if p.cliente else None
     out = {
         "id_pedido": p.id_pedido,
@@ -302,6 +365,10 @@ def _registrar_operacion(
 
 
 def _linea_participa_en_ticket(d: DetallePedidoModel) -> bool:
+    from sqlalchemy import inspect as sa_inspect
+
+    if sa_inspect(d).deleted:
+        return False
     if float(d.cantidad or 0) <= 0:
         return False
     if getattr(d, "estado_linea", "ACTIVA") == "CANCELADA":
@@ -316,9 +383,11 @@ def _lineas_desde_pedido(db: Session, pedido: PedidoModel) -> list:
         if not _linea_participa_en_ticket(d):
             continue
         extras = extras_linea_desde_json(_parse_extras(d.extras_json))
+        modo = modo_promocion_detalle(d)
         id_promo = d.id_promocion
-        sin_promo = id_promo is None
-        if id_promo:
+        sin_promo = modo in ("PRECIO_NORMAL", "LEGACY")
+        forzar = modo == "SELECCIONADA" and bool(id_promo)
+        if forzar and id_promo:
             if id_promo not in promo_cache:
                 promo_cache[id_promo] = (
                     db.query(PromocionModel)
@@ -326,12 +395,14 @@ def _lineas_desde_pedido(db: Session, pedido: PedidoModel) -> list:
                     .first()
                 )
             promo = promo_cache[id_promo]
-            if promo and es_promo_paquete(promo):
+            if not promo:
+                forzar = False
                 id_promo = None
                 sin_promo = True
-            elif promo and es_promo_ticket(promo):
-                id_promo = None
-                sin_promo = False
+        elif modo == "AUTOMATICA":
+            id_promo = None
+            sin_promo = False
+            forzar = False
         lineas.append(
             {
                 "id_detalle_pedido": d.id_detalle_pedido,
@@ -339,8 +410,9 @@ def _lineas_desde_pedido(db: Session, pedido: PedidoModel) -> list:
                 "cantidad": float(d.cantidad),
                 "precio_extras": sum(float(e.precio) for e in extras),
                 "extras": extras,
-                "id_promocion": id_promo,
+                "id_promocion": None if sin_promo else id_promo,
                 "sin_promocion": sin_promo,
+                "forzar_promo_linea": forzar,
                 "comentario": d.comentario,
             }
         )
@@ -348,13 +420,33 @@ def _lineas_desde_pedido(db: Session, pedido: PedidoModel) -> list:
 
 
 def _aplicar_recalc_a_detalles(pedido: PedidoModel, recalc: dict) -> None:
+    from app.services.promocion_service import dinero
+
     activos = [d for d in pedido.detalles if _linea_participa_en_ticket(d)]
     for detalle, calc in zip(activos, recalc.get("lineas") or []):
+        modo = modo_promocion_detalle(detalle)
         detalle.precio_unitario = calc["precio_unitario"]
-        detalle.precio_original = calc.get("precio_original")
-        detalle.descuento_unitario = calc.get("descuento_unitario")
-        detalle.id_promocion = calc.get("id_promocion")
-        detalle.nombre_promocion = calc.get("nombre_promocion")
+        detalle.precio_original = calc.get("precio_original") or calc.get("precio_original_unitario")
+        detalle.descuento_unitario = calc.get("descuento_unitario") or 0
+        detalle.subtotal = dinero(calc.get("subtotal") if calc.get("subtotal") is not None else 0)
+        if modo == "PRECIO_NORMAL":
+            detalle.sin_promocion = True
+            detalle.id_promocion = None
+            detalle.nombre_promocion = None
+        elif modo == "LEGACY":
+            detalle.sin_promocion = None
+            detalle.id_promocion = None
+            detalle.nombre_promocion = None
+        elif modo == "AUTOMATICA":
+            detalle.sin_promocion = False
+            detalle.id_promocion = None
+            detalle.nombre_promocion = calc.get("nombre_promocion")
+        else:
+            detalle.sin_promocion = False
+            if calc.get("nombre_promocion"):
+                detalle.nombre_promocion = calc.get("nombre_promocion")
+            elif not calc.get("id_promocion"):
+                detalle.nombre_promocion = None
 
 
 def _recalcular_promociones_sin_commit(db: Session, pedido: PedidoModel) -> dict:
@@ -384,42 +476,20 @@ def recalcular_promociones_pedido(db: Session, pedido: PedidoModel) -> dict:
 
 
 def _pedido_a_dict_con_recalc_en_lectura(pedido: PedidoModel, recalc: dict) -> dict:
-    """Construye respuesta GET sin persistir precios recalculados."""
-    calc_iter = iter(recalc.get("lineas", []))
-    lineas = []
-    for detalle in pedido.detalles:
-        d = _detalle_a_dict(detalle)
-        if _linea_participa_en_ticket(detalle):
-            calc = next(calc_iter, None)
-            if calc:
-                d["precio_unitario"] = calc["precio_unitario"]
-                d["precio_original"] = calc.get("precio_original")
-                d["descuento_unitario"] = calc.get("descuento_unitario")
-                d["id_promocion"] = calc.get("id_promocion")
-                d["nombre_promocion"] = calc.get("nombre_promocion")
-        lineas.append(d)
-    total = sum(l["cantidad"] * l["precio_unitario"] for l in lineas if l["cantidad"] > 0)
-    cliente_nombre = pedido.cliente.nombre if pedido.cliente else None
-    return {
-        "id_pedido": pedido.id_pedido,
-        "numero_mesa": pedido.numero_mesa,
-        "para_llevar": bool(getattr(pedido, "para_llevar", False)),
-        "estado": pedido.estado,
-        "id_cliente": pedido.id_cliente,
-        "id_usuario": pedido.id_usuario,
-        "id_venta": pedido.id_venta,
-        "fecha_apertura": isoformat_utc(pedido.fecha_apertura),
-        "total": round(total, 2),
-        "lineas": lineas,
-        "cliente_nombre": cliente_nombre,
-        "cliente_telefono": pedido.cliente.telefono if pedido.cliente else None,
-        "cliente_puntos_saldo": int(pedido.cliente.puntos_saldo or 0) if pedido.cliente else None,
-        "cliente_activo": bool(pedido.cliente.activo) if pedido.cliente else None,
-        "subtotal_normal": recalc.get("subtotal_normal"),
-        "descuento_promociones": recalc.get("descuento_promociones"),
-        "resumen_promociones": recalc.get("resumen_promociones", []),
-        "sin_pedido": False,
-    }
+    """GET: muestra el subtotal guardado. Si el recálculo cambia el dinero, avisa."""
+    from app.services.promocion_service import dinero
+
+    base = _pedido_a_dict(pedido, recalc)
+    guardado = dinero(base["total"])
+    recalculado = dinero(recalc.get("total") or 0)
+    if guardado != recalculado:
+        base = _pedido_a_dict(pedido, None)
+        base["aviso_recalculo"] = (
+            f"El total guardado es ${guardado} y al recalcular promociones "
+            f"o vigencia quedaría ${recalculado}. Confirma antes de cobrar."
+        )
+        base["total_recalculado"] = float(recalculado)
+    return base
 
 
 def pedido_respuesta_lectura(db: Session, pedido: PedidoModel) -> dict:
@@ -477,7 +547,7 @@ def agregar_linea_pedido_con_respuesta(
             raise DatosInvalidosException(f"Producto {producto.nombre} no está activo")
 
         precio_extras = sum(float(e.precio) for e in data.extras)
-        sin_promo = data.id_promocion is None
+        sin_promo = bool(getattr(data, "sin_promocion", False))
         calculo = calcular_linea(
             db, producto, float(data.cantidad), precio_extras, data.id_promocion,
             sin_promocion=sin_promo,
@@ -494,7 +564,16 @@ def agregar_linea_pedido_con_respuesta(
             )
 
         comentario = (data.comentario or "").strip() or None
-        key = _line_key(data.id_producto, data.extras, data.id_promocion, comentario)
+        if sin_promo:
+            modo = "N"
+            id_promo_key = None
+        elif data.id_promocion:
+            modo = f"S{data.id_promocion}"
+            id_promo_key = data.id_promocion
+        else:
+            modo = "A"
+            id_promo_key = None
+        key = _line_key(data.id_producto, data.extras, id_promo_key, comentario, modo)
         extras_json = extras_json_desde_normalizados(extras_normalizados)
         ahora = now_utc_naive()
 
@@ -542,8 +621,10 @@ def agregar_linea_pedido_con_respuesta(
                 precio_unitario=calculo["precio_unitario"],
                 precio_original=calculo["precio_original_unitario"],
                 descuento_unitario=calculo["descuento_unitario"],
-                id_promocion=calculo["id_promocion"],
-                nombre_promocion=nombre_promocion or calculo.get("nombre_promocion"),
+                id_promocion=None if sin_promo or not data.id_promocion else data.id_promocion,
+                nombre_promocion=None if sin_promo else (nombre_promocion or calculo.get("nombre_promocion")),
+                sin_promocion=True if sin_promo else False,
+                subtotal=calculo.get("subtotal"),
                 extras_json=extras_json,
                 en_comanda=data.enviar_comanda,
                 fecha_envio_comanda=ahora if data.enviar_comanda else None,
@@ -594,7 +675,9 @@ def agregar_linea_combo(
 
     extras_normalizados = validar_extras_producto(db, data.id_producto, data.extras)
     comentario = (data.comentario or "").strip() or None
-    key = _line_key(data.id_producto, data.extras, data.id_promocion, comentario)
+    key = _line_key(
+        data.id_producto, data.extras, data.id_promocion, comentario, f"S{data.id_promocion or 0}"
+    )
     extras_json = extras_json_desde_normalizados(extras_normalizados)
     ahora = now_utc_naive()
 
@@ -629,6 +712,8 @@ def agregar_linea_combo(
         descuento_unitario=descuento_unitario,
         id_promocion=data.id_promocion,
         nombre_promocion=nombre_promocion,
+        sin_promocion=False,
+        subtotal=round(float(data.cantidad) * float(data.precio_unitario), 2),
         extras_json=extras_json,
         en_comanda=data.enviar_comanda,
         fecha_envio_comanda=ahora if data.enviar_comanda else None,
@@ -748,6 +833,7 @@ def cobrar_pedido(
     desasociar_cliente: bool = False,
     actor: UsuarioModel | None = None,
     auditoria_meta: dict | None = None,
+    confirmar_recalculo: bool = False,
 ):
     """Bloqueos: sesión → pedido → detalles → cliente → idempotencia → venta."""
     from app.constants import auditoria as A
@@ -796,35 +882,62 @@ def cobrar_pedido(
             ip=meta.get("ip"),
             user_agent=meta.get("user_agent"),
         )
+    if pedido.estado != "ABIERTO":
+        if operation_id:
+            huella = huella_cobro(
+                id_pedido=pedido.id_pedido,
+                id_cliente=pedido.id_cliente,
+                forma_pago=forma_pago,
+                puntos_canje=puntos_canje,
+                lineas=lineas_huella([d for d in detalles_bloqueados if float(d.cantidad or 0) > 0]),
+            )
+            op = reclamar_cobro(db, operation_id, huella, id_usuario, pedido.id_pedido)
+            if op.id_venta:
+                guardada = respuesta_cobro_guardado(db, operation_id)
+                if guardada:
+                    return guardada
+        raise DatosInvalidosException("El pedido ya fue cobrado o cancelado")
+    detalles_activos = [d for d in detalles_bloqueados if float(d.cantidad) > 0]
+    if not detalles_activos:
+        raise DatosInvalidosException("El pedido no tiene productos")
+
+    from app.services.promocion_service import dinero
+
+    antes = dinero(sum((_subtotal_guardado(d) for d in detalles_activos), dinero(0)))
+    _recalcular_promociones_sin_commit(db, pedido)
+    detalles_activos = [d for d in pedido.detalles if _linea_participa_en_ticket(d)]
+    despues = dinero(sum((_subtotal_guardado(d) for d in detalles_activos), dinero(0)))
+    if antes != despues and not confirmar_recalculo:
+        db.rollback()
+        raise RecalculoTotalException(antes, despues)
     if operation_id:
         huella = huella_cobro(
             id_pedido=pedido.id_pedido,
             id_cliente=pedido.id_cliente,
             forma_pago=forma_pago,
             puntos_canje=puntos_canje,
-            lineas=lineas_huella([d for d in detalles_bloqueados if float(d.cantidad or 0) > 0]),
+            lineas=lineas_huella(detalles_activos),
         )
         op = reclamar_cobro(db, operation_id, huella, id_usuario, pedido.id_pedido)
         if op.id_venta:
             guardada = respuesta_cobro_guardado(db, operation_id)
             if guardada:
                 return guardada
-    if pedido.estado != "ABIERTO":
-        raise DatosInvalidosException("El pedido ya fue cobrado o cancelado")
-    detalles_activos = [d for d in detalles_bloqueados if float(d.cantidad) > 0]
-    if not detalles_activos:
-        raise DatosInvalidosException("El pedido no tiene productos")
 
     detalles_venta = []
     for d in detalles_activos:
         extras = extras_linea_desde_json(_parse_extras(d.extras_json))
+        modo = modo_promocion_detalle(d)
+        sin_promo = modo in ("PRECIO_NORMAL", "LEGACY")
         detalles_venta.append(
             DetalleVentaItem(
                 id_producto=d.id_producto,
                 cantidad=float(d.cantidad),
                 precio_unitario=float(d.precio_unitario),
                 precio_original=float(d.precio_original) if d.precio_original else None,
-                id_promocion=d.id_promocion,
+                id_promocion=None if sin_promo else d.id_promocion,
+                sin_promocion=sin_promo,
+                forzar_promocion=modo == "SELECCIONADA" and not sin_promo,
                 extras=extras,
             )
         )
@@ -863,7 +976,7 @@ def listar_pedidos_activos_resumen(db: Session) -> list:
         if not p.detalles:
             continue
         lineas = [_detalle_a_dict(d) for d in p.detalles]
-        total = sum(l["cantidad"] * l["precio_unitario"] for l in lineas)
+        total = _total_lineas(lineas)
         pendientes = sum(
             1
             for l in lineas

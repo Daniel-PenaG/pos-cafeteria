@@ -11,6 +11,7 @@ from app.services.promocion_service import (
     combo_a_dict,
     listar_aplicables,
     listar_combos_producto,
+    listar_promos_ticket_producto,
 )
 
 
@@ -47,7 +48,13 @@ def obtener_contexto_producto(db: Session, id_producto: int) -> dict:
 
     extras = extras_para_producto(db, id_producto)
     paquetes = [combo_a_dict(p, db) for p in listar_combos_producto(db, id_producto)]
-    promociones = [_promo_a_dict(p) for p in listar_aplicables(db, producto)]
+    promos_linea = listar_aplicables(db, producto)
+    promos_cantidad = [
+        p for p in listar_promos_ticket_producto(db, producto)
+        if p.tipo == "CANTIDAD_PRECIO"
+    ]
+    ya = {p.id_promocion for p in promos_linea}
+    promociones = [_promo_a_dict(p) for p in promos_linea + [p for p in promos_cantidad if p.id_promocion not in ya]]
     calculo_inicial = calcular_linea(db, producto, 1, 0, None)
 
     return {

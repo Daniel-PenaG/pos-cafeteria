@@ -32,6 +32,8 @@ class DetalleVentaItem(BaseModel):
     precio_unitario: float
     extras: List[ExtraVentaLinea] = []
     id_promocion: Optional[int] = None
+    sin_promocion: bool = False
+    forzar_promocion: bool = False
     precio_original: Optional[float] = None
 
 

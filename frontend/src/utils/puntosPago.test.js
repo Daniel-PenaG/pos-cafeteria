@@ -116,6 +116,23 @@ describe("canje de puntos", () => {
     assert.equal(botonCobroBloqueado({ loading: false, bloquea: false }), false);
   });
 
+  it("RECALCULO pide confirmación y no cobra solo", () => {
+    const efecto = resolverErrorCobro(409, {
+      detail: {
+        codigo: "RECALCULO",
+        detail: "El total cambió de $70.00 a $84.00 por vigencia o promociones. Confirma el nuevo total.",
+        total_anterior: "70.00",
+        total_nuevo: "84.00",
+      },
+    });
+    assert.equal(efecto.codigo, "RECALCULO");
+    assert.equal(efecto.confirmaRecalculo, true);
+    assert.equal(efecto.conservaPedido, true);
+    assert.equal(efecto.cierraModal, false);
+    assert.equal(efecto.reintentar, false);
+    assert.equal(efecto.refrescaSaldo, false);
+  });
+
   it("un 409 refresca el saldo y conserva el pedido", () => {
     const efecto = resolverErrorCobro(409, {
       detail: "El saldo de puntos cambió; revisa nuevamente.",

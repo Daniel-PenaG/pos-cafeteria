@@ -566,6 +566,8 @@ class DetallePedidoModel(Base):
     descuento_unitario = Column(Numeric(10, 2), nullable=True)
     id_promocion = Column(Integer, ForeignKey("promociones.id_promocion"), nullable=True)
     nombre_promocion = Column(String(150), nullable=True)
+    sin_promocion = Column(Boolean, nullable=True)
+    subtotal = Column(Numeric(10, 2), nullable=True)
     extras_json = Column(String(500), nullable=True)
     en_comanda = Column(Boolean, default=True)
     fecha_envio_comanda = Column(DateTime, nullable=True)

@@ -39,6 +39,12 @@ class DetallePedidoLinea(BaseModel):
     segundos_preparacion: Optional[int] = None
     estado_linea: str = "ACTIVA"
     cantidad_cancelada: float = 0
+    subtotal: float = 0
+    sin_promocion: Optional[bool] = None
+    modo_promocion: str = "LEGACY"
+    desglose: List[dict] = []
+    aplicaciones: int = 0
+    unidades_normales: float = 0
 
 
 class Pedido(BaseModel):
@@ -60,6 +66,8 @@ class Pedido(BaseModel):
     descuento_promociones: Optional[float] = None
     resumen_promociones: List[dict] = []
     sin_pedido: bool = False
+    aviso_recalculo: Optional[str] = None
+    total_recalculado: Optional[float] = None
 
 
 class PedidoResumen(BaseModel):
@@ -81,6 +89,7 @@ class PedidoLineaCreate(BaseModel):
     precio_unitario: float
     precio_original: Optional[float] = None
     id_promocion: Optional[int] = None
+    sin_promocion: bool = False
     extras: List[ExtraLineaPedido] = []
     enviar_comanda: bool = False
     comentario: Optional[str] = Field(None, max_length=300)
@@ -112,6 +121,7 @@ class PedidoCobrar(BaseModel):
     puntos_canje: int = 0
     operation_id: Optional[str] = Field(None, max_length=64)
     desasociar_cliente: bool = False
+    confirmar_recalculo: bool = False
 
 
 class ComboPedidoCreate(BaseModel):
