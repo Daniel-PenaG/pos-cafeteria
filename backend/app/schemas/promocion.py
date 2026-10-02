@@ -72,6 +72,9 @@ class PromocionCalculada(BaseModel):
     margen_porcentaje: Optional[float] = None
     margen_ok: bool = True
     mensaje: Optional[str] = None
+    aplicaciones: int = 0
+    unidades_normales: float = 0
+    total_linea: Optional[float] = None
 
 
 class PromocionCalcularRequest(BaseModel):

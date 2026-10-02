@@ -942,6 +942,13 @@ def aplicar_migraciones_sqlite():
 
     aplicar_migracion_006_puntos()
     verificar_esquema_puntos_mixtos()
+    from app.services.migracion_promo_modo import (
+        aplicar_migracion_007_promo_modo,
+        verificar_esquema_promo_modo,
+    )
+
+    aplicar_migracion_007_promo_modo(engine)
+    verificar_esquema_promo_modo(engine)
 
 
 def verificar_esquema_cancelacion() -> None:

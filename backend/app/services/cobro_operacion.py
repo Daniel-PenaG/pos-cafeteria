@@ -40,6 +40,10 @@ def huella_cobro(
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _canon_decimal(valor) -> str:
+    return str(Decimal(str(valor or 0)).quantize(Decimal("0.01")))
+
+
 def lineas_huella(detalles) -> list[dict]:
     filas = []
     for d in detalles:
@@ -47,8 +51,8 @@ def lineas_huella(detalles) -> list[dict]:
             {
                 "id_detalle": int(d.id_detalle_pedido),
                 "id_producto": int(d.id_producto),
-                "cantidad": str(Decimal(str(d.cantidad or 0))),
-                "precio_unitario": str(Decimal(str(d.precio_unitario or 0))),
+                "cantidad": _canon_decimal(d.cantidad),
+                "precio_unitario": _canon_decimal(d.precio_unitario),
                 "id_promocion": d.id_promocion,
             }
         )

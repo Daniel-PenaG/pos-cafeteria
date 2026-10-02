@@ -47,6 +47,20 @@ export function buildTestTicket() {
   return enc.encode();
 }
 
+function escribirLineaCobro(enc, item) {
+  const sub = item.subtotal != null && item.subtotal !== ""
+    ? Number(item.subtotal)
+    : Number(item.cantidad) * Number(item.precio_unitario);
+  enc.line(`${item.cantidad} x ${item.nombre_producto}`);
+  const partes = Array.isArray(item.desglose) ? item.desglose : [];
+  if (partes.length > 1 || (partes.length === 1 && Number(item.aplicaciones || 0) > 0)) {
+    for (const parte of partes) {
+      enc.line(`  ${parte.etiqueta}: $${Number(parte.importe).toFixed(2)}`);
+    }
+  }
+  enc.line(`   $${sub.toFixed(2)}`);
+}
+
 function lineExtras(extras) {
   if (!extras?.length) return [];
   return extras.map((e) => {
@@ -138,9 +152,7 @@ export function buildPrecuentaTicket({ pedido, usuario, subtotal, descuento, tot
 
   const lineas = pedido?.lineas ?? [];
   for (const item of lineas) {
-    const sub = Number(item.cantidad) * Number(item.precio_unitario);
-    enc.line(`${item.cantidad} x ${item.nombre_producto}`);
-    enc.line(`   $${sub.toFixed(2)}`);
+    escribirLineaCobro(enc, item);
     for (const extra of lineExtras(item.extras)) {
       enc.line(extra);
     }
@@ -210,9 +222,7 @@ export function buildCobroTicket({
 
   const lineas = pedido?.lineas ?? [];
   for (const item of lineas) {
-    const sub = Number(item.cantidad) * Number(item.precio_unitario);
-    enc.line(`${item.cantidad} x ${item.nombre_producto}`);
-    enc.line(`   $${sub.toFixed(2)}`);
+    escribirLineaCobro(enc, item);
     for (const extra of lineExtras(item.extras)) {
       enc.line(extra);
     }

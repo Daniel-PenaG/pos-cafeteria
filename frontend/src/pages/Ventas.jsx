@@ -22,6 +22,7 @@ import {
 import {
   calcularPromocion,
 } from "../services/promocionesService";
+import { OPCION_PRECIO_NORMAL, importeLinea, sumaImportes, textoPrecioLinea } from "../utils/promoCantidad";
 import {
   buscarClientes,
   getCliente,
@@ -53,6 +54,13 @@ import {
 } from "../utils/puntosPago";
 import { getSavedPrinter } from "../services/printerStorage";
 import { formatDuration } from "../utils/formatDuration";
+
+function segundosEnMesa(fechaApertura) {
+  const segundos = Math.floor(
+    (Date.now() - new Date(fechaApertura).getTime()) / 1000
+  );
+  return segundos >= 0 ? segundos : null;
+}
 import {
   HiOutlineShoppingCart,
   HiOutlineCheckBadge,
@@ -89,6 +97,21 @@ function sumExtras(extras) {
   return extras.reduce((acc, e) => acc + Number(e.precio), 0);
 }
 
+function PrecioPromoLinea({ calc }) {
+  const aplicaciones = Number(calc.aplicaciones || 0);
+  const originales = Number(calc.precio_original_unitario || 0);
+  return (
+    <>
+      <p style={{ margin: 0 }}>{textoPrecioLinea(calc)}</p>
+      {aplicaciones > 0 && originales > 0 && (
+        <p className="hint" style={{ margin: "0.25rem 0 0" }}>
+          <s>${originales.toFixed(2)}</s> precio normal
+        </p>
+      )}
+    </>
+  );
+}
+
 export default function Ventas({ modoParaLlevar = false }) {
   const [productos, setProductos] = useState([]);
   const [categorias, setCategorias] = useState([]);
@@ -111,7 +134,6 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [extrasSeleccionados, setExtrasSeleccionados] = useState([]);
   const [promosDisponibles, setPromosDisponibles] = useState([]);
   const [promoModo, setPromoModo] = useState("auto");
-  const [mostrarOpcionesPromo, setMostrarOpcionesPromo] = useState(false);
   const [calculoPromo, setCalculoPromo] = useState(null);
   const [cantidadModal, setCantidadModal] = useState("");
   const [comentarioModal, setComentarioModal] = useState("");
@@ -158,7 +180,7 @@ export default function Ventas({ modoParaLlevar = false }) {
   const carritoActivo = useMemo(() => lineasActivas(carrito), [carrito]);
 
   const total = useMemo(
-    () => carritoActivo.reduce((acc, item) => acc + item.cantidad * item.precio_unitario, 0),
+    () => sumaImportes(carritoActivo),
     [carritoActivo]
   );
   const subtotalNormal = pedido?.subtotal_normal;
@@ -233,7 +255,8 @@ export default function Ventas({ modoParaLlevar = false }) {
         cantidad,
         precio_unitario: Number(calculo.precio_unitario),
         precio_original: Number(calculo.precio_original_unitario),
-        id_promocion: calculo.id_promocion,
+        id_promocion: calculo.forzar_normal ? null : calculo.id_promocion,
+        sin_promocion: Boolean(calculo.forzar_normal),
         extras,
         enviar_comanda: false,
         comentario: comentario?.trim() || null,
@@ -653,7 +676,6 @@ export default function Ventas({ modoParaLlevar = false }) {
     setExtrasModal([]);
     setPromosDisponibles([]);
     setPromoModo(opts.promoModo ?? "auto");
-    setMostrarOpcionesPromo(false);
     setCalculoPromo(null);
     setCalculoInicialModal(null);
     setCantidadModal("1");
@@ -730,7 +752,6 @@ export default function Ventas({ modoParaLlevar = false }) {
       setExtrasModal(extras);
       setPromosDisponibles(ctx.promociones ?? []);
       setPromoModo("auto");
-      setMostrarOpcionesPromo(false);
       setCalculoInicialModal(ctx.calculo_inicial ?? null);
       setCalculoPromo(ctx.calculo_inicial ?? null);
       setCantidadModal("1");
@@ -845,7 +866,7 @@ export default function Ventas({ modoParaLlevar = false }) {
       setGuardandoLinea(true);
       await agregarLineaConCalculo(
         productoModal,
-        calculoPromo,
+        promoModo === "none" ? { ...calculoPromo, forzar_normal: true, id_promocion: null } : calculoPromo,
         extrasSeleccionados,
         cant,
         comentarioModal
@@ -862,7 +883,6 @@ export default function Ventas({ modoParaLlevar = false }) {
     setExtrasModal([]);
     setPromosDisponibles([]);
     setPromoModo("auto");
-    setMostrarOpcionesPromo(false);
     setCalculoPromo(null);
     setCalculoInicialModal(null);
     setCantidadModal("");
@@ -1039,7 +1059,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     ejecutarCobro(conCliente, false);
   };
 
-  const ejecutarCobro = async (conCliente, imprimirTicket = false, desasociarCliente = false) => {
+  const ejecutarCobro = async (conCliente, imprimirTicket = false, desasociarCliente = false, confirmarRecalculo = false) => {
     if (!usuario?.id_usuario || !pedido?.id_pedido) return;
     const usaCliente = Boolean(conCliente) && !desasociarCliente;
 
@@ -1058,24 +1078,28 @@ export default function Ventas({ modoParaLlevar = false }) {
 
     const pagaCon = cobroEfectivo ? montoRecibidoNum : null;
     const cambio = cobroEfectivo ? cambioCobro : null;
-    const payload = payloadCobro({
-      idUsuario: usuario.id_usuario,
-      formaPago: !desasociarCliente && aCubrir === 0 ? "EFECTIVO" : formaPago,
-      cliente: clienteCobro,
-      conCliente: usaCliente,
-      puntos: desasociarCliente ? 0 : canjeCobro.puntos,
-      desasociarCliente,
-      operationId: intentStoreRef.current.beginIntent(
-        JSON.stringify({
-          tipo: "cobro",
-          id_pedido: pedido.id_pedido,
-          id_cliente: usaCliente && clienteCobro ? clienteCobro.id_cliente : null,
-          forma_pago: !desasociarCliente && aCubrir === 0 ? "EFECTIVO" : formaPago,
-          puntos_canje: usaCliente && clienteCobro ? canjeCobro.puntos : 0,
-          desasociar_cliente: desasociarCliente,
-        })
-      ),
-    });
+    const payload = {
+      ...payloadCobro({
+        idUsuario: usuario.id_usuario,
+        formaPago: !desasociarCliente && aCubrir === 0 ? "EFECTIVO" : formaPago,
+        cliente: clienteCobro,
+        conCliente: usaCliente,
+        puntos: desasociarCliente ? 0 : canjeCobro.puntos,
+        desasociarCliente,
+        operationId: intentStoreRef.current.beginIntent(
+          JSON.stringify({
+            tipo: "cobro",
+            id_pedido: pedido.id_pedido,
+            id_cliente: usaCliente && clienteCobro ? clienteCobro.id_cliente : null,
+            forma_pago: !desasociarCliente && aCubrir === 0 ? "EFECTIVO" : formaPago,
+            puntos_canje: usaCliente && clienteCobro ? canjeCobro.puntos : 0,
+            desasociar_cliente: desasociarCliente,
+            confirmar_recalculo: Boolean(confirmarRecalculo),
+          })
+        ),
+      }),
+      confirmar_recalculo: Boolean(confirmarRecalculo),
+    };
     const huellaCobro = JSON.stringify({
       tipo: "cobro",
       id_pedido: pedido.id_pedido,
@@ -1106,10 +1130,8 @@ export default function Ventas({ modoParaLlevar = false }) {
         ? `Venta para llevar — Folio: ${res.id_venta}\nTotal: $${Number(res.total).toFixed(2)}`
         : `Cuenta cerrada. Mesa ${res.numero_mesa} — Folio: ${res.id_venta}\nTotal: $${Number(res.total).toFixed(2)}`;
       if (!modoParaLlevar && pedidoParaTicket?.fecha_apertura) {
-        const segundos = Math.floor(
-          (Date.now() - new Date(pedidoParaTicket.fecha_apertura).getTime()) / 1000
-        );
-        if (segundos >= 0) {
+        const segundos = segundosEnMesa(pedidoParaTicket.fecha_apertura);
+        if (segundos != null) {
           msg += `\n\nTiempo en mesa: ${formatDuration(segundos)}`;
         }
       }
@@ -1173,6 +1195,17 @@ export default function Ventas({ modoParaLlevar = false }) {
           (typeof cuerpo?.detail === "string" && cuerpo.detail) ||
           cuerpo?.detail?.detail ||
           "Ese cobro ya se usó con otros datos. El pedido sigue abierto si no se registró.";
+        if (efecto.codigo === "RECALCULO" && !confirmarRecalculo) {
+          const aviso =
+            (typeof cuerpo?.detail === "object" && cuerpo.detail?.detail) ||
+            (typeof texto === "string" && texto) ||
+            "El total cambió. Confirma el nuevo total.";
+          if (window.confirm(aviso)) {
+            setLoading(false);
+            return ejecutarCobro(conCliente, imprimirTicket, desasociarCliente, true);
+          }
+          return;
+        }
         alert(texto);
         return;
       }
@@ -1181,8 +1214,6 @@ export default function Ventas({ modoParaLlevar = false }) {
       setLoading(false);
     }
   };
-
-  const precioPreview = calculoPromo ? Number(calculoPromo.precio_unitario) : 0;
 
   const ventasHabilitadas = Boolean(numeroMesa);
 
@@ -1500,7 +1531,13 @@ export default function Ventas({ modoParaLlevar = false }) {
                       </p>
                     )}
                     <div className="hint" style={{ marginTop: "0.25rem" }}>
-                      {(item.descuento_unitario ?? 0) > 0 ? (
+                      {Array.isArray(item.desglose) && item.desglose.length > 0 ? (
+                        item.desglose.map((parte) => (
+                          <div key={parte.etiqueta}>
+                            {parte.etiqueta}: ${Number(parte.importe).toFixed(2)}
+                          </div>
+                        ))
+                      ) : (item.descuento_unitario ?? 0) > 0 && Number(item.unidades_normales || 0) === 0 ? (
                         <>
                           <s>${Number(item.precio_original).toFixed(2)}</s> → $
                           {Number(item.precio_unitario).toFixed(2)} c/u
@@ -1531,7 +1568,7 @@ export default function Ventas({ modoParaLlevar = false }) {
                     title={enviada ? "Para reducir una línea en comanda, registra una cancelación" : undefined}
                   />
                   <span style={{ minWidth: 72, fontWeight: 600 }}>
-                    ${(item.cantidad * item.precio_unitario).toFixed(2)}
+                    ${importeLinea(item).toFixed(2)}
                   </span>
                   {!cancelada && (
                   <button
@@ -1551,6 +1588,11 @@ export default function Ventas({ modoParaLlevar = false }) {
           )}
 
           <div className="cart-panel__footer">
+          {pedido?.aviso_recalculo && (
+            <p className="hint" style={{ marginBottom: "0.5rem" }}>
+              {pedido.aviso_recalculo}
+            </p>
+          )}
           {(subtotalNormal > 0 && descuentoPromos > 0) ? (
             <div className="cart-totals-breakdown" style={{ marginBottom: "0.5rem" }}>
               <div className="hint" style={{ display: "flex", justifyContent: "space-between" }}>
@@ -1690,7 +1732,9 @@ export default function Ventas({ modoParaLlevar = false }) {
                 style={{ marginBottom: "1rem", display: "inline-block" }}
               >
                 Promo: {calculoPromo.nombre_promocion}
-                {calculoPromo.descuento_unitario > 0 && (
+                {calculoPromo.descuento_unitario > 0 &&
+                  Number(calculoPromo.unidades_normales || 0) === 0 &&
+                  Number(calculoPromo.aplicaciones || 0) === 0 && (
                   <> · -${Number(calculoPromo.descuento_unitario).toFixed(2)} c/u</>
                 )}
               </div>
@@ -1698,43 +1742,32 @@ export default function Ventas({ modoParaLlevar = false }) {
 
             {!cargandoExtras && promosDisponibles.length > 0 && (
               <div style={{ marginBottom: "1rem" }}>
-                {!mostrarOpcionesPromo ? (
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
-                    onClick={() => setMostrarOpcionesPromo(true)}
-                  >
-                    Cambiar promoción
-                  </button>
-                ) : (
-                  <>
-                    <label className="hint">Promoción</label>
-                    <select
-                      className="select"
-                      value={
-                        promoModo === "auto"
-                          ? "auto"
-                          : promoModo === "none"
-                            ? "none"
-                            : String(promoModo)
-                      }
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === "auto") setPromoModo("auto");
-                        else if (val === "none") setPromoModo("none");
-                        else setPromoModo(Number(val));
-                      }}
-                    >
-                      <option value="auto">Automática (mejor precio)</option>
-                      <option value="none">Sin promoción</option>
-                      {promosDisponibles.map((p) => (
-                        <option key={p.id_promocion} value={p.id_promocion}>
-                          {p.nombre} ({p.tipo === "PORCENTAJE" ? `${p.valor}%` : p.tipo})
-                        </option>
-                      ))}
-                    </select>
-                  </>
-                )}
+                <label className="hint">Promoción</label>
+                <select
+                  className="select"
+                  aria-label="Promoción"
+                  value={
+                    promoModo === "auto"
+                      ? "auto"
+                      : promoModo === "none"
+                        ? "none"
+                        : String(promoModo)
+                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "auto") setPromoModo("auto");
+                    else if (val === "none") setPromoModo("none");
+                    else setPromoModo(Number(val));
+                  }}
+                >
+                  <option value="auto">Automática (mejor precio)</option>
+                  <option value="none">{OPCION_PRECIO_NORMAL}</option>
+                  {promosDisponibles.map((p) => (
+                    <option key={p.id_promocion} value={p.id_promocion}>
+                      {p.nombre} ({p.tipo === "PORCENTAJE" ? `${p.valor}%` : p.tipo === "CANTIDAD_PRECIO" ? `${p.cantidad_requerida} x $${Number(p.valor).toFixed(2)}` : p.tipo})
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
 
@@ -1810,21 +1843,11 @@ export default function Ventas({ modoParaLlevar = false }) {
 
             {!cargandoExtras && calculoPromo && (
               <div className="price-preview">
-                {calculoPromo.descuento_unitario > 0 ? (
-                  <>
-                    <s>${Number(calculoPromo.precio_original_unitario).toFixed(2)}</s>{" "}
-                    <strong>${precioPreview.toFixed(2)}</strong> c/u
-                    {calculoPromo.margen_porcentaje != null && (
-                      <span className="hint"> · Margen {calculoPromo.margen_porcentaje}%</span>
-                    )}
-                    {!calculoPromo.margen_ok && (
-                      <p style={{ color: "var(--color-danger, #c0392b)" }}>
-                        {calculoPromo.mensaje}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <>Precio unitario: ${precioPreview.toFixed(2)}</>
+                <PrecioPromoLinea calc={calculoPromo} />
+                {!calculoPromo.margen_ok && (
+                  <p style={{ color: "var(--color-danger, #c0392b)" }}>
+                    {calculoPromo.mensaje}
+                  </p>
                 )}
               </div>
             )}
