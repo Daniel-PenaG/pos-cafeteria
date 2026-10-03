@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from app.database import get_db
 from app.models.models import GastoModel, UsuarioModel
-from app.schemas.gasto import GastoCreate, GastoUpdate, GastoResponse
+from app.schemas.gasto import GastoCreate, GastoPagar, GastoUpdate, GastoResponse
 from app.constants import auditoria as A
 from app.services.auditoria_service import registrar_auditoria
 from app.utils.deps import get_current_user, require_admin
@@ -58,13 +58,26 @@ def registrar_gasto(
     if not descripcion:
         raise HTTPException(status_code=400, detail="La descripción es obligatoria")
 
+    estado = (data.estado_pago or "PAGADO").strip().upper()
+    clasificacion = (data.clasificacion or "GASTO_OPERATIVO").strip().upper()
+    if estado not in ("PAGADO", "PENDIENTE"):
+        raise HTTPException(status_code=422, detail="Estado de pago inválido")
+    if clasificacion not in ("GASTO_OPERATIVO", "RETIRO_PROPIETARIO"):
+        raise HTTPException(status_code=422, detail="Clasificación de gasto inválida")
     gasto = GastoModel(
         descripcion=descripcion,
         monto=data.monto,
         fecha_hora=now_utc_naive(),
         id_usuario=current.id_usuario,
+        estado_pago=estado,
+        clasificacion=clasificacion,
     )
     db.add(gasto)
+    db.flush()
+    from app.services.tesoreria_service import tesoreria_activa
+
+    if tesoreria_activa(db) and estado == "PAGADO":
+        _pagar_en_tesoreria(db, gasto, current, data.codigo_cuenta, data.operation_id, descripcion, clasificacion)
     registrar_auditoria(
         db,
         usuario=current,
@@ -73,6 +86,67 @@ def registrar_gasto(
         detalles={"monto": float(data.monto)},
         origen="gastos",
     )
+    db.commit()
+    db.refresh(gasto)
+    return _gasto_a_response(gasto, current)
+
+
+def _pagar_en_tesoreria(db, gasto, current, codigo_cuenta, operation_id, descripcion, clasificacion):
+    from app.services.tesoreria_service import (
+        TIPO_GASTO_OPERATIVO,
+        TIPO_RETIRO,
+        cuenta_por_codigo,
+        exigir_admin,
+        registrar_salida_origen,
+    )
+
+    if clasificacion == "RETIRO_PROPIETARIO":
+        exigir_admin(current)
+    if not codigo_cuenta:
+        raise HTTPException(status_code=422, detail="Indica la cuenta desde la que se paga")
+    cuenta = cuenta_por_codigo(db, codigo_cuenta)
+    gasto.id_cuenta_tesoreria = cuenta.id_cuenta
+    registrar_salida_origen(
+        db,
+        usuario=current,
+        codigo_cuenta=codigo_cuenta,
+        importe=gasto.monto,
+        tipo=TIPO_RETIRO if clasificacion == "RETIRO_PROPIETARIO" else TIPO_GASTO_OPERATIVO,
+        concepto=descripcion,
+        operation_id=operation_id or f"tesoreria-gasto-{gasto.id_gasto}",
+        origen_tipo="GASTO",
+        origen_id=int(gasto.id_gasto),
+    )
+
+
+@router.post("/{id_gasto}/pagar", response_model=GastoResponse)
+def pagar_gasto(
+    id_gasto: int,
+    data: GastoPagar,
+    db: Session = Depends(get_db),
+    current: UsuarioModel = Depends(get_current_user),
+):
+    consulta = db.query(GastoModel).filter(GastoModel.id_gasto == id_gasto)
+    if db.get_bind() is not None and db.get_bind().dialect.name != "sqlite":
+        consulta = consulta.with_for_update()
+    gasto = consulta.first()
+    if not gasto:
+        raise HTTPException(status_code=404, detail="Gasto no encontrado")
+    if (gasto.estado_pago or "").upper() != "PENDIENTE":
+        raise HTTPException(status_code=409, detail="El gasto ya no está pendiente")
+    from app.services.tesoreria_service import tesoreria_activa
+
+    gasto.estado_pago = "PAGADO"
+    if tesoreria_activa(db):
+        _pagar_en_tesoreria(
+            db,
+            gasto,
+            current,
+            data.codigo_cuenta,
+            data.operation_id,
+            gasto.descripcion,
+            gasto.clasificacion or "GASTO_OPERATIVO",
+        )
     db.commit()
     db.refresh(gasto)
     return _gasto_a_response(gasto, current)

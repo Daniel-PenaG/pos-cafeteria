@@ -12,6 +12,9 @@ class DetalleCompraItem(BaseModel):
 class CompraCreate(BaseModel):
     proveedor: str
     detalles: List[DetalleCompraItem]
+    estado_pago: str = "PAGADO"
+    codigo_cuenta: str | None = None
+    operation_id: str | None = None
 
 
 class CompraResponse(BaseModel):

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import { getResumenDashboard } from "../services/dashboardService";
 import { createGasto, deleteGasto, getGastos } from "../services/gastosService";
+import { getCuentasTesoreria, getEstadoTesoreria } from "../services/tesoreriaService";
 
 import { fechaMexicoISO, formatearHoraMexico } from "../utils/datetimeMx";
 
@@ -18,6 +19,11 @@ export default function Gastos() {
   const [monto, setMonto] = useState("");
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
+  const [tesoreriaActiva, setTesoreriaActiva] = useState(false);
+  const [cuentas, setCuentas] = useState([]);
+  const [codigoCuenta, setCodigoCuenta] = useState("");
+  const [clasificacion, setClasificacion] = useState("GASTO_OPERATIVO");
+  const [estadoPago, setEstadoPago] = useState("PAGADO");
 
   const totalGastos = useMemo(
     () => gastos.reduce((acc, g) => acc + Number(g.monto), 0),
@@ -45,6 +51,19 @@ export default function Gastos() {
     cargar();
   }, [cargar]);
 
+  useEffect(() => {
+    getEstadoTesoreria()
+      .then(async (estado) => {
+        setTesoreriaActiva(Boolean(estado?.activa));
+        if (estado?.activa) {
+          const lista = await getCuentasTesoreria();
+          setCuentas(lista || []);
+          if (lista?.[0]?.codigo) setCodigoCuenta(lista[0].codigo);
+        }
+      })
+      .catch(() => setTesoreriaActiva(false));
+  }, []);
+
   const registrar = async (e) => {
     e.preventDefault();
     const m = parseFloat(monto);
@@ -56,9 +75,19 @@ export default function Gastos() {
       alert("Indica un monto mayor a 0");
       return;
     }
+    if (tesoreriaActiva && estadoPago === "PAGADO" && !codigoCuenta) {
+      alert("Elige la cuenta desde la que se paga");
+      return;
+    }
     try {
       setGuardando(true);
-      await createGasto({ descripcion: descripcion.trim(), monto: m });
+      const payload = { descripcion: descripcion.trim(), monto: m };
+      if (tesoreriaActiva) {
+        payload.estado_pago = estadoPago;
+        payload.clasificacion = clasificacion;
+        if (estadoPago === "PAGADO") payload.codigo_cuenta = codigoCuenta;
+      }
+      await createGasto(payload);
       setDescripcion("");
       setMonto("");
       await cargar();
@@ -146,6 +175,34 @@ export default function Gastos() {
               required
             />
           </div>
+          {tesoreriaActiva && (
+            <>
+              <div className="form-row">
+                <label htmlFor="gasto-clase">Clasificación</label>
+                <select id="gasto-clase" className="input" value={clasificacion} onChange={(e) => setClasificacion(e.target.value)}>
+                  <option value="GASTO_OPERATIVO">Gasto operativo</option>
+                  <option value="RETIRO_PROPIETARIO">Retiro del propietario</option>
+                </select>
+              </div>
+              <div className="form-row">
+                <label htmlFor="gasto-estado">Pago</label>
+                <select id="gasto-estado" className="input" value={estadoPago} onChange={(e) => setEstadoPago(e.target.value)}>
+                  <option value="PAGADO">Pagado</option>
+                  <option value="PENDIENTE">Pendiente</option>
+                </select>
+              </div>
+              {estadoPago === "PAGADO" && (
+                <div className="form-row">
+                  <label htmlFor="gasto-cuenta">Cuenta</label>
+                  <select id="gasto-cuenta" className="input" value={codigoCuenta} onChange={(e) => setCodigoCuenta(e.target.value)}>
+                    {cuentas.map((cuenta) => (
+                      <option key={cuenta.codigo} value={cuenta.codigo}>{cuenta.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </>
+          )}
           <div className="form-row" style={{ alignSelf: "end" }}>
             <button type="submit" className="btn btn--primary" disabled={guardando}>
               {guardando ? "Guardando…" : "Registrar gasto"}

@@ -35,6 +35,7 @@ const NAV = [
       { to: "/compras", label: "Compras", roles: ["ADMIN"] },
       { to: "/gastos", label: "Gastos", roles: ["ADMIN"] },
       { to: "/cierre-caja", label: "Cierre de caja", roles: ["ADMIN", "CAJERO"] },
+      { to: "/tesoreria", label: "Tesorería", roles: ["ADMIN", "CAJERO"] },
     ],
   },
   {

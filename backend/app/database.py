@@ -949,6 +949,13 @@ def aplicar_migraciones_sqlite():
 
     aplicar_migracion_007_promo_modo(engine)
     verificar_esquema_promo_modo(engine)
+    from app.services.migracion_tesoreria import (
+        aplicar_migracion_008_tesoreria,
+        verificar_esquema_tesoreria,
+    )
+
+    aplicar_migracion_008_tesoreria(engine)
+    verificar_esquema_tesoreria(engine)
 
 
 def verificar_esquema_cancelacion() -> None:

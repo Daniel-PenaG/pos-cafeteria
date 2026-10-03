@@ -4,10 +4,14 @@
 2. Pedido.
 3. Detalles, por id_detalle_pedido.
 4. Cliente, si el cobro queda asociado a uno.
+5. Cuenta de tesorería que recibe el dinero, por id ascendente, solo si Tesorería está activa.
 
-La idempotencia, la venta, los pagos y los movimientos van después.
+La idempotencia, la venta, los pagos, el inventario, los puntos y el movimiento
+de tesorería van después, en la misma transacción. El cierre de caja no vuelve
+a sumar la venta: solo toma la sesión y concilia.
 Cancelar no entra aquí: solo toma pedido y detalle.
-Cerrar caja solo toma la sesión.
+Un traspaso no toma sesión ni pedido. Solo bloquea cuentas por id ascendente,
+así no cruza el orden del cobro ni el de cerrar caja.
 """
 from __future__ import annotations
 

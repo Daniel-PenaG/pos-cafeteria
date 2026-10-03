@@ -7,10 +7,11 @@ from app.models.models import (
     CompraModel,
     DetalleCompraModel,
     InsumoModel,
-    MovimientoInventarioModel
+    MovimientoInventarioModel,
+    UsuarioModel,
 )
 from app.schemas.compra import CompraCreate, CompraResponse
-from app.utils.deps import require_admin
+from app.utils.deps import get_current_user, require_admin
 from app.utils.permisos import require_module
 
 router = APIRouter(
@@ -21,7 +22,11 @@ router = APIRouter(
 
 
 @router.post("/", response_model=CompraResponse)
-def registrar_compra(data: CompraCreate, db: Session = Depends(get_db)):
+def registrar_compra(
+    data: CompraCreate,
+    db: Session = Depends(get_db),
+    current: UsuarioModel = Depends(get_current_user),
+):
 
     if not data.detalles or len(data.detalles) == 0:
         raise HTTPException(status_code=400, detail="La compra debe tener insumos")
@@ -33,15 +38,16 @@ def registrar_compra(data: CompraCreate, db: Session = Depends(get_db)):
         subtotal = float(item.cantidad) * float(item.costo_unitario)
         total += subtotal
 
+    estado = (data.estado_pago or "PAGADO").strip().upper()
     compra = CompraModel(
         fecha_hora=datetime.now(),
         proveedor=data.proveedor,
-        total=total
+        total=total,
+        estado_pago=estado if estado in ("PAGADO", "PENDIENTE") else "PAGADO",
     )
 
     db.add(compra)
-    db.commit()
-    db.refresh(compra)
+    db.flush()
 
     # Guardar detalles y aumentar inventario
     for item in data.detalles:
@@ -73,6 +79,23 @@ def registrar_compra(data: CompraCreate, db: Session = Depends(get_db)):
             fecha_hora=datetime.now()
         )
         db.add(mov)
+
+    from app.services.tesoreria_service import TIPO_COMPRA, registrar_salida_origen, tesoreria_activa
+
+    if tesoreria_activa(db) and compra.estado_pago == "PAGADO":
+        if not data.codigo_cuenta:
+            raise HTTPException(status_code=422, detail="Indica la cuenta desde la que se paga la compra")
+        registrar_salida_origen(
+            db,
+            usuario=current,
+            codigo_cuenta=data.codigo_cuenta,
+            importe=total,
+            tipo=TIPO_COMPRA,
+            concepto=f"Compra {compra.id_compra}",
+            operation_id=data.operation_id or f"tesoreria-compra-{compra.id_compra}",
+            origen_tipo="COMPRA",
+            origen_id=int(compra.id_compra),
+        )
 
     db.commit()
     db.refresh(compra)

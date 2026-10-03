@@ -29,6 +29,7 @@ const CierreCaja = lazy(() => import("./pages/CierreCaja"));
 const CierresDia = lazy(() => import("./pages/CierresDia"));
 const Usuarios = lazy(() => import("./pages/Usuarios"));
 const Auditoria = lazy(() => import("./pages/Auditoria"));
+const Tesoreria = lazy(() => import("./pages/Tesoreria"));
 
 function HomeRedirect() {
   const rol = useAuthStore((state) => state.user?.rol);
@@ -90,6 +91,7 @@ export default function App() {
             element={withRole("/para-llevar", <LazyPage><ParaLlevar /></LazyPage>)}
           />
           <Route path="comandera" element={withRole("/comandera", <Comandera />)} />
+          <Route path="tesoreria" element={withRole("/tesoreria", <LazyPage><Tesoreria /></LazyPage>)} />
           <Route
             path="extras-venta"
             element={withRole("/extras-venta", <LazyPage><ExtrasVenta /></LazyPage>)}

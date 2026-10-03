@@ -8,6 +8,7 @@ class CajaAbrir(BaseModel):
     terminal: str = Field(..., min_length=2, max_length=40)
     observacion: Optional[str] = Field(None, max_length=500)
     operation_id: Optional[str] = Field(None, max_length=64)
+    origen_fondo: Optional[str] = Field(None, max_length=20)
 
 
 class CajaMovimientoCreate(BaseModel):

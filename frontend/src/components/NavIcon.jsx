@@ -36,6 +36,7 @@ const ICONS = {
   "/compras": HiOutlineTruck,
   "/gastos": HiOutlineBanknotes,
   "/cierre-caja": HiOutlineBanknotes,
+  "/tesoreria": HiOutlineBanknotes,
   "/reportes": HiOutlineChartBar,
   "/cuentas-cajero": HiOutlineIdentification,
   "/cierres-dia": HiOutlineClipboardDocumentList,

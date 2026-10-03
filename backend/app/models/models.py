@@ -115,7 +115,7 @@ class UsuarioModel(Base):
     rol = Column(String(30), nullable=False)
     modulos_json = Column(String(1000))  # JSON: ["/ventas", ...] null = defaults del rol
     activo = Column(Boolean, nullable=False, default=True)
-    permisos_acciones_json = Column(String(500))  # JSON: ["COBRAR_DESDE_COMANDERA"]
+    permisos_acciones_json = Column(String(2000))  # JSON: ["COBRAR_DESDE_COMANDERA"]
 
     ventas = relationship("VentaModel", back_populates="usuario")
     gastos = relationship("GastoModel", back_populates="usuario")
@@ -308,6 +308,8 @@ class CompraModel(Base):
     fecha_hora = Column(DateTime, default=datetime.utcnow)
     proveedor = Column(String(100))
     total = Column(Numeric(10, 2))
+    estado_pago = Column(String(20), nullable=False, default="PAGADO")
+    id_cuenta_tesoreria = Column(Integer, nullable=True)
 
 
 class DetalleCompraModel(Base):
@@ -499,6 +501,9 @@ class GastoModel(Base):
     monto = Column(Numeric(10, 2), nullable=False)
     fecha_hora = Column(DateTime, nullable=False, default=datetime.utcnow)
     id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+    estado_pago = Column(String(20), nullable=False, default="PAGADO")
+    clasificacion = Column(String(40), nullable=False, default="GASTO_OPERATIVO")
+    id_cuenta_tesoreria = Column(Integer, nullable=True)
 
     usuario = relationship("UsuarioModel", back_populates="gastos")
 
@@ -716,6 +721,91 @@ class AuditoriaModel(Base):
     fecha_hora = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     ip = Column(String(64), nullable=True)
     user_agent = Column(String(300), nullable=True)
+
+
+class CuentaTesoreriaModel(Base):
+    __tablename__ = "cuentas_tesoreria"
+
+    id_cuenta = Column(Integer, primary_key=True, index=True)
+    codigo = Column(String(40), nullable=False, unique=True)
+    nombre = Column(String(120), nullable=False)
+    tipo = Column(String(20), nullable=False)
+    moneda = Column(String(3), nullable=False, default="MXN")
+    activa = Column(Boolean, nullable=False, default=True)
+    es_sistema = Column(Boolean, nullable=False, default=False)
+    fecha_creacion = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class OperacionTesoreriaModel(Base):
+    __tablename__ = "operaciones_tesoreria"
+    __table_args__ = (
+        UniqueConstraint("operation_id", name="uq_operacion_tesoreria_operation_id"),
+    )
+
+    id_operacion = Column(Integer, primary_key=True, index=True)
+    operation_id = Column(String(80), nullable=False)
+    payload_hash = Column(String(64), nullable=False)
+    tipo = Column(String(40), nullable=False, index=True)
+    estado = Column(String(20), nullable=False, default="CONFIRMADA")
+    fecha_operacion = Column(DateTime, nullable=False, index=True)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+    origen_tipo = Column(String(40), nullable=True, index=True)
+    origen_id = Column(Integer, nullable=True)
+    referencia = Column(String(80), nullable=True)
+    concepto = Column(String(200), nullable=False)
+    observacion = Column(String(500), nullable=True)
+    id_operacion_revertida = Column(Integer, ForeignKey("operaciones_tesoreria.id_operacion"), nullable=True)
+    fecha_creacion = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    movimientos = relationship("MovimientoTesoreriaModel", back_populates="operacion")
+
+
+class MovimientoTesoreriaModel(Base):
+    __tablename__ = "movimientos_tesoreria"
+
+    id_movimiento = Column(Integer, primary_key=True, index=True)
+    id_operacion = Column(Integer, ForeignKey("operaciones_tesoreria.id_operacion"), nullable=False, index=True)
+    id_cuenta = Column(Integer, ForeignKey("cuentas_tesoreria.id_cuenta"), nullable=False, index=True)
+    direccion = Column(String(10), nullable=False)
+    importe = Column(Numeric(12, 2), nullable=False)
+    fecha_creacion = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    operacion = relationship("OperacionTesoreriaModel", back_populates="movimientos")
+    cuenta = relationship("CuentaTesoreriaModel")
+
+
+class ActivacionTesoreriaModel(Base):
+    __tablename__ = "activacion_tesoreria"
+
+    id_activacion = Column(Integer, primary_key=True)
+    fecha_corte = Column(DateTime, nullable=False)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+    fecha_confirmacion = Column(DateTime, nullable=False)
+    estado = Column(String(20), nullable=False, default="ACTIVA")
+    efectivo_cafeteria = Column(Numeric(12, 2), nullable=False)
+    efectivo_casa = Column(Numeric(12, 2), nullable=False)
+    saldo_banco = Column(Numeric(12, 2), nullable=False)
+    observacion = Column(String(500), nullable=True)
+    unica = Column(Integer, nullable=False, default=1, unique=True)
+
+
+class ConciliacionTesoreriaModel(Base):
+    __tablename__ = "conciliaciones_tesoreria"
+
+    id_conciliacion = Column(Integer, primary_key=True, index=True)
+    id_cuenta = Column(Integer, ForeignKey("cuentas_tesoreria.id_cuenta"), nullable=False, index=True)
+    saldo_sistema = Column(Numeric(12, 2), nullable=False)
+    saldo_fisico = Column(Numeric(12, 2), nullable=False)
+    diferencia = Column(Numeric(12, 2), nullable=False)
+    observacion = Column(String(500), nullable=True)
+    estado = Column(String(20), nullable=False, default="PENDIENTE")
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+    id_usuario_revision = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=True)
+    fecha_creacion = Column(DateTime, nullable=False, default=datetime.utcnow)
+    fecha_revision = Column(DateTime, nullable=True)
+    id_operacion_ajuste = Column(Integer, ForeignKey("operaciones_tesoreria.id_operacion"), nullable=True)
+
+    cuenta = relationship("CuentaTesoreriaModel")
 
 
 class LoginBloqueoModel(Base):
