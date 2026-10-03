@@ -366,6 +366,9 @@ def registrar_venta(
             importe_monetario=pago_pts.importe_monetario,
             operation_id=getattr(data, "operation_id", None),
         )
+        from app.services.tesoreria_service import registrar_venta_tesoreria
+
+        registrar_venta_tesoreria(db, venta, data.id_usuario)
         completar_cobro(
             db,
             getattr(data, "operation_id", None),

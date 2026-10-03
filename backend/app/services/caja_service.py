@@ -159,6 +159,7 @@ def abrir_caja(
     terminal: str,
     observacion: str | None = None,
     operation_id: str | None = None,
+    origen_fondo: str | None = None,
 ) -> dict:
     if not tiene_accion(current, ABRIR_CAJA):
         raise AccesoNegadoException("No tienes permiso para abrir caja")
@@ -210,6 +211,37 @@ def abrir_caja(
             )
         )
         db.flush()
+        advertencia = None
+        origen = (origen_fondo or "EXISTENTE").strip().upper()
+        from app.services.tesoreria_service import (
+            CODIGO_BANCO,
+            CODIGO_CAFE,
+            CODIGO_CASA,
+            saldo_cuenta,
+            tesoreria_activa,
+            traspasar,
+            cuenta_por_codigo,
+        )
+
+        if tesoreria_activa(db):
+            if origen in ("CASA", "BANCO") and fondo > 0:
+                traspasar(
+                    db,
+                    current,
+                    codigo_origen=CODIGO_CASA if origen == "CASA" else CODIGO_BANCO,
+                    codigo_destino=CODIGO_CAFE,
+                    importe=fondo,
+                    concepto="Fondo inicial de caja",
+                    observacion=observacion,
+                    operation_id=f"tesoreria-fondo-{sesion.id_sesion_caja}",
+                )
+            elif origen in ("EXISTENTE", "CAFETERIA", ""):
+                saldo = saldo_cuenta(db, cuenta_por_codigo(db, CODIGO_CAFE).id_cuenta)
+                if saldo != fondo:
+                    advertencia = (
+                        f"El fondo declarado ({fondo}) no coincide con el efectivo "
+                        f"en cafetería ({saldo}). La apertura no se bloquea."
+                    )
         registrar_auditoria(
             db,
             usuario=current,
@@ -221,6 +253,10 @@ def abrir_caja(
         )
         db.commit()
         db.refresh(sesion)
+        data = sesion_a_dict(db, sesion)
+        if advertencia:
+            data["advertencia_tesoreria"] = advertencia
+        return data
     except IntegrityError:
         db.rollback()
         if oid:
@@ -228,7 +264,6 @@ def abrir_caja(
             if replay is not None:
                 return replay
         raise ConflictoOperacionException(MSG_DOBLE_APERTURA)
-    return sesion_a_dict(db, sesion)
 
 
 def registrar_movimiento(
@@ -288,6 +323,34 @@ def registrar_movimiento(
         )
         db.add(fila)
         db.flush()
+        if tipo_n == MOV_GASTO_CAJA:
+            from app.services.tesoreria_service import registrar_salida_origen
+
+            registrar_salida_origen(
+                db,
+                usuario=current,
+                codigo_cuenta="EFECTIVO_CAFETERIA",
+                importe=monto,
+                tipo="GASTO_CAJA",
+                concepto=motivo_n,
+                operation_id=f"tesoreria-caja-{fila.operation_id}",
+                origen_tipo="GASTO" if id_gasto else "MOVIMIENTO_CAJA",
+                origen_id=int(id_gasto or fila.id_movimiento),
+            )
+        elif tipo_n == MOV_DEVOLUCION and metodo_n == "EFECTIVO":
+            from app.services.tesoreria_service import registrar_salida_origen
+
+            registrar_salida_origen(
+                db,
+                usuario=current,
+                codigo_cuenta="EFECTIVO_CAFETERIA",
+                importe=monto,
+                tipo="DEVOLUCION",
+                concepto=motivo_n,
+                operation_id=f"tesoreria-devolucion-{fila.operation_id}",
+                origen_tipo="MOVIMIENTO_CAJA",
+                origen_id=int(fila.id_movimiento),
+            )
         registrar_auditoria(
             db,
             usuario=current,

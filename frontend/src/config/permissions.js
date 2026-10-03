@@ -28,6 +28,7 @@ export const MODULE_CATALOG = [
   { path: "/compras", label: "Compras", grupo: "Operación" },
   { path: "/gastos", label: "Gastos", grupo: "Operación" },
   { path: "/cierre-caja", label: "Cierre de caja", grupo: "Operación" },
+  { path: "/tesoreria", label: "Tesorería", grupo: "Operación" },
   { path: "/reportes", label: "Reportes", grupo: "Administración" },
   { path: "/cuentas-cajero", label: "Cuentas por cajero", grupo: "Administración" },
   { path: "/cierres-dia", label: "Cierres del día", grupo: "Administración" },
@@ -47,6 +48,7 @@ export const ROLE_ROUTES = {
     "/comandera",
     "/clientes",
     "/cierre-caja",
+    "/tesoreria",
   ],
   COCINA: ["/comandera"],
 };
@@ -98,6 +100,15 @@ export const ACCION_CERRAR_CAJA = "CERRAR_CAJA";
 export const ACCION_REVISAR_CIERRE_CAJA = "REVISAR_CIERRE_CAJA";
 export const ACCION_ANULAR_CIERRE_CAJA = "ANULAR_CIERRE_CAJA";
 export const ACCION_FORZAR_CIERRE_CON_PEDIDOS_ABIERTOS = "FORZAR_CIERRE_CON_PEDIDOS_ABIERTOS";
+export const ACCION_TESORERIA_VER = "TESORERIA_VER";
+export const ACCION_TESORERIA_TRASPASAR = "TESORERIA_TRASPASAR";
+export const ACCION_TESORERIA_REGISTRAR_GASTO = "TESORERIA_REGISTRAR_GASTO";
+export const ACCION_TESORERIA_APORTAR = "TESORERIA_APORTAR";
+export const ACCION_TESORERIA_RETIRAR = "TESORERIA_RETIRAR";
+export const ACCION_TESORERIA_CONCILIAR = "TESORERIA_CONCILIAR";
+export const ACCION_TESORERIA_AJUSTAR = "TESORERIA_AJUSTAR";
+export const ACCION_TESORERIA_REVERTIR = "TESORERIA_REVERTIR";
+export const ACCION_TESORERIA_ACTIVAR = "TESORERIA_ACTIVAR";
 
 const ALL_ACCIONES = [
   ACCION_COBRAR_DESDE_COMANDERA,
@@ -108,6 +119,15 @@ const ALL_ACCIONES = [
   ACCION_REVISAR_CIERRE_CAJA,
   ACCION_ANULAR_CIERRE_CAJA,
   ACCION_FORZAR_CIERRE_CON_PEDIDOS_ABIERTOS,
+  ACCION_TESORERIA_VER,
+  ACCION_TESORERIA_TRASPASAR,
+  ACCION_TESORERIA_REGISTRAR_GASTO,
+  ACCION_TESORERIA_APORTAR,
+  ACCION_TESORERIA_RETIRAR,
+  ACCION_TESORERIA_CONCILIAR,
+  ACCION_TESORERIA_AJUSTAR,
+  ACCION_TESORERIA_REVERTIR,
+  ACCION_TESORERIA_ACTIVAR,
 ];
 
 export function getEffectiveActions(rol, acciones) {

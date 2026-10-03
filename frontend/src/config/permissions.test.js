@@ -31,6 +31,7 @@ describe("permisos frontend", () => {
       "/comandera",
       "/clientes",
       "/cierre-caja",
+      "/tesoreria",
     ]);
   });
 

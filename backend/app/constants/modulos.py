@@ -17,6 +17,7 @@ MODULOS_CATALOGO = [
     {"path": "/compras", "label": "Compras", "grupo": "Operación"},
     {"path": "/gastos", "label": "Gastos", "grupo": "Operación"},
     {"path": "/cierre-caja", "label": "Cierre de caja", "grupo": "Operación"},
+    {"path": "/tesoreria", "label": "Tesorería", "grupo": "Operación"},
     {"path": "/reportes", "label": "Reportes", "grupo": "Administración"},
     {"path": "/cuentas-cajero", "label": "Cuentas por cajero", "grupo": "Administración"},
     {"path": "/cierres-dia", "label": "Cierres del día", "grupo": "Administración"},
@@ -36,6 +37,7 @@ ROLE_DEFAULT_MODULES = {
         "/comandera",
         "/clientes",
         "/cierre-caja",
+        "/tesoreria",
     ],
     "COCINA": ["/comandera"],
 }

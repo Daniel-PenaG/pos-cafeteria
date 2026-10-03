@@ -62,6 +62,7 @@ def abrir(
         terminal=data.terminal,
         observacion=data.observacion,
         operation_id=data.operation_id,
+        origen_fondo=data.origen_fondo,
     )
 
 
