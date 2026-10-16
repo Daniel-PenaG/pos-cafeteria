@@ -11,6 +11,8 @@
     "cap:open": "npx cap open android",
     "lint": "eslint .",
     "test": "node --test src/utils/*.test.js src/services/*.test.js src/config/*.test.js",
+    "capture:perf-flujos": "node scripts/capture-perf-flujos.mjs",
+    "measure:perf-e2e": "node scripts/measure-perf-e2e-latency.mjs",
     "preview": "vite preview",
     "capture:responsive": "node scripts/capture-responsive.mjs",
     "capture:caja": "node scripts/capture-caja.mjs",

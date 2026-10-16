@@ -35,3 +35,6 @@ def _increment() -> None:
 @event.listens_for(Engine, "before_cursor_execute")
 def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
     _increment()
+
+
+import app.utils.sql_signature_profiler  # noqa: E402, F401 — listeners SQL firma

@@ -16,7 +16,10 @@ from app.services.promocion_service import (
     es_promo_paquete,
     calcular_linea,
     costo_producto,
+    costos_productos_batch,
     es_promo_ticket,
+    promocion_por_id,
+    promociones_activas_cargadas,
     TIPOS_TICKET,
     dinero,
     presentar_importes,
@@ -31,16 +34,11 @@ def _round2(n: float) -> float:
 
 
 def listar_promos_ticket(db: Session, ahora: Optional[datetime] = None) -> List[PromocionModel]:
-    promos = (
-        db.query(PromocionModel)
-        .options(
-            joinedload(PromocionModel.productos),
-            joinedload(PromocionModel.categorias),
-        )
-        .filter(PromocionModel.activa == True, PromocionModel.tipo.in_(list(TIPOS_TICKET)))
-        .all()
-    )
-    return [p for p in promos if promocion_vigente(p, ahora)]
+    return [
+        p
+        for p in promociones_activas_cargadas(db)
+        if es_promo_ticket(p) and promocion_vigente(p, ahora)
+    ]
 
 
 def _precio_extras_linea(linea: dict) -> float:
@@ -53,12 +51,7 @@ def _linea_es_paquete(db: Session, linea: dict) -> bool:
     id_promo = linea.get("id_promocion")
     if not id_promo:
         return False
-    promo = (
-        db.query(PromocionModel)
-        .options(joinedload(PromocionModel.productos))
-        .filter(PromocionModel.id_promocion == id_promo)
-        .first()
-    )
+    promo = promocion_por_id(db, int(id_promo))
     return bool(promo and es_promo_paquete(promo))
 
 
@@ -374,14 +367,20 @@ def recalcular_lineas_ticket(
             "total": 0.0,
         }
 
+    promociones_activas_cargadas(db)
+    ids_producto = {int(l["id_producto"]) for l in lineas if l.get("id_producto")}
+    productos_map = {
+        p.id_producto: p
+        for p in db.query(ProductoModel).filter(ProductoModel.id_producto.in_(ids_producto)).all()
+    }
+    costos_map = costos_productos_batch(db, ids_producto)
+
     trabajo: List[dict] = []
     subtotal_normal = 0.0
     for linea in lineas:
         item = dict(linea)
         item["es_paquete"] = _linea_es_paquete(db, item)
-        producto = db.query(ProductoModel).filter(
-            ProductoModel.id_producto == item["id_producto"]
-        ).first()
+        producto = productos_map.get(int(item["id_producto"]))
         item["_producto"] = producto
         if producto:
             pe = _precio_extras_linea(item)
@@ -429,7 +428,7 @@ def recalcular_lineas_ticket(
                         "unidades_normales": sobrantes,
                         "margen_ok": True,
                         "mensaje": None,
-                        "costo_unitario": costo_producto(db, item["id_producto"]),
+                        "costo_unitario": costos_map.get(int(item["id_producto"]), 0.0),
                         "subtotal": total_line,
                         "total_linea": total_line,
                     }
@@ -455,12 +454,7 @@ def recalcular_lineas_ticket(
         sin_promo = bool(item.get("sin_promocion"))
         id_calc = None if sin_promo else item.get("id_promocion")
         if id_calc and not item.get("forzar_promo_linea"):
-            promo_linea = (
-                db.query(PromocionModel)
-                .options(joinedload(PromocionModel.productos))
-                .filter(PromocionModel.id_promocion == id_calc)
-                .first()
-            )
+            promo_linea = promocion_por_id(db, int(id_calc))
             if (
                 not promo_linea
                 or es_promo_paquete(promo_linea)
@@ -469,12 +463,7 @@ def recalcular_lineas_ticket(
             ):
                 id_calc = None
         elif id_calc and item.get("forzar_promo_linea"):
-            promo_linea = (
-                db.query(PromocionModel)
-                .options(joinedload(PromocionModel.productos))
-                .filter(PromocionModel.id_promocion == id_calc)
-                .first()
-            )
+            promo_linea = promocion_por_id(db, int(id_calc))
             if (
                 not promo_linea
                 or not promocion_vigente(promo_linea, ahora)
@@ -483,8 +472,14 @@ def recalcular_lineas_ticket(
                 id_calc = None
                 sin_promo = True
         calc = calcular_linea(
-            db, producto, float(item["cantidad"]), precio_extras,
-            id_calc, ahora=ahora, sin_promocion=sin_promo,
+            db,
+            producto,
+            float(item["cantidad"]),
+            precio_extras,
+            id_calc,
+            ahora=ahora,
+            sin_promocion=sin_promo,
+            costo_unitario=costos_map.get(int(producto.id_producto), 0.0),
         )
         item.update(_calc_a_linea(calc))
         if calc.get("subtotal") is not None:

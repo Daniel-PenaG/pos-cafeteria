@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
@@ -12,9 +12,14 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> UsuarioModel:
+    cached = getattr(request.state, "_auth_user", None)
+    if cached is not None:
+        return cached
+
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No autenticado")
 
@@ -31,6 +36,7 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado")
     if getattr(user, "activo", True) is False:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión no válida")
+    request.state._auth_user = user
     return user
 
 

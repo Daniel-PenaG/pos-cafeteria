@@ -1,0 +1,801 @@
+{
+  "contexto_producto": {
+    "operacion": "contexto_producto",
+    "stats": {
+      "consultas": 9,
+      "ms_sql_acumulado": 1.787
+    },
+    "top20": [
+      {
+        "firma": "select productos.id_producto as productos_id_producto, productos.nombre as productos_nombre, productos.id_categoria as productos_id_categoria, productos.precio_venta as productos_precio_venta, productos.activo as productos_activo, productos",
+        "tabla": "productos",
+        "repeticiones": 3,
+        "ms_acumulado": 0.516,
+        "operacion": "contexto_producto",
+        "fase": "total"
+      },
+      {
+        "firma": "select promociones.id_promocion as promociones_id_promocion, promociones.nombre as promociones_nombre, promociones.descripcion as promociones_descripcion, promociones.tipo as promociones_tipo, promociones.valor as promociones_valor, promoci",
+        "tabla": "promociones",
+        "repeticiones": 1,
+        "ms_acumulado": 0.377,
+        "operacion": "contexto_producto",
+        "fase": "total"
+      },
+      {
+        "firma": "select usuarios.id_usuario as usuarios_id_usuario, usuarios.nombre as usuarios_nombre, usuarios.usuario_login as usuarios_usuario_login, usuarios.hash_password as usuarios_hash_password, usuarios.rol as usuarios_rol, usuarios.modulos_json a",
+        "tabla": "usuarios",
+        "repeticiones": 1,
+        "ms_acumulado": 0.269,
+        "operacion": "contexto_producto",
+        "fase": "total"
+      },
+      {
+        "firma": "select extras_venta.id_extra as extras_venta_id_extra, extras_venta.nombre as extras_venta_nombre, extras_venta.unidad as extras_venta_unidad, extras_venta.cantidad as extras_venta_cantidad, extras_venta.costo_unitario as extras_venta_costo",
+        "tabla": "extras_venta",
+        "repeticiones": 1,
+        "ms_acumulado": 0.186,
+        "operacion": "contexto_producto",
+        "fase": "total"
+      },
+      {
+        "firma": "select recetas.id_producto as recetas_id_producto, recetas.costo_total as recetas_costo_total from recetas where recetas.id_producto in (?) and recetas.activo = ?",
+        "tabla": "recetas",
+        "repeticiones": 1,
+        "ms_acumulado": 0.156,
+        "operacion": "contexto_producto",
+        "fase": "total"
+      },
+      {
+        "firma": "select categoria_extras.id_extra as categoria_extras_id_extra from categoria_extras where categoria_extras.id_categoria = ?",
+        "tabla": "categoria_extras",
+        "repeticiones": 1,
+        "ms_acumulado": 0.15,
+        "operacion": "contexto_producto",
+        "fase": "total"
+      },
+      {
+        "firma": "select producto_extras.id_extra as producto_extras_id_extra from producto_extras where producto_extras.id_producto = ?",
+        "tabla": "producto_extras",
+        "repeticiones": 1,
+        "ms_acumulado": 0.133,
+        "operacion": "contexto_producto",
+        "fase": "total"
+      }
+    ]
+  },
+  "agregar_linea_1": {
+    "operacion": "agregar_linea_1",
+    "stats": {
+      "consultas": 37,
+      "ms_sql_acumulado": 7.703
+    },
+    "top20": [
+      {
+        "firma": "select productos.id_producto as productos_id_producto, productos.nombre as productos_nombre, productos.id_categoria as productos_id_categoria, productos.precio_venta as productos_precio_venta, productos.activo as productos_activo, productos",
+        "tabla": "productos",
+        "repeticiones": 5,
+        "ms_acumulado": 0.805,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "select detalle_pedido.id_detalle_pedido as detalle_pedido_id_detalle_pedido, detalle_pedido.id_pedido as detalle_pedido_id_pedido, detalle_pedido.id_producto as detalle_pedido_id_producto, detalle_pedido.nombre_producto as detalle_pedido_no",
+        "tabla": "detalle_pedido",
+        "repeticiones": 4,
+        "ms_acumulado": 1.008,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "select usuarios.id_usuario as usuarios_id_usuario, usuarios.nombre as usuarios_nombre, usuarios.usuario_login as usuarios_usuario_login, usuarios.hash_password as usuarios_hash_password, usuarios.rol as usuarios_rol, usuarios.modulos_json a",
+        "tabla": "usuarios",
+        "repeticiones": 3,
+        "ms_acumulado": 0.552,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "select anon_1.pedidos_id_pedido as anon_1_pedidos_id_pedido, anon_1.pedidos_numero_mesa as anon_1_pedidos_numero_mesa, anon_1.pedidos_para_llevar as anon_1_pedidos_para_llevar, anon_1.pedidos_estado as anon_1_pedidos_estado, anon_1.pedidos_",
+        "tabla": "pedidos",
+        "repeticiones": 2,
+        "ms_acumulado": 1.9,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "select promociones.id_promocion as promociones_id_promocion, promociones.nombre as promociones_nombre, promociones.descripcion as promociones_descripcion, promociones.tipo as promociones_tipo, promociones.valor as promociones_valor, promoci",
+        "tabla": "promociones",
+        "repeticiones": 2,
+        "ms_acumulado": 0.346,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "select pedidos.id_pedido, pedidos.numero_mesa, pedidos.para_llevar, pedidos.estado, pedidos.id_cliente, pedidos.id_usuario, pedidos.id_venta, pedidos.fecha_apertura, pedidos.fecha_cierre from pedidos where pedidos.id_pedido = ?",
+        "tabla": "pedidos",
+        "repeticiones": 2,
+        "ms_acumulado": 0.218,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "select recetas.id_producto as recetas_id_producto, recetas.costo_total as recetas_costo_total from recetas where recetas.id_producto in (?) and recetas.activo = ?",
+        "tabla": "recetas",
+        "repeticiones": 2,
+        "ms_acumulado": 0.081,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "insert into pedidos (numero_mesa, para_llevar, estado, id_cliente, id_usuario, id_venta, fecha_apertura, fecha_cierre) values (?, ?, ?, ?, ?, ?, ?, ?)",
+        "tabla": "pedidos",
+        "repeticiones": 1,
+        "ms_acumulado": 0.333,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "select configuracion.id_configuracion as configuracion_id_configuracion, configuracion.margen_ganancia as configuracion_margen_ganancia, configuracion.gastos_fijos as configuracion_gastos_fijos, configuracion.mesas_json as configuracion_mes",
+        "tabla": "configuracion",
+        "repeticiones": 1,
+        "ms_acumulado": 0.299,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "select pedido_operaciones.id_operacion as pedido_operaciones_id_operacion, pedido_operaciones.operation_id as pedido_operaciones_operation_id, pedido_operaciones.id_pedido as pedido_operaciones_id_pedido, pedido_operaciones.tipo as pedido_o",
+        "tabla": "pedido_operaciones",
+        "repeticiones": 1,
+        "ms_acumulado": 0.29,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "insert into pedido_operaciones (operation_id, id_pedido, tipo, payload_hash, id_detalle_pedido, detalle_ids_json, fecha) values (?, ?, ?, ?, ?, ?, ?)",
+        "tabla": "pedido_operaciones",
+        "repeticiones": 1,
+        "ms_acumulado": 0.275,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "insert into detalle_pedido (id_pedido, id_producto, nombre_producto, cantidad, cantidad_lista, precio_unitario, precio_original, descuento_unitario, id_promocion, nombre_promocion, sin_promocion, subtotal, extras_json, en_comanda, fecha_env",
+        "tabla": "detalle_pedido",
+        "repeticiones": 1,
+        "ms_acumulado": 0.275,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "select configuracion.id_configuracion, configuracion.margen_ganancia, configuracion.gastos_fijos, configuracion.mesas_json, configuracion.tolerancia_efectivo, configuracion.fecha_actualizacion from configuracion where configuracion.id_confi",
+        "tabla": "configuracion",
+        "repeticiones": 1,
+        "ms_acumulado": 0.234,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "update detalle_pedido set precio_unitario=?, descuento_unitario=?, nombre_promocion=?, subtotal=? where detalle_pedido.id_detalle_pedido = ?",
+        "tabla": "detalle_pedido",
+        "repeticiones": 1,
+        "ms_acumulado": 0.207,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "insert into configuracion (margen_ganancia, gastos_fijos, mesas_json, tolerancia_efectivo, fecha_actualizacion) values (?, ?, ?, ?, ?)",
+        "tabla": "configuracion",
+        "repeticiones": 1,
+        "ms_acumulado": 0.181,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "update pedido_operaciones set id_detalle_pedido=?, detalle_ids_json=? where pedido_operaciones.id_operacion = ?",
+        "tabla": "pedido_operaciones",
+        "repeticiones": 1,
+        "ms_acumulado": 0.142,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "insert into auditoria (id_usuario, usuario_login_intentado, accion, entidad, entidad_id, detalles_json, origen, fecha_hora, ip, user_agent) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "tabla": "auditoria",
+        "repeticiones": 1,
+        "ms_acumulado": 0.129,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "savepoint sa_savepoint_2",
+        "tabla": "",
+        "repeticiones": 1,
+        "ms_acumulado": 0.085,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "release savepoint sa_savepoint_2",
+        "tabla": "",
+        "repeticiones": 1,
+        "ms_acumulado": 0.077,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      },
+      {
+        "firma": "select extras_venta.id_extra as extras_venta_id_extra, extras_venta.nombre as extras_venta_nombre, extras_venta.unidad as extras_venta_unidad, extras_venta.cantidad as extras_venta_cantidad, extras_venta.costo_unitario as extras_venta_costo",
+        "tabla": "extras_venta",
+        "repeticiones": 1,
+        "ms_acumulado": 0.063,
+        "operacion": "agregar_linea_1",
+        "fase": "total"
+      }
+    ]
+  },
+  "agregar_linea_10": {
+    "operacion": "agregar_linea_10",
+    "stats": {
+      "consultas": 26,
+      "ms_sql_acumulado": 3.304
+    },
+    "top20": [
+      {
+        "firma": "select productos.id_producto as productos_id_producto, productos.nombre as productos_nombre, productos.id_categoria as productos_id_categoria, productos.precio_venta as productos_precio_venta, productos.activo as productos_activo, productos",
+        "tabla": "productos",
+        "repeticiones": 5,
+        "ms_acumulado": 0.771,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "select usuarios.id_usuario as usuarios_id_usuario, usuarios.nombre as usuarios_nombre, usuarios.usuario_login as usuarios_usuario_login, usuarios.hash_password as usuarios_hash_password, usuarios.rol as usuarios_rol, usuarios.modulos_json a",
+        "tabla": "usuarios",
+        "repeticiones": 2,
+        "ms_acumulado": 0.525,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "select promociones.id_promocion as promociones_id_promocion, promociones.nombre as promociones_nombre, promociones.descripcion as promociones_descripcion, promociones.tipo as promociones_tipo, promociones.valor as promociones_valor, promoci",
+        "tabla": "promociones",
+        "repeticiones": 2,
+        "ms_acumulado": 0.245,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "select pedidos.id_pedido, pedidos.numero_mesa, pedidos.para_llevar, pedidos.estado, pedidos.id_cliente, pedidos.id_usuario, pedidos.id_venta, pedidos.fecha_apertura, pedidos.fecha_cierre, clientes_1.id_cliente as id_cliente_1, clientes_1.no",
+        "tabla": "pedidos",
+        "repeticiones": 2,
+        "ms_acumulado": 0.22,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "select recetas.id_producto as recetas_id_producto, recetas.costo_total as recetas_costo_total from recetas where recetas.id_producto in (?) and recetas.activo = ?",
+        "tabla": "recetas",
+        "repeticiones": 2,
+        "ms_acumulado": 0.103,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "select anon_1.pedidos_id_pedido as anon_1_pedidos_id_pedido, anon_1.pedidos_numero_mesa as anon_1_pedidos_numero_mesa, anon_1.pedidos_para_llevar as anon_1_pedidos_para_llevar, anon_1.pedidos_estado as anon_1_pedidos_estado, anon_1.pedidos_",
+        "tabla": "pedidos",
+        "repeticiones": 1,
+        "ms_acumulado": 0.412,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "select detalle_pedido.id_detalle_pedido as detalle_pedido_id_detalle_pedido, detalle_pedido.id_pedido as detalle_pedido_id_pedido, detalle_pedido.id_producto as detalle_pedido_id_producto, detalle_pedido.nombre_producto as detalle_pedido_no",
+        "tabla": "detalle_pedido",
+        "repeticiones": 1,
+        "ms_acumulado": 0.252,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "select pedido_operaciones.id_operacion as pedido_operaciones_id_operacion, pedido_operaciones.operation_id as pedido_operaciones_operation_id, pedido_operaciones.id_pedido as pedido_operaciones_id_pedido, pedido_operaciones.tipo as pedido_o",
+        "tabla": "pedido_operaciones",
+        "repeticiones": 1,
+        "ms_acumulado": 0.164,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "select configuracion.id_configuracion as configuracion_id_configuracion, configuracion.margen_ganancia as configuracion_margen_ganancia, configuracion.gastos_fijos as configuracion_gastos_fijos, configuracion.mesas_json as configuracion_mes",
+        "tabla": "configuracion",
+        "repeticiones": 1,
+        "ms_acumulado": 0.145,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "update pedido_operaciones set id_detalle_pedido=?, detalle_ids_json=? where pedido_operaciones.id_operacion = ?",
+        "tabla": "pedido_operaciones",
+        "repeticiones": 1,
+        "ms_acumulado": 0.079,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "insert into pedido_operaciones (operation_id, id_pedido, tipo, payload_hash, id_detalle_pedido, detalle_ids_json, fecha) values (?, ?, ?, ?, ?, ?, ?)",
+        "tabla": "pedido_operaciones",
+        "repeticiones": 1,
+        "ms_acumulado": 0.068,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "select extras_venta.id_extra as extras_venta_id_extra, extras_venta.nombre as extras_venta_nombre, extras_venta.unidad as extras_venta_unidad, extras_venta.cantidad as extras_venta_cantidad, extras_venta.costo_unitario as extras_venta_costo",
+        "tabla": "extras_venta",
+        "repeticiones": 1,
+        "ms_acumulado": 0.067,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "update detalle_pedido set cantidad=? where detalle_pedido.id_detalle_pedido = ?",
+        "tabla": "detalle_pedido",
+        "repeticiones": 1,
+        "ms_acumulado": 0.06,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "update detalle_pedido set subtotal=? where detalle_pedido.id_detalle_pedido = ?",
+        "tabla": "detalle_pedido",
+        "repeticiones": 1,
+        "ms_acumulado": 0.051,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "select producto_extras.id_extra as producto_extras_id_extra from producto_extras where producto_extras.id_producto = ?",
+        "tabla": "producto_extras",
+        "repeticiones": 1,
+        "ms_acumulado": 0.045,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "savepoint sa_savepoint_1",
+        "tabla": "",
+        "repeticiones": 1,
+        "ms_acumulado": 0.034,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "release savepoint sa_savepoint_1",
+        "tabla": "",
+        "repeticiones": 1,
+        "ms_acumulado": 0.032,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      },
+      {
+        "firma": "select categoria_extras.id_extra as categoria_extras_id_extra from categoria_extras where categoria_extras.id_categoria = ?",
+        "tabla": "categoria_extras",
+        "repeticiones": 1,
+        "ms_acumulado": 0.031,
+        "operacion": "agregar_linea_10",
+        "fase": "total"
+      }
+    ]
+  },
+  "confirmar_pedido": {
+    "operacion": "confirmar_pedido",
+    "stats": {
+      "consultas": 12,
+      "ms_sql_acumulado": 2.437
+    },
+    "top20": [
+      {
+        "firma": "select usuarios.id_usuario as usuarios_id_usuario, usuarios.nombre as usuarios_nombre, usuarios.usuario_login as usuarios_usuario_login, usuarios.hash_password as usuarios_hash_password, usuarios.rol as usuarios_rol, usuarios.modulos_json a",
+        "tabla": "usuarios",
+        "repeticiones": 2,
+        "ms_acumulado": 0.252,
+        "operacion": "confirmar_pedido",
+        "fase": "total"
+      },
+      {
+        "firma": "select anon_1.pedidos_id_pedido as anon_1_pedidos_id_pedido, anon_1.pedidos_numero_mesa as anon_1_pedidos_numero_mesa, anon_1.pedidos_para_llevar as anon_1_pedidos_para_llevar, anon_1.pedidos_estado as anon_1_pedidos_estado, anon_1.pedidos_",
+        "tabla": "pedidos",
+        "repeticiones": 1,
+        "ms_acumulado": 0.935,
+        "operacion": "confirmar_pedido",
+        "fase": "total"
+      },
+      {
+        "firma": "select pedidos.id_pedido as pedidos_id_pedido, pedidos.numero_mesa as pedidos_numero_mesa, pedidos.para_llevar as pedidos_para_llevar, pedidos.estado as pedidos_estado, pedidos.id_cliente as pedidos_id_cliente, pedidos.id_usuario as pedidos",
+        "tabla": "pedidos",
+        "repeticiones": 1,
+        "ms_acumulado": 0.551,
+        "operacion": "confirmar_pedido",
+        "fase": "total"
+      },
+      {
+        "firma": "insert into auditoria (id_usuario, usuario_login_intentado, accion, entidad, entidad_id, detalles_json, origen, fecha_hora, ip, user_agent) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "tabla": "auditoria",
+        "repeticiones": 1,
+        "ms_acumulado": 0.144,
+        "operacion": "confirmar_pedido",
+        "fase": "total"
+      },
+      {
+        "firma": "select promociones.id_promocion as promociones_id_promocion, promociones.nombre as promociones_nombre, promociones.descripcion as promociones_descripcion, promociones.tipo as promociones_tipo, promociones.valor as promociones_valor, promoci",
+        "tabla": "promociones",
+        "repeticiones": 1,
+        "ms_acumulado": 0.13,
+        "operacion": "confirmar_pedido",
+        "fase": "total"
+      },
+      {
+        "firma": "update detalle_pedido set en_comanda=?, fecha_envio_comanda=? where detalle_pedido.id_detalle_pedido = ?",
+        "tabla": "detalle_pedido",
+        "repeticiones": 1,
+        "ms_acumulado": 0.126,
+        "operacion": "confirmar_pedido",
+        "fase": "total"
+      },
+      {
+        "firma": "select pedidos.id_pedido, pedidos.numero_mesa, pedidos.para_llevar, pedidos.estado, pedidos.id_cliente, pedidos.id_usuario, pedidos.id_venta, pedidos.fecha_apertura, pedidos.fecha_cierre, clientes_1.id_cliente as id_cliente_1, clientes_1.no",
+        "tabla": "pedidos",
+        "repeticiones": 1,
+        "ms_acumulado": 0.094,
+        "operacion": "confirmar_pedido",
+        "fase": "total"
+      },
+      {
+        "firma": "select productos.id_producto as productos_id_producto, productos.nombre as productos_nombre, productos.id_categoria as productos_id_categoria, productos.precio_venta as productos_precio_venta, productos.activo as productos_activo, productos",
+        "tabla": "productos",
+        "repeticiones": 1,
+        "ms_acumulado": 0.064,
+        "operacion": "confirmar_pedido",
+        "fase": "total"
+      },
+      {
+        "firma": "savepoint sa_savepoint_1",
+        "tabla": "",
+        "repeticiones": 1,
+        "ms_acumulado": 0.054,
+        "operacion": "confirmar_pedido",
+        "fase": "total"
+      },
+      {
+        "firma": "release savepoint sa_savepoint_1",
+        "tabla": "",
+        "repeticiones": 1,
+        "ms_acumulado": 0.046,
+        "operacion": "confirmar_pedido",
+        "fase": "total"
+      },
+      {
+        "firma": "select recetas.id_producto as recetas_id_producto, recetas.costo_total as recetas_costo_total from recetas where recetas.id_producto in (?) and recetas.activo = ?",
+        "tabla": "recetas",
+        "repeticiones": 1,
+        "ms_acumulado": 0.04,
+        "operacion": "confirmar_pedido",
+        "fase": "total"
+      }
+    ]
+  },
+  "confirmar_10_lineas": {
+    "operacion": "confirmar_10_lineas",
+    "stats": {
+      "consultas": 12,
+      "ms_sql_acumulado": 1.304
+    },
+    "top20": [
+      {
+        "firma": "select usuarios.id_usuario as usuarios_id_usuario, usuarios.nombre as usuarios_nombre, usuarios.usuario_login as usuarios_usuario_login, usuarios.hash_password as usuarios_hash_password, usuarios.rol as usuarios_rol, usuarios.modulos_json a",
+        "tabla": "usuarios",
+        "repeticiones": 2,
+        "ms_acumulado": 0.224,
+        "operacion": "confirmar_10_lineas",
+        "fase": "total"
+      },
+      {
+        "firma": "select anon_1.pedidos_id_pedido as anon_1_pedidos_id_pedido, anon_1.pedidos_numero_mesa as anon_1_pedidos_numero_mesa, anon_1.pedidos_para_llevar as anon_1_pedidos_para_llevar, anon_1.pedidos_estado as anon_1_pedidos_estado, anon_1.pedidos_",
+        "tabla": "pedidos",
+        "repeticiones": 1,
+        "ms_acumulado": 0.401,
+        "operacion": "confirmar_10_lineas",
+        "fase": "total"
+      },
+      {
+        "firma": "select promociones.id_promocion as promociones_id_promocion, promociones.nombre as promociones_nombre, promociones.descripcion as promociones_descripcion, promociones.tipo as promociones_tipo, promociones.valor as promociones_valor, promoci",
+        "tabla": "promociones",
+        "repeticiones": 1,
+        "ms_acumulado": 0.113,
+        "operacion": "confirmar_10_lineas",
+        "fase": "total"
+      },
+      {
+        "firma": "select pedidos.id_pedido, pedidos.numero_mesa, pedidos.para_llevar, pedidos.estado, pedidos.id_cliente, pedidos.id_usuario, pedidos.id_venta, pedidos.fecha_apertura, pedidos.fecha_cierre, clientes_1.id_cliente as id_cliente_1, clientes_1.no",
+        "tabla": "pedidos",
+        "repeticiones": 1,
+        "ms_acumulado": 0.096,
+        "operacion": "confirmar_10_lineas",
+        "fase": "total"
+      },
+      {
+        "firma": "insert into auditoria (id_usuario, usuario_login_intentado, accion, entidad, entidad_id, detalles_json, origen, fecha_hora, ip, user_agent) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "tabla": "auditoria",
+        "repeticiones": 1,
+        "ms_acumulado": 0.091,
+        "operacion": "confirmar_10_lineas",
+        "fase": "total"
+      },
+      {
+        "firma": "update detalle_pedido set en_comanda=?, fecha_envio_comanda=? where detalle_pedido.id_detalle_pedido = ?",
+        "tabla": "detalle_pedido",
+        "repeticiones": 1,
+        "ms_acumulado": 0.084,
+        "operacion": "confirmar_10_lineas",
+        "fase": "total"
+      },
+      {
+        "firma": "select productos.id_producto as productos_id_producto, productos.nombre as productos_nombre, productos.id_categoria as productos_id_categoria, productos.precio_venta as productos_precio_venta, productos.activo as productos_activo, productos",
+        "tabla": "productos",
+        "repeticiones": 1,
+        "ms_acumulado": 0.073,
+        "operacion": "confirmar_10_lineas",
+        "fase": "total"
+      },
+      {
+        "firma": "select pedidos.id_pedido as pedidos_id_pedido, pedidos.numero_mesa as pedidos_numero_mesa, pedidos.para_llevar as pedidos_para_llevar, pedidos.estado as pedidos_estado, pedidos.id_cliente as pedidos_id_cliente, pedidos.id_usuario as pedidos",
+        "tabla": "pedidos",
+        "repeticiones": 1,
+        "ms_acumulado": 0.072,
+        "operacion": "confirmar_10_lineas",
+        "fase": "total"
+      },
+      {
+        "firma": "select recetas.id_producto as recetas_id_producto, recetas.costo_total as recetas_costo_total from recetas where recetas.id_producto in (?) and recetas.activo = ?",
+        "tabla": "recetas",
+        "repeticiones": 1,
+        "ms_acumulado": 0.066,
+        "operacion": "confirmar_10_lineas",
+        "fase": "total"
+      },
+      {
+        "firma": "savepoint sa_savepoint_1",
+        "tabla": "",
+        "repeticiones": 1,
+        "ms_acumulado": 0.054,
+        "operacion": "confirmar_10_lineas",
+        "fase": "total"
+      },
+      {
+        "firma": "release savepoint sa_savepoint_1",
+        "tabla": "",
+        "repeticiones": 1,
+        "ms_acumulado": 0.029,
+        "operacion": "confirmar_10_lineas",
+        "fase": "total"
+      }
+    ]
+  },
+  "marcar_listo": {
+    "operacion": "marcar_listo",
+    "stats": {
+      "consultas": 6,
+      "ms_sql_acumulado": 1.942
+    },
+    "top20": [
+      {
+        "firma": "select detalle_pedido.id_detalle_pedido as detalle_pedido_id_detalle_pedido, detalle_pedido.id_pedido as detalle_pedido_id_pedido, detalle_pedido.id_producto as detalle_pedido_id_producto, detalle_pedido.nombre_producto as detalle_pedido_no",
+        "tabla": "detalle_pedido",
+        "repeticiones": 2,
+        "ms_acumulado": 1.205,
+        "operacion": "marcar_listo",
+        "fase": "total"
+      },
+      {
+        "firma": "select usuarios.id_usuario as usuarios_id_usuario, usuarios.nombre as usuarios_nombre, usuarios.usuario_login as usuarios_usuario_login, usuarios.hash_password as usuarios_hash_password, usuarios.rol as usuarios_rol, usuarios.modulos_json a",
+        "tabla": "usuarios",
+        "repeticiones": 1,
+        "ms_acumulado": 0.239,
+        "operacion": "marcar_listo",
+        "fase": "total"
+      },
+      {
+        "firma": "select pedidos.id_pedido as pedidos_id_pedido, pedidos.numero_mesa as pedidos_numero_mesa, pedidos.para_llevar as pedidos_para_llevar, pedidos.estado as pedidos_estado, pedidos.id_cliente as pedidos_id_cliente, pedidos.id_usuario as pedidos",
+        "tabla": "pedidos",
+        "repeticiones": 1,
+        "ms_acumulado": 0.237,
+        "operacion": "marcar_listo",
+        "fase": "total"
+      },
+      {
+        "firma": "select detalle_pedido.id_pedido as detalle_pedido_id_pedido from detalle_pedido where detalle_pedido.id_detalle_pedido = ? limit ? offset ?",
+        "tabla": "detalle_pedido",
+        "repeticiones": 1,
+        "ms_acumulado": 0.136,
+        "operacion": "marcar_listo",
+        "fase": "total"
+      },
+      {
+        "firma": "update detalle_pedido set cantidad_lista=? where detalle_pedido.id_detalle_pedido = ?",
+        "tabla": "detalle_pedido",
+        "repeticiones": 1,
+        "ms_acumulado": 0.125,
+        "operacion": "marcar_listo",
+        "fase": "total"
+      }
+    ]
+  },
+  "cobrar_1_linea": {
+    "operacion": "cobrar_1_linea",
+    "stats": {
+      "consultas": 94,
+      "ms_sql_acumulado": 15.914
+    },
+    "top20": [
+      {
+        "firma": "select usuarios.id_usuario as usuarios_id_usuario, usuarios.nombre as usuarios_nombre, usuarios.usuario_login as usuarios_usuario_login, usuarios.hash_password as usuarios_hash_password, usuarios.rol as usuarios_rol, usuarios.modulos_json a",
+        "tabla": "usuarios",
+        "repeticiones": 10,
+        "ms_acumulado": 2.224,
+        "operacion": "cobrar_1_linea",
+        "fase": "total"
+      },
+      {
+        "firma": "select productos.id_producto as productos_id_producto, productos.nombre as productos_nombre, productos.id_categoria as productos_id_categoria, productos.precio_venta as productos_precio_venta, productos.activo as productos_activo, productos",
+        "tabla": "productos",
+        "repeticiones": 9,
+        "ms_acumulado": 1.161,
+        "operacion": "cobrar_1_linea",
+        "fase": "total"
+      },
+      {
+        "firma": "select anon_1.pedidos_id_pedido as anon_1_pedidos_id_pedido, anon_1.pedidos_numero_mesa as anon_1_pedidos_numero_mesa, anon_1.pedidos_para_llevar as anon_1_pedidos_para_llevar, anon_1.pedidos_estado as anon_1_pedidos_estado, anon_1.pedidos_",
+        "tabla": "pedidos",
+        "repeticiones": 6,
+        "ms_acumulado": 3.068,
+        "operacion": "cobrar_1_linea",
+        "fase": "total"
+      },
+      {
+        "firma": "select promociones.id_promocion as promociones_id_promocion, promociones.nombre as promociones_nombre, promociones.descripcion as promociones_descripcion, promociones.tipo as promociones_tipo, promociones.valor as promociones_valor, promoci",
+        "tabla": "promociones",
+        "repeticiones": 5,
+        "ms_acumulado": 0.866,
+        "operacion": "cobrar_1_linea",
+        "fase": "total"
+      },
+      {
+        "firma": "select detalle_pedido.id_detalle_pedido as detalle_pedido_id_detalle_pedido, detalle_pedido.id_pedido as detalle_pedido_id_pedido, detalle_pedido.id_producto as detalle_pedido_id_producto, detalle_pedido.nombre_producto as detalle_pedido_no",
+        "tabla": "detalle_pedido",
+        "repeticiones": 5,
+        "ms_acumulado": 0.539,
+        "operacion": "cobrar_1_linea",
+        "fase": "total"
+      },
+      {
+        "firma": "select recetas.id_producto as recetas_id_producto, recetas.costo_total as recetas_costo_total from recetas where recetas.id_producto in (?) and recetas.activo = ?",
+        "tabla": "recetas",
+        "repeticiones": 5,
+        "ms_acumulado": 0.264,
+        "operacion": "cobrar_1_linea",
+        "fase": "total"
+      },
+      {
+        "firma": "select pedidos.id_pedido as pedidos_id_pedido, pedidos.numero_mesa as pedidos_numero_mesa, pedidos.para_llevar as pedidos_para_llevar, pedidos.estado as pedidos_estado, pedidos.id_cliente as pedidos_id_cliente, pedidos.id_usuario as pedidos",
+        "tabla": "pedidos",
+        "repeticiones": 4,
+        "ms_acumulado": 0.571,
+        "operacion": "cobrar_1_linea",
+        "fase": "total"
+      },
+      {
+        "firma": "select configuracion.id_configuracion as configuracion_id_configuracion, configuracion.margen_ganancia as configuracion_margen_ganancia, configuracion.gastos_fijos as configuracion_gastos_fijos, configuracion.mesas_json as configuracion_mes",
+        "tabla": "configuracion",
+        "repeticiones": 3,
+        "ms_acumulado": 0.66,
+        "operacion": "cobrar_1_linea",
+        "fase": "total"
+      },
+      {
+        "firma": "insert into auditoria (id_usuario, usuario_login_intentado, accion, entidad, entidad_id, detalles_json, origen, fecha_hora, ip, user_agent) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "tabla": "auditoria",
+        "repeticiones": 3,
+        "ms_acumulado": 0.341,
+        "operacion": "cobrar_1_linea",
+        "fase": "total"
+      },
+      {
+        "firma": "release savepoint sa_savepoint_1",
+        "tabla": "",
+        "repeticiones": 3,
+        "ms_acumulado": 0.131,
+        "operacion": "cobrar_1_linea",
+        "fase": "total"
+      },
+      {
+        "firma": "savepoint sa_savepoint_1",
+        "tabla": "",
+        "repeticiones": 3,
+        "ms_acumulado": 0.13,
+        "operacion": "cobrar_1_linea",
+        "fase": "total"
+      },
+      {
+        "firma": "select cobro_operaciones.id_operacion as cobro_operaciones_id_operacion, cobro_operaciones.operation_id as cobro_operaciones_operation_id, cobro_operaciones.payload_hash as cobro_operaciones_payload_hash, cobro_operaciones.id_pedido as cobr",
+        "tabla": "cobro_operaciones",
+        "repeticiones": 2,
+        "ms_acumulado": 0.504,
+        "operacion": "cobrar_1_linea",
+        "fase": "total"
+      },
+      {
+        "firma": "select insumos.id_insumo as insumos_id_insumo, insumos.nombre as insumos_nombre, insumos.unidad as insumos_unidad, insumos.stock_actual as insumos_stock_actual, insumos.stock_minimo as insumos_stock_minimo, insumos.costo_unitario as insumos",
+        "tabla": "insumos",
+        "repeticiones": 2,
+        "ms_acumulado": 0.496,
+        "operacion": "cobro",
+        "fase": "inventario_validar"
+      },
+      {
+        "firma": "insert into movimientos_inventario (id_insumo, tipo, cantidad, motivo, referencia, fecha_hora) values (?, ?, ?, ?, ?, ?) returning id_movimiento",
+        "tabla": "movimientos_inventario",
+        "repeticiones": 2,
+        "ms_acumulado": 0.345,
+        "operacion": "cobro",
+        "fase": "puntos_movimientos"
+      },
+      {
+        "firma": "select receta_insumos.id as receta_insumos_id, receta_insumos.id_receta as receta_insumos_id_receta, receta_insumos.id_insumo as receta_insumos_id_insumo, receta_insumos.cantidad as receta_insumos_cantidad from receta_insumos where receta_i",
+        "tabla": "receta_insumos",
+        "repeticiones": 2,
+        "ms_acumulado": 0.241,
+        "operacion": "cobro",
+        "fase": "inventario_validar"
+      },
+      {
+        "firma": "select recetas.id_receta as recetas_id_receta, recetas.id_producto as recetas_id_producto, recetas.nombre as recetas_nombre, recetas.descripcion as recetas_descripcion, recetas.activo as recetas_activo, recetas.costo_total as recetas_costo_",
+        "tabla": "recetas",
+        "repeticiones": 2,
+        "ms_acumulado": 0.228,
+        "operacion": "cobro",
+        "fase": "inventario_validar"
+      },
+      {
+        "firma": "select pedidos.id_pedido, pedidos.numero_mesa, pedidos.para_llevar, pedidos.estado, pedidos.id_cliente, pedidos.id_usuario, pedidos.id_venta, pedidos.fecha_apertura, pedidos.fecha_cierre from pedidos where pedidos.id_pedido = ?",
+        "tabla": "pedidos",
+        "repeticiones": 2,
+        "ms_acumulado": 0.09,
+        "operacion": "cobrar_1_linea",
+        "fase": "total"
+      },
+      {
+        "firma": "select sesiones_caja.id_sesion_caja as sesiones_caja_id_sesion_caja, sesiones_caja.id_usuario as sesiones_caja_id_usuario, sesiones_caja.terminal as sesiones_caja_terminal, sesiones_caja.estado as sesiones_caja_estado, sesiones_caja.fondo_i",
+        "tabla": "sesiones_caja",
+        "repeticiones": 1,
+        "ms_acumulado": 0.489,
+        "operacion": "cobrar_1_linea",
+        "fase": "total"
+      },
+      {
+        "firma": "select activacion_tesoreria.id_activacion as activacion_tesoreria_id_activacion, activacion_tesoreria.fecha_corte as activacion_tesoreria_fecha_corte, activacion_tesoreria.id_usuario as activacion_tesoreria_id_usuario, activacion_tesoreria.",
+        "tabla": "activacion_tesoreria",
+        "repeticiones": 1,
+        "ms_acumulado": 0.47,
+        "operacion": "cobro",
+        "fase": "tesoreria"
+      },
+      {
+        "firma": "insert into venta_pagos (id_venta, metodo, importe_monetario, cantidad_puntos, equivalencia_puntos, referencia, fecha_hora, id_usuario, id_sesion_caja, operation_id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "tabla": "venta_pagos",
+        "repeticiones": 1,
+        "ms_acumulado": 0.409,
+        "operacion": "cobro",
+        "fase": "tesoreria"
+      }
+    ]
+  }
+}

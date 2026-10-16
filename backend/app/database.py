@@ -1090,7 +1090,8 @@ def crear_admin_inicial_si_vacio():
             )
         )
         db.commit()
-        print(f"[LOCAL] Usuario admin creado: {login} / {password}")
+        if os.getenv("LOCAL_SEED_QUIET", "").lower() not in ("1", "true", "yes"):
+            print(f"[LOCAL] Usuario admin creado: {login} / {password}")
     except Exception as exc:
         db.rollback()
         print(f"[WARN] No se pudo crear admin inicial: {exc}")

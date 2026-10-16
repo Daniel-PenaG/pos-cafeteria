@@ -1,0 +1,181 @@
+{
+  "methodology": {
+    "warmup_runs": 3,
+    "samples_per_scenario": 10,
+    "sql_signature_profiler": false,
+    "setup_outside_sql_and_timer": true,
+    "seed": "tests/seed_perf.seed_perf_db(num_ventas=120)",
+    "worker": "backend/scripts/_benchmark_latencia_worker.py",
+    "note": "Solo tiempo/SQL del endpoint medido; prep en setup_fn."
+  },
+  "postgresql": {
+    "engine": "postgresql",
+    "version": "18.3",
+    "major": "18.3"
+  },
+  "database_url_redacted": "postgresql+psycopg2://pos_test@127.0.0.1:5433/pos_bench",
+  "invalid_prior_measurements": {
+    "POST confirmar comanda (10 líneas) sql_p50=582": "Incluía prep de 10 líneas dentro del contador SQL",
+    "POST confirmar comanda (10 líneas) sql_p50=203": "Incluía prep de 10 líneas dentro del contador SQL",
+    "confirmar_10_lineas sql_p50=572": "Medición contaminada (prep + endpoint)",
+    "confirmar_10_lineas sql_p50=413": "Medición contaminada (prep + endpoint)",
+    "cobrar_1_linea sql_p95=173ms baseline": "Prep mezclada con POST en algunas corridas antiguas"
+  },
+  "sqlite_reference": "docs/sql_profile_operaciones.json (TestClient, regresión local)",
+  "baseline": {
+    "commit": "e648e325dea25d033a4c152f2b706a5b0b54c28a",
+    "commit_short": "e648e325dea2",
+    "label": "e648e325 base latencia",
+    "scenarios": [
+      {
+        "escenario": "contexto_producto",
+        "samples": 10,
+        "p50_ms": 33.09,
+        "p95_ms": 35.53,
+        "max_ms": 35.76,
+        "sql_p50": 13.0,
+        "sql_p95": 13.0,
+        "bytes_p50": 736
+      },
+      {
+        "escenario": "agregar_primera_linea",
+        "samples": 10,
+        "p50_ms": 101.43,
+        "p95_ms": 116.22,
+        "max_ms": 123.19,
+        "sql_p50": 24.5,
+        "sql_p95": 30.0,
+        "bytes_p50": 1156
+      },
+      {
+        "escenario": "agregar_decima_linea",
+        "samples": 10,
+        "p50_ms": 126.48,
+        "p95_ms": 147.77,
+        "max_ms": 155.51,
+        "sql_p50": 45.0,
+        "sql_p95": 55.0,
+        "bytes_p50": 1168
+      },
+      {
+        "escenario": "confirmar_10_lineas",
+        "samples": 10,
+        "p50_ms": 244.44,
+        "p95_ms": 307.9,
+        "max_ms": 308.47,
+        "sql_p50": 87.0,
+        "sql_p95": 117.0,
+        "bytes_p50": 7853
+      },
+      {
+        "escenario": "marcar_listo",
+        "samples": 10,
+        "p50_ms": 55.91,
+        "p95_ms": 57.3,
+        "max_ms": 57.45,
+        "sql_p50": 6.0,
+        "sql_p95": 6.0,
+        "bytes_p50": 496
+      },
+      {
+        "escenario": "cobrar_1_linea",
+        "samples": 10,
+        "p50_ms": 135.78,
+        "p95_ms": 662.44,
+        "max_ms": 667.85,
+        "sql_p50": 45.0,
+        "sql_p95": 354.0,
+        "bytes_p50": 542
+      },
+      {
+        "escenario": "cobrar_10_lineas_receta_extras_promo",
+        "samples": 10,
+        "p50_ms": 91.96,
+        "p95_ms": 106.65,
+        "max_ms": 111.59,
+        "sql_p50": 79.0,
+        "sql_p95": 79.0,
+        "bytes_p50": 625
+      }
+    ]
+  },
+  "optimized": {
+    "commit": "e648e325dea25d033a4c152f2b706a5b0b54c28a",
+    "commit_short": "e648e325dea2",
+    "label": "performance/latencia-operativa-pos",
+    "scenarios": [
+      {
+        "escenario": "contexto_producto",
+        "samples": 10,
+        "p50_ms": 9.33,
+        "p95_ms": 10.78,
+        "max_ms": 11.78,
+        "sql_p50": 9.0,
+        "sql_p95": 9.0,
+        "bytes_p50": 736
+      },
+      {
+        "escenario": "agregar_primera_linea",
+        "samples": 10,
+        "p50_ms": 54.67,
+        "p95_ms": 67.17,
+        "max_ms": 69.25,
+        "sql_p50": 17.0,
+        "sql_p95": 26.0,
+        "bytes_p50": 1156
+      },
+      {
+        "escenario": "agregar_decima_linea",
+        "samples": 10,
+        "p50_ms": 51.27,
+        "p95_ms": 53.91,
+        "max_ms": 54.19,
+        "sql_p50": 17.0,
+        "sql_p95": 17.0,
+        "bytes_p50": 1168
+      },
+      {
+        "escenario": "confirmar_10_lineas",
+        "samples": 10,
+        "p50_ms": 21.32,
+        "p95_ms": 57.32,
+        "max_ms": 61.42,
+        "sql_p50": 12.0,
+        "sql_p95": 12.0,
+        "bytes_p50": 7228
+      },
+      {
+        "escenario": "marcar_listo",
+        "samples": 10,
+        "p50_ms": 41.8,
+        "p95_ms": 48.31,
+        "max_ms": 51.77,
+        "sql_p50": 6.0,
+        "sql_p95": 6.0,
+        "bytes_p50": 495
+      },
+      {
+        "escenario": "cobrar_1_linea",
+        "samples": 10,
+        "p50_ms": 17.41,
+        "p95_ms": 19.39,
+        "max_ms": 19.62,
+        "sql_p50": 8.0,
+        "sql_p95": 8.0,
+        "bytes_p50": 188
+      },
+      {
+        "escenario": "cobrar_10_lineas_receta_extras_promo",
+        "samples": 10,
+        "p50_ms": 74.43,
+        "p95_ms": 89.56,
+        "max_ms": 90.08,
+        "sql_p50": 50.0,
+        "sql_p95": 51.0,
+        "bytes_p50": 719
+      }
+    ]
+  },
+  "comparison_valid": true,
+  "comparison_note": "Mismo worker, seed, PG, warmup y muestras en baseline y optimizado. No usar mejoras % de mediciones marcadas en invalid_prior_measurements."
+}

@@ -379,6 +379,22 @@ def _linea_participa_en_ticket(d: DetallePedidoModel) -> bool:
 def _lineas_desde_pedido(db: Session, pedido: PedidoModel) -> list:
     lineas = []
     promo_cache: dict[int, PromocionModel] = {}
+    ids_forzar: set[int] = set()
+    for d in pedido.detalles or []:
+        if not _linea_participa_en_ticket(d):
+            continue
+        modo = modo_promocion_detalle(d)
+        id_promo = d.id_promocion
+        if modo == "SELECCIONADA" and id_promo:
+            ids_forzar.add(id_promo)
+    if ids_forzar:
+        rows = (
+            db.query(PromocionModel)
+            .filter(PromocionModel.id_promocion.in_(ids_forzar))
+            .all()
+        )
+        promo_cache = {p.id_promocion: p for p in rows}
+
     for d in pedido.detalles:
         if not _linea_participa_en_ticket(d):
             continue
@@ -388,13 +404,7 @@ def _lineas_desde_pedido(db: Session, pedido: PedidoModel) -> list:
         sin_promo = modo in ("PRECIO_NORMAL", "LEGACY")
         forzar = modo == "SELECCIONADA" and bool(id_promo)
         if forzar and id_promo:
-            if id_promo not in promo_cache:
-                promo_cache[id_promo] = (
-                    db.query(PromocionModel)
-                    .filter(PromocionModel.id_promocion == id_promo)
-                    .first()
-                )
-            promo = promo_cache[id_promo]
+            promo = promo_cache.get(id_promo)
             if not promo:
                 forzar = False
                 id_promo = None
@@ -640,7 +650,9 @@ def agregar_linea_pedido_con_respuesta(
             op.detalle_ids_json = json.dumps([detalle_id])
         recalc = _recalcular_promociones_sin_commit(db, pedido)
         db.commit()
-        pedido = _reload_pedido(db, pedido)
+        db.refresh(pedido)
+        if pedido.detalles is None or not any(d.id_detalle_pedido == detalle_id for d in pedido.detalles):
+            pedido = _reload_pedido(db, pedido)
         detalle = next(d for d in pedido.detalles if d.id_detalle_pedido == detalle_id)
         return pedido_respuesta(db, pedido, recalc), detalle
     except IntegrityError:
@@ -904,7 +916,7 @@ def cobrar_pedido(
     from app.services.promocion_service import dinero
 
     antes = dinero(sum((_subtotal_guardado(d) for d in detalles_activos), dinero(0)))
-    _recalcular_promociones_sin_commit(db, pedido)
+    recalc_cobro = _recalcular_promociones_sin_commit(db, pedido)
     detalles_activos = [d for d in pedido.detalles if _linea_participa_en_ticket(d)]
     despues = dinero(sum((_subtotal_guardado(d) for d in detalles_activos), dinero(0)))
     if antes != despues and not confirmar_recalculo:
@@ -954,12 +966,18 @@ def cobrar_pedido(
         operation_id=operation_id,
         detalles=detalles_venta,
     )
+    recalc_arg = (
+        recalc_cobro
+        if len(recalc_cobro.get("lineas") or []) == len(detalles_venta)
+        else None
+    )
     return registrar_venta(
         db,
         venta_data,
         sesion_ya_bloqueada=True,
         sesion_id_bloqueada=sesion_id,
         cliente_preparado=(cliente, saldo_visto),
+        recalc_ticket=recalc_arg,
     )
 
 

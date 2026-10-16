@@ -90,6 +90,8 @@ import {
   lineasActivas,
   requiereCancelacionEnviada,
 } from "../utils/lineaPedidoAccion";
+import { appendInventarioAMensajeCobro } from "../utils/cobroAdvertencias";
+import { mergeMesaActivaFromPedido } from "../utils/ventasOperacionSync";
 
 const MESA_PARA_LLEVAR = 99;
 
@@ -232,20 +234,11 @@ export default function Ventas({ modoParaLlevar = false }) {
   const actualizarMesasTrasAgregar = useCallback(
     (pedidoActualizado) => {
       if (modoParaLlevar || !numeroMesa) return;
-      setMesasActivas((prev) => ({
-        ...prev,
-        [numeroMesa]: {
-          ...(prev[numeroMesa] || {}),
-          id_pedido: pedidoActualizado.id_pedido,
-          numero_mesa: numeroMesa,
-          total: pedidoActualizado.total,
-          num_lineas: pedidoActualizado.lineas?.length ?? 0,
-          lineas: pedidoActualizado.lineas,
-        },
-      }));
-      refrescarMesasActivas().catch(console.error);
+      setMesasActivas((prev) =>
+        mergeMesaActivaFromPedido(prev, numeroMesa, pedidoActualizado)
+      );
     },
-    [modoParaLlevar, numeroMesa, refrescarMesasActivas]
+    [modoParaLlevar, numeroMesa]
   );
 
   const agregarLineaConCalculo = useCallback(
@@ -1022,8 +1015,8 @@ export default function Ventas({ modoParaLlevar = false }) {
     }
     try {
       setLoading(true);
-      await confirmarComandaPedido(pedido.id_pedido);
-      await cargarPedidoMesa(numeroMesa, modoParaLlevar);
+      const pedidoActualizado = await confirmarComandaPedido(pedido.id_pedido);
+      aplicarPedidoServidor(pedidoActualizado);
       alert(
         modoParaLlevar
           ? "Pedido enviado a comandera"
@@ -1138,9 +1131,10 @@ export default function Ventas({ modoParaLlevar = false }) {
       if (cobroEfectivo && pagaCon != null && cambio != null) {
         msg += `\n\nPaga con: $${pagaCon.toFixed(2)}\nCambio: $${cambio.toFixed(2)}`;
       }
-      if (res.advertencias_stock?.length) {
-        msg += `\n\n⚠ Avisos de inventario (la venta se completó):\n${res.advertencias_stock.join("\n")}`;
-      }
+      const avisosInv = res.advertencias_inventario?.length
+        ? res.advertencias_inventario
+        : (res.advertencias_stock || []).map((texto) => ({ nombre: texto }));
+      msg = appendInventarioAMensajeCobro(msg, avisosInv);
       if (res.saldo_anterior != null) {
         msg += `\n\nSaldo anterior: ${res.saldo_anterior}`;
         msg += `\nPuntos usados: ${res.puntos_canje || 0}`;

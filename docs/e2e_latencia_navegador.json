@@ -1,0 +1,384 @@
+{
+  "methodology": {
+    "warmup": 2,
+    "runs": 10,
+    "viewport": "1366x768",
+    "productos_seed": {
+      "sin_promo": "E2E Sin Promo",
+      "con_promo": "E2E Con Promo"
+    },
+    "note": "Segmentos medidos sin esperas negativas largas; rama UI con Promise.race ≤800 ms fuera del cronómetro de segmentos compuestos."
+  },
+  "mediciones_invalidadas": [
+    {
+      "flujo": "producto_toque_pedido_actualizado",
+      "commit": "f6b1d8f7789c0cee17ddee9acf7160f80dd44cfa",
+      "p50_ms": 20303,
+      "p95_ms": 20346.4,
+      "max_ms": 20352,
+      "motivo": "La medición incluía un timeout negativo fijo de 20 segundos esperando un modal de promoción que no aparecía."
+    }
+  ],
+  "metricas": {
+    "sin_promocion": {
+      "click_producto_a_contexto": {
+        "samples": 10,
+        "p50_ms": 59,
+        "p95_ms": 67.05,
+        "max_ms": 72,
+        "valores_ms": [
+          61,
+          59,
+          55,
+          61,
+          59,
+          54,
+          60,
+          56,
+          72,
+          56
+        ]
+      },
+      "contexto_a_modal_o_formulario": {
+        "samples": 10,
+        "p50_ms": 17.5,
+        "p95_ms": 21.85,
+        "max_ms": 25,
+        "valores_ms": [
+          18,
+          18,
+          16,
+          17,
+          25,
+          16,
+          18,
+          18,
+          16,
+          17
+        ]
+      },
+      "click_agregar_a_respuesta_post": {
+        "samples": 10,
+        "p50_ms": 329.5,
+        "p95_ms": 339.55,
+        "max_ms": 340,
+        "valores_ms": [
+          339,
+          339,
+          328,
+          327,
+          340,
+          326,
+          336,
+          324,
+          316,
+          331
+        ]
+      },
+      "respuesta_post_a_pedido_actualizado": {
+        "samples": 10,
+        "p50_ms": 14,
+        "p95_ms": 16.1,
+        "max_ms": 17,
+        "valores_ms": [
+          14,
+          14,
+          15,
+          14,
+          14,
+          15,
+          12,
+          14,
+          14,
+          17
+        ]
+      },
+      "flujo_total_sin_promo": {
+        "samples": 10,
+        "p50_ms": 422.5,
+        "p95_ms": 438.85,
+        "max_ms": 442,
+        "valores_ms": [
+          435,
+          433,
+          417,
+          421,
+          442,
+          415,
+          428,
+          414,
+          421,
+          424
+        ]
+      }
+    },
+    "con_promocion": {
+      "click_producto_a_contexto": {
+        "samples": 10,
+        "p50_ms": 55,
+        "p95_ms": 58.65,
+        "max_ms": 60,
+        "valores_ms": [
+          55,
+          60,
+          56,
+          55,
+          55,
+          54,
+          52,
+          57,
+          54,
+          55
+        ]
+      },
+      "contexto_a_modal_o_formulario": {
+        "samples": 10,
+        "p50_ms": 6,
+        "p95_ms": 7,
+        "max_ms": 7,
+        "valores_ms": [
+          6,
+          7,
+          5,
+          5,
+          5,
+          7,
+          7,
+          6,
+          6,
+          5
+        ]
+      },
+      "click_agregar_a_respuesta_post": {
+        "samples": 10,
+        "p50_ms": 73,
+        "p95_ms": 84.85,
+        "max_ms": 88,
+        "valores_ms": [
+          81,
+          72,
+          71,
+          81,
+          79,
+          88,
+          66,
+          70,
+          72,
+          74
+        ]
+      },
+      "respuesta_post_a_pedido_actualizado": {
+        "samples": 10,
+        "p50_ms": 7.5,
+        "p95_ms": 10.1,
+        "max_ms": 11,
+        "valores_ms": [
+          7,
+          9,
+          7,
+          7,
+          11,
+          8,
+          8,
+          7,
+          6,
+          8
+        ]
+      },
+      "flujo_total_con_promo": {
+        "samples": 10,
+        "p50_ms": 704.5,
+        "p95_ms": 729.9,
+        "max_ms": 738,
+        "valores_ms": [
+          689,
+          720,
+          690,
+          700,
+          718,
+          738,
+          709,
+          690,
+          715,
+          695
+        ]
+      }
+    },
+    "otros": {
+      "click_confirmar_a_respuesta_post": {
+        "samples": 10,
+        "p50_ms": 286.5,
+        "p95_ms": 403.1,
+        "max_ms": 404,
+        "valores_ms": [
+          286,
+          397,
+          286,
+          404,
+          274,
+          402,
+          395,
+          287,
+          286,
+          285
+        ]
+      },
+      "confirmar_to_comandera_visible": {
+        "samples": 10,
+        "p50_ms": 1214,
+        "p95_ms": 1321.2,
+        "max_ms": 1323,
+        "valores_ms": [
+          1214,
+          1319,
+          1198,
+          1323,
+          1182,
+          1316,
+          1307,
+          1199,
+          1214,
+          1196
+        ]
+      },
+      "listo_uno_actualizacion_local": {
+        "samples": 10,
+        "p50_ms": 46.5,
+        "p95_ms": 51.75,
+        "max_ms": 54,
+        "valores_ms": [
+          46,
+          40,
+          45,
+          41,
+          54,
+          44,
+          47,
+          49,
+          49,
+          49
+        ]
+      },
+      "click_final_cobrar_a_respuesta_post": {
+        "samples": 10,
+        "p50_ms": 355.5,
+        "p95_ms": 385.8,
+        "max_ms": 393,
+        "valores_ms": [
+          338,
+          346,
+          393,
+          377,
+          360,
+          375,
+          363,
+          345,
+          351,
+          322
+        ]
+      },
+      "cobrar_modal_y_campos_a_respuesta": {
+        "samples": 10,
+        "p50_ms": 446.5,
+        "p95_ms": 481.35,
+        "max_ms": 498,
+        "valores_ms": [
+          429,
+          438,
+          498,
+          457,
+          447,
+          455,
+          461,
+          427,
+          446,
+          415
+        ]
+      },
+      "advertencia_inventario_render_sintetico": {
+        "samples": 10,
+        "p50_ms": 13,
+        "p95_ms": 15.55,
+        "max_ms": 16,
+        "valores_ms": [
+          13,
+          12,
+          14,
+          16,
+          13,
+          15,
+          13,
+          13,
+          11,
+          11
+        ]
+      }
+    }
+  },
+  "metricas_compuestas": {
+    "confirmar_to_comandera_visible": {
+      "descripcion": "Clic Confirmar → POST confirmar → navegación y lista Comandera visible",
+      "samples": 10,
+      "p50_ms": 1214,
+      "p95_ms": 1321.2,
+      "max_ms": 1323,
+      "valores_ms": [
+        1214,
+        1319,
+        1198,
+        1323,
+        1182,
+        1316,
+        1307,
+        1199,
+        1214,
+        1196
+      ]
+    },
+    "cobrar_modal_y_campos_a_respuesta": {
+      "descripcion": "Abrir modal de cobro, rellenar monto y POST /cobrar",
+      "samples": 10,
+      "p50_ms": 446.5,
+      "p95_ms": 481.35,
+      "max_ms": 498,
+      "valores_ms": [
+        429,
+        438,
+        498,
+        457,
+        447,
+        455,
+        461,
+        427,
+        446,
+        415
+      ]
+    }
+  },
+  "prueba_renderizado": {
+    "advertencia_inventario_ui": {
+      "descripcion": "DOM sintético (no flujo real post-cobro)",
+      "samples": 10,
+      "p50_ms": 13,
+      "p95_ms": 15.55,
+      "max_ms": 16,
+      "valores_ms": [
+        13,
+        12,
+        14,
+        16,
+        13,
+        15,
+        13,
+        13,
+        11,
+        11
+      ]
+    }
+  },
+  "comandera_sin_get_pendientes_inmediato": {
+    "muestras": 10,
+    "max_gets_en_800ms_tras_listo": 0,
+    "cumple": true
+  }
+}

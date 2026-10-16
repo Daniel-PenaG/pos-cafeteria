@@ -1,9 +1,6 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
-import Ventas from "./pages/Ventas";
-import MesasActivas from "./pages/MesasActivas";
-import Comandera from "./pages/Comandera";
 import MainLayout from "./layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleRoute from "./components/RoleRoute";
@@ -30,6 +27,9 @@ const CierresDia = lazy(() => import("./pages/CierresDia"));
 const Usuarios = lazy(() => import("./pages/Usuarios"));
 const Auditoria = lazy(() => import("./pages/Auditoria"));
 const Tesoreria = lazy(() => import("./pages/Tesoreria"));
+const Ventas = lazy(() => import("./pages/Ventas"));
+const MesasActivas = lazy(() => import("./pages/MesasActivas"));
+const Comandera = lazy(() => import("./pages/Comandera"));
 
 function HomeRedirect() {
   const rol = useAuthStore((state) => state.user?.rol);
@@ -80,8 +80,8 @@ export default function App() {
             path="recetas"
             element={withRole("/recetas", <LazyPage><Recetas /></LazyPage>)}
           />
-          <Route path="ventas" element={withRole("/ventas", <Ventas />)} />
-          <Route path="mesas-activas" element={withRole("/mesas-activas", <MesasActivas />)} />
+          <Route path="ventas" element={withRole("/ventas", <LazyPage><Ventas /></LazyPage>)} />
+          <Route path="mesas-activas" element={withRole("/mesas-activas", <LazyPage><MesasActivas /></LazyPage>)} />
           <Route
             path="ventas-para-llevar"
             element={withRole("/ventas-para-llevar", <LazyPage><VentasParaLlevar /></LazyPage>)}
@@ -90,7 +90,7 @@ export default function App() {
             path="para-llevar"
             element={withRole("/para-llevar", <LazyPage><ParaLlevar /></LazyPage>)}
           />
-          <Route path="comandera" element={withRole("/comandera", <Comandera />)} />
+          <Route path="comandera" element={withRole("/comandera", <LazyPage><Comandera /></LazyPage>)} />
           <Route path="tesoreria" element={withRole("/tesoreria", <LazyPage><Tesoreria /></LazyPage>)} />
           <Route
             path="extras-venta"

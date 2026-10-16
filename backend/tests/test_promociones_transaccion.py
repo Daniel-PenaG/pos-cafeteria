@@ -84,7 +84,7 @@ def test_fallo_al_crear_detalle_no_persiste_venta(db_session, refs):
 
 
 def test_fallo_inventario_no_persiste_venta_ni_movimiento(db_session, refs):
-    with patch.object(venta_service, "_descontar_stock_receta", side_effect=RuntimeError("fallo inventario")):
+    with patch.object(venta_service, "descontar_stock_venta", side_effect=RuntimeError("fallo inventario")):
         with pytest.raises(RuntimeError, match="fallo inventario"):
             registrar_venta(db_session, _venta_simple(db_session, refs))
 
@@ -147,7 +147,7 @@ def test_reintento_tras_fallo_no_duplica_venta(db_session, refs):
             raise RuntimeError("fallo temporal")
         return None
 
-    with patch.object(venta_service, "_descontar_stock_receta", side_effect=fail_once):
+    with patch.object(venta_service, "descontar_stock_venta", side_effect=fail_once):
         with pytest.raises(RuntimeError):
             registrar_venta(db_session, _venta_simple(db_session, refs))
 
