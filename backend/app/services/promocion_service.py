@@ -20,6 +20,58 @@ from app.exceptions import DatosInvalidosException
 
 TIPOS_TICKET = frozenset({"CANTIDAD_PRECIO", "DESCUENTO_FIJO"})
 
+_CACHE_PROMOS_KEY = "_cache_promos_activas"
+_CACHE_COSTOS_KEY = "_cache_costos_producto"
+
+
+def promociones_activas_cargadas(db: Session) -> List[PromocionModel]:
+    """Una consulta por transacción/sesión de operación para promos activas."""
+    cached = db.info.get(_CACHE_PROMOS_KEY)
+    if cached is not None:
+        return cached
+    cached = (
+        db.query(PromocionModel)
+        .options(
+            joinedload(PromocionModel.productos),
+            joinedload(PromocionModel.categorias),
+        )
+        .filter(PromocionModel.activa == True)
+        .all()
+    )
+    db.info[_CACHE_PROMOS_KEY] = cached
+    return cached
+
+
+def promocion_por_id(db: Session, id_promocion: int) -> PromocionModel | None:
+    for p in promociones_activas_cargadas(db):
+        if int(p.id_promocion) == int(id_promocion):
+            return p
+    return (
+        db.query(PromocionModel)
+        .options(joinedload(PromocionModel.productos), joinedload(PromocionModel.categorias))
+        .filter(PromocionModel.id_promocion == id_promocion)
+        .first()
+    )
+
+
+def costos_productos_batch(db: Session, ids: set[int] | list[int]) -> dict[int, float]:
+    want = {int(i) for i in ids if i}
+    cache: dict[int, float] = db.info.setdefault(_CACHE_COSTOS_KEY, {})
+    faltan = want - set(cache.keys())
+    if faltan:
+        rows = (
+            db.query(RecetaModel.id_producto, RecetaModel.costo_total)
+            .filter(RecetaModel.id_producto.in_(faltan), RecetaModel.activo == True)
+            .all()
+        )
+        vistos = set()
+        for pid, costo in rows:
+            cache[int(pid)] = float(costo or 0)
+            vistos.add(int(pid))
+        for pid in faltan - vistos:
+            cache[pid] = 0.0
+    return {i: cache.get(i, 0.0) for i in want}
+
 
 def es_promo_ticket(promo: PromocionModel) -> bool:
     return promo.tipo in TIPOS_TICKET
@@ -91,14 +143,7 @@ def producto_elegible(promo: PromocionModel, producto: ProductoModel) -> bool:
 
 
 def costo_producto(db: Session, id_producto: int) -> float:
-    receta = (
-        db.query(RecetaModel)
-        .filter(RecetaModel.id_producto == id_producto, RecetaModel.activo == True)
-        .first()
-    )
-    if not receta or receta.costo_total is None:
-        return 0.0
-    return float(receta.costo_total)
+    return costos_productos_batch(db, {int(id_producto)}).get(int(id_producto), 0.0)
 
 
 def aplicar_promo_base(precio_base: float, tipo: str, valor: float, cantidad: float) -> float:
@@ -134,32 +179,21 @@ def es_promo_paquete(promo: PromocionModel) -> bool:
 def listar_promos_ticket_producto(
     db: Session, producto: ProductoModel, ahora: Optional[datetime] = None
 ) -> List[PromocionModel]:
-    promos = (
-        db.query(PromocionModel)
-        .options(joinedload(PromocionModel.productos), joinedload(PromocionModel.categorias))
-        .filter(PromocionModel.activa == True, PromocionModel.tipo.in_(list(TIPOS_TICKET)))
-        .all()
-    )
     return [
-        p for p in promos
-        if promocion_vigente(p, ahora) and producto_elegible(p, producto)
+        p
+        for p in promociones_activas_cargadas(db)
+        if es_promo_ticket(p)
+        and promocion_vigente(p, ahora)
+        and producto_elegible(p, producto)
     ]
 
 
 def listar_aplicables(
     db: Session, producto: ProductoModel, ahora: Optional[datetime] = None
 ) -> List[PromocionModel]:
-    promos = (
-        db.query(PromocionModel)
-        .options(joinedload(PromocionModel.productos), joinedload(PromocionModel.categorias))
-        .filter(PromocionModel.activa == True)
-        .all()
-    )
     resultado = []
-    for p in promos:
-        if es_promo_paquete(p):
-            continue
-        if es_promo_ticket(p):
+    for p in promociones_activas_cargadas(db):
+        if es_promo_paquete(p) or es_promo_ticket(p):
             continue
         if promocion_vigente(p, ahora) and producto_elegible(p, producto):
             resultado.append(p)
@@ -167,21 +201,21 @@ def listar_aplicables(
 
 
 def listar_combos_producto(
-    db: Session, id_producto: int, ahora: Optional[datetime] = None
+    db: Session,
+    id_producto: int,
+    ahora: Optional[datetime] = None,
+    producto: ProductoModel | None = None,
 ) -> List[PromocionModel]:
-    producto = (
-        db.query(ProductoModel).filter(ProductoModel.id_producto == id_producto).first()
-    )
+    if producto is None:
+        producto = (
+            db.query(ProductoModel).filter(ProductoModel.id_producto == id_producto).first()
+        )
     if not producto:
         return []
-    promos = (
-        db.query(PromocionModel)
-        .options(joinedload(PromocionModel.productos))
-        .filter(PromocionModel.activa == True, PromocionModel.tipo.in_(["COMBO", "PRECIO_FIJO"]))
-        .all()
-    )
     resultado = []
-    for p in promos:
+    for p in promociones_activas_cargadas(db):
+        if p.tipo not in ("COMBO", "PRECIO_FIJO"):
+            continue
         if not es_promo_paquete(p):
             continue
         if not promocion_vigente(p, ahora):
@@ -275,8 +309,22 @@ def calcular_combo(
     }
 
 
-def combo_a_dict(promo: PromocionModel, db: Session) -> dict:
-    productos = _productos_combo(db, promo)
+def combo_a_dict(
+    promo: PromocionModel,
+    db: Session,
+    productos_map: dict[int, ProductoModel] | None = None,
+) -> dict:
+    if productos_map is not None:
+        ids = [x.id_producto for x in promo.productos]
+        orden = {pid: i for i, pid in enumerate(ids)}
+        productos = [
+            productos_map[i]
+            for i in ids
+            if i in productos_map and productos_map[i].activo
+        ]
+        productos.sort(key=lambda p: orden.get(p.id_producto, 999))
+    else:
+        productos = _productos_combo(db, promo)
     return {
         "id_promocion": promo.id_promocion,
         "nombre": promo.nombre,
@@ -530,9 +578,13 @@ def calcular_linea(
     id_promocion: Optional[int] = None,
     ahora: Optional[datetime] = None,
     sin_promocion: bool = False,
+    *,
+    costo_unitario: Optional[float] = None,
+    aplicables_pre: Optional[List[PromocionModel]] = None,
+    tickets_pre: Optional[List[PromocionModel]] = None,
 ) -> dict:
     precio_base = float(producto.precio_venta)
-    costo = costo_producto(db, producto.id_producto)
+    costo = float(costo_unitario) if costo_unitario is not None else costo_producto(db, producto.id_producto)
     precio_original_unitario = round(precio_base + precio_extras, 2)
 
     normal = _linea_sin_promocion(
@@ -544,15 +596,7 @@ def calcular_linea(
     promo = None
     calc_ticket = normal
     if id_promocion:
-        promo = (
-            db.query(PromocionModel)
-            .options(
-                joinedload(PromocionModel.productos),
-                joinedload(PromocionModel.categorias),
-            )
-            .filter(PromocionModel.id_promocion == id_promocion)
-            .first()
-        )
+        promo = promocion_por_id(db, id_promocion)
         if not promo:
             raise DatosInvalidosException("Promoción no encontrada")
         if not promocion_vigente(promo, ahora) or es_promo_paquete(promo):
@@ -567,7 +611,11 @@ def calcular_linea(
                 precio_base, costo, precio_original_unitario,
             )
     else:
-        aplicables = listar_aplicables(db, producto, ahora)
+        aplicables = (
+            aplicables_pre
+            if aplicables_pre is not None
+            else listar_aplicables(db, producto, ahora)
+        )
         if aplicables:
             promo = min(
                 aplicables,
@@ -575,10 +623,13 @@ def calcular_linea(
                     precio_base, p.tipo, float(p.valor), cantidad
                 ),
             )
-        tickets = [
-            p for p in listar_promos_ticket_producto(db, producto, ahora)
-            if p.tipo == "CANTIDAD_PRECIO"
-        ]
+        if tickets_pre is not None:
+            tickets = [p for p in tickets_pre if p.tipo == "CANTIDAD_PRECIO"]
+        else:
+            tickets = [
+                p for p in listar_promos_ticket_producto(db, producto, ahora)
+                if p.tipo == "CANTIDAD_PRECIO"
+            ]
         calc_ticket = normal
         if tickets:
             mejor_ticket = min(

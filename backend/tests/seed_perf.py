@@ -13,17 +13,25 @@ from app.models.models import (
     VentaModel,
     DetalleVentaModel,
     PromocionModel,
+    ExtraVentaModel,
+    CategoriaExtraModel,
 )
 from app.constants.roles import ADMIN
 from app.utils.security import hash_password
 from app.utils.timezone_mx import now_utc_naive
 
 
-def seed_perf_db(db, num_ventas: int = 120) -> None:
+def seed_perf_db(
+    db,
+    num_ventas: int = 120,
+    *,
+    admin_login: str = "admintest",
+    admin_password: str = "test1234",
+) -> None:
     admin = UsuarioModel(
         nombre="Admin Test",
-        usuario_login="admintest",
-        hash_password=hash_password("test1234"),
+        usuario_login=admin_login,
+        hash_password=hash_password(admin_password),
         rol=ADMIN,
     )
     db.add(admin)
@@ -63,6 +71,21 @@ def seed_perf_db(db, num_ventas: int = 120) -> None:
             RecetaInsumoModel(id_receta=rec_b.id_receta, id_insumo=insumo_b.id_insumo, cantidad=15),
             RecetaInsumoModel(id_receta=rec_b.id_receta, id_insumo=insumo_a.id_insumo, cantidad=50),
         ]
+    )
+
+    extra_leche = ExtraVentaModel(
+        nombre="Leche extra perf",
+        precio=8,
+        tipo="LECHE",
+        activo=True,
+        cantidad=1,
+        costo_unitario=2,
+        id_insumo_origen=insumo_a.id_insumo,
+    )
+    db.add(extra_leche)
+    db.flush()
+    db.add(
+        CategoriaExtraModel(id_categoria=cat.id_categoria, id_extra=extra_leche.id_extra)
     )
 
     promo = PromocionModel(

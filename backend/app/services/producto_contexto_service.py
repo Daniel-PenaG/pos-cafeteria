@@ -9,9 +9,11 @@ from app.services.extras_venta_service import extras_para_producto
 from app.services.promocion_service import (
     calcular_linea,
     combo_a_dict,
+    costos_productos_batch,
     listar_aplicables,
     listar_combos_producto,
     listar_promos_ticket_producto,
+    promociones_activas_cargadas,
 )
 
 
@@ -46,16 +48,39 @@ def obtener_contexto_producto(db: Session, id_producto: int) -> dict:
     if not producto.activo:
         raise RecursoNoEncontradoException("Producto no activo")
 
+    promociones_activas_cargadas(db)
     extras = extras_para_producto(db, id_producto)
-    paquetes = [combo_a_dict(p, db) for p in listar_combos_producto(db, id_producto)]
+    combos = listar_combos_producto(db, id_producto, producto=producto)
+    ids_relacionados = {int(id_producto)}
+    for combo in combos:
+        ids_relacionados.update(int(x.id_producto) for x in combo.productos)
+    productos_map = {
+        p.id_producto: p
+        for p in db.query(ProductoModel)
+        .filter(ProductoModel.id_producto.in_(ids_relacionados))
+        .all()
+    }
+    costos_productos_batch(db, ids_relacionados)
+    paquetes = [combo_a_dict(p, db, productos_map) for p in combos]
+
     promos_linea = listar_aplicables(db, producto)
     promos_cantidad = [
-        p for p in listar_promos_ticket_producto(db, producto)
-        if p.tipo == "CANTIDAD_PRECIO"
+        p for p in listar_promos_ticket_producto(db, producto) if p.tipo == "CANTIDAD_PRECIO"
     ]
     ya = {p.id_promocion for p in promos_linea}
     promociones = [_promo_a_dict(p) for p in promos_linea + [p for p in promos_cantidad if p.id_promocion not in ya]]
-    calculo_inicial = calcular_linea(db, producto, 1, 0, None)
+
+    costo = costos_productos_batch(db, {int(id_producto)}).get(int(id_producto), 0.0)
+    calculo_inicial = calcular_linea(
+        db,
+        producto,
+        1,
+        0,
+        None,
+        costo_unitario=costo,
+        aplicables_pre=promos_linea,
+        tickets_pre=promos_cantidad,
+    )
 
     return {
         "producto": {

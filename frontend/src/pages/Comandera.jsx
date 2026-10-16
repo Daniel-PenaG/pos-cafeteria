@@ -6,6 +6,12 @@ import PageHeader from "../components/PageHeader";
 import ElapsedTimer from "../components/ElapsedTimer";
 import { formatDuration } from "../utils/formatDuration";
 import { elapsedSecondsUtc, parseUtcDate } from "../utils/parseUtcDate";
+import {
+  aplicarLineaListo,
+  resolveComanderaMutacionError,
+  resolveComanderaMutacionExito,
+  shouldSkipComanderaFetch,
+} from "../utils/comanderaSync.js";
 
 export default function Comandera() {
   const [lineas, setLineas] = useState([]);
@@ -13,23 +19,48 @@ export default function Comandera() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [procesando, setProcesando] = useState(null);
   const procesandoRef = useRef(null);
+  const cargandoRef = useRef(false);
+  const abortRef = useRef(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (forzar = false) => {
+    if (
+      shouldSkipComanderaFetch({
+        cargando: cargandoRef.current,
+        visibilityState: typeof document !== "undefined" ? document.visibilityState : "visible",
+        forzar,
+      })
+    ) {
+      return;
+    }
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    cargandoRef.current = true;
     try {
       setLoading(true);
-      const data = await getComandaPendientes();
-      setLineas(data);
+      const data = await getComandaPendientes({ signal: controller.signal });
+      if (!controller.signal.aborted) setLineas(data);
     } catch (err) {
+      if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") return;
       console.error(err);
     } finally {
-      setLoading(false);
+      cargandoRef.current = false;
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    load();
-    const t = setInterval(load, 8000);
-    return () => clearInterval(t);
+    load(true);
+    const onVis = () => {
+      if (document.visibilityState === "visible") load(true);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const t = setInterval(() => load(false), 8000);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVis);
+      abortRef.current?.abort();
+    };
   }, [load]);
 
   useEffect(() => {
@@ -37,14 +68,20 @@ export default function Comandera() {
     return () => clearInterval(t);
   }, []);
 
-  const conRefreshSiConflicto = async (run) => {
+  const conRefreshSiConflicto = async (run, { refrescarEnExito = false } = {}) => {
     try {
-      await run();
-      await load();
+      const data = await run();
+      const ok = resolveComanderaMutacionExito(data, { refrescarEnExito });
+      if (ok.action === "refresh") {
+        await load(true);
+      } else if (ok.action === "local") {
+        setLineas((prev) => aplicarLineaListo(prev, ok.detalle));
+      }
     } catch (err) {
-      if (err.response?.status === 409) {
+      const fail = resolveComanderaMutacionError(err.response?.status);
+      if (fail.action === "refresh") {
         alert(formatApiError(err, "La comandera cambió. Se actualiza la lista."));
-        await load();
+        await load(true);
         return;
       }
       alert(formatApiError(err, "No se pudo completar la operación"));
@@ -57,11 +94,13 @@ export default function Comandera() {
     procesandoRef.current = key;
     setProcesando(key);
     try {
-      await conRefreshSiConflicto(() =>
-        marcarLineaListo(linea.id_detalle_pedido, 1, {
-          cantidad_actual: linea.cantidad,
-          cantidad_lista_actual: linea.cantidad_lista,
-        })
+      await conRefreshSiConflicto(
+        () =>
+          marcarLineaListo(linea.id_detalle_pedido, 1, {
+            cantidad_actual: linea.cantidad,
+            cantidad_lista_actual: linea.cantidad_lista,
+          }),
+        { refrescarEnExito: false }
       );
     } finally {
       procesandoRef.current = null;
@@ -75,11 +114,13 @@ export default function Comandera() {
     procesandoRef.current = key;
     setProcesando(key);
     try {
-      await conRefreshSiConflicto(() =>
-        marcarLineaListo(linea.id_detalle_pedido, linea.cantidad_pendiente, {
-          cantidad_actual: linea.cantidad,
-          cantidad_lista_actual: linea.cantidad_lista,
-        })
+      await conRefreshSiConflicto(
+        () =>
+          marcarLineaListo(linea.id_detalle_pedido, linea.cantidad_pendiente, {
+            cantidad_actual: linea.cantidad,
+            cantidad_lista_actual: linea.cantidad_lista,
+          }),
+        { refrescarEnExito: false }
       );
     } finally {
       procesandoRef.current = null;
@@ -94,7 +135,7 @@ export default function Comandera() {
     setProcesando(key);
     try {
       await marcarCancelacionVista(idCancelacion);
-      await load();
+      await load(true);
     } catch (err) {
       alert(formatApiError(err, "No se pudo marcar el aviso"));
     } finally {
@@ -140,7 +181,7 @@ export default function Comandera() {
         <button
           type="button"
           className="btn btn--secondary inline-flex items-center gap-2"
-          onClick={load}
+          onClick={() => load(true)}
           disabled={loading}
         >
           <HiOutlineArrowPath className={`size-4 ${loading ? "animate-spin" : ""}`} aria-hidden />

@@ -232,7 +232,8 @@ def test_inventario_extra(db_session, refs):
         .filter(MovimientoInventarioModel.referencia == f"VENTA {resp.id_venta}")
         .all()
     )
-    assert len(movs) == 2
+    # Receta y extra del mismo insumo generan un solo movimiento agregado.
+    assert len(movs) == 1
     stock_despues = float(
         db_session.get(InsumoModel, refs.id_insumo_leche).stock_actual
     )

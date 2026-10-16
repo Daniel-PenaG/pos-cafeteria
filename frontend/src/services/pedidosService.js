@@ -102,8 +102,11 @@ export async function cobrarPedido(idPedido, data) {
   return res.data;
 }
 
-export async function getComandaPendientes() {
-  const res = await api.get("/comandera/pendientes", { headers: getAuthHeader() });
+export async function getComandaPendientes(options = {}) {
+  const res = await api.get("/comandera/pendientes", {
+    headers: getAuthHeader(),
+    signal: options.signal,
+  });
   return res.data;
 }
 

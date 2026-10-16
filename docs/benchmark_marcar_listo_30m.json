@@ -1,0 +1,61 @@
+{
+  "methodology": {
+    "warmup_runs": 3,
+    "samples_per_scenario": 30,
+    "sql_signature_profiler": false,
+    "setup_outside_sql_and_timer": true,
+    "seed": "tests/seed_perf.seed_perf_db(num_ventas=120)",
+    "worker": "backend/scripts/_benchmark_latencia_worker.py",
+    "note": "Solo tiempo/SQL del endpoint medido; prep en setup_fn."
+  },
+  "postgresql": {
+    "engine": "postgresql",
+    "version": "18.3",
+    "major": "18.3"
+  },
+  "database_url_redacted": "postgresql+psycopg2://pos_test@127.0.0.1:5433/pos_bench",
+  "invalid_prior_measurements": {
+    "POST confirmar comanda (10 líneas) sql_p50=582": "Incluía prep de 10 líneas dentro del contador SQL",
+    "POST confirmar comanda (10 líneas) sql_p50=203": "Incluía prep de 10 líneas dentro del contador SQL",
+    "confirmar_10_lineas sql_p50=572": "Medición contaminada (prep + endpoint)",
+    "confirmar_10_lineas sql_p50=413": "Medición contaminada (prep + endpoint)",
+    "cobrar_1_linea sql_p95=173ms baseline": "Prep mezclada con POST en algunas corridas antiguas"
+  },
+  "sqlite_reference": "docs/sql_profile_operaciones.json (TestClient, regresión local)",
+  "baseline": {
+    "commit": "e648e325dea25d033a4c152f2b706a5b0b54c28a",
+    "commit_short": "e648e325dea2",
+    "label": "e648e325 base latencia",
+    "scenarios": [
+      {
+        "escenario": "marcar_listo",
+        "samples": 30,
+        "p50_ms": 23.3,
+        "p95_ms": 25.5,
+        "max_ms": 27.36,
+        "sql_p50": 6.0,
+        "sql_p95": 6.0,
+        "bytes_p50": 494
+      }
+    ]
+  },
+  "optimized": {
+    "commit": "e648e325dea25d033a4c152f2b706a5b0b54c28a",
+    "commit_short": "e648e325dea2",
+    "label": "performance/latencia-operativa-pos",
+    "scenarios": [
+      {
+        "escenario": "marcar_listo",
+        "samples": 30,
+        "p50_ms": 22.9,
+        "p95_ms": 28.04,
+        "max_ms": 29.47,
+        "sql_p50": 6.0,
+        "sql_p95": 6.0,
+        "bytes_p50": 488
+      }
+    ]
+  },
+  "comparison_valid": true,
+  "comparison_note": "Mismo worker, seed, PG, warmup y muestras en baseline y optimizado. No usar mejoras % de mediciones marcadas en invalid_prior_measurements."
+}

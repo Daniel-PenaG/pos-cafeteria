@@ -1,0 +1,49 @@
+{
+  "methodology": {
+    "runs": 5,
+    "viewport": "1366x768",
+    "note": "Tiempos en navegador hasta respuesta HTTP o DOM utilizable; diálogos auto-aceptados."
+  },
+  "flujos": [
+    {
+      "flujo": "producto_toque_pedido_actualizado",
+      "samples": 5,
+      "p50_ms": 20303,
+      "p95_ms": 20346.4,
+      "max_ms": 20352
+    },
+    {
+      "flujo": "confirmar_to_comandera_visible",
+      "samples": 5,
+      "p50_ms": 1565,
+      "p95_ms": 1724.8,
+      "max_ms": 1756
+    },
+    {
+      "flujo": "listo_uno_actualizacion_local",
+      "samples": 5,
+      "p50_ms": 95,
+      "p95_ms": 234.8,
+      "max_ms": 267
+    },
+    {
+      "flujo": "cobrar_respuesta_venta",
+      "samples": 5,
+      "p50_ms": 806,
+      "p95_ms": 1094.2,
+      "max_ms": 1156
+    },
+    {
+      "flujo": "advertencia_inventario_ui_utilizable",
+      "samples": 5,
+      "p50_ms": 19,
+      "p95_ms": 62.6,
+      "max_ms": 70
+    }
+  ],
+  "comandera_sin_get_pendientes_inmediato": {
+    "muestras": 5,
+    "max_gets_en_800ms_tras_listo": 0,
+    "cumple": true
+  }
+}

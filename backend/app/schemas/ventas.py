@@ -71,6 +71,7 @@ class VentaResponse(BaseModel):
     cliente_puntos_saldo: Optional[int] = None
     para_llevar: bool = False
     advertencias_stock: List[str] = []
+    advertencias_inventario: List[dict] = []
 
     class Config:
         from_attributes = True

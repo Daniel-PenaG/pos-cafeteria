@@ -138,9 +138,9 @@ def agregar_linea(
             raise DatosInvalidosException("Mesa inválida para venta para llevar")
     else:
         validar_mesa_operacion(db, numero_mesa, para_llevar=False)
-    existia = buscar_pedido_abierto_mesa(db, numero_mesa, para_llevar=para_llevar)
-    pedido = obtener_pedido_abierto_mesa(db, numero_mesa, uid, para_llevar=para_llevar)
-    if existia is None:
+    pedido = buscar_pedido_abierto_mesa(db, numero_mesa, para_llevar=para_llevar)
+    if pedido is None:
+        pedido = obtener_pedido_abierto_mesa(db, numero_mesa, uid, para_llevar=para_llevar)
         registrar_auditoria(
             db,
             usuario=current,
@@ -342,7 +342,7 @@ def confirmar_comanda(
     )
     db.commit()
     db.refresh(pedido)
-    return pedido_respuesta(db, pedido)
+    return pedido_respuesta_lectura(db, pedido)
 
 
 @router.post("/{id_pedido}/cobrar", response_model=VentaResponse)
