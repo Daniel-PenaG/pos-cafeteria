@@ -10,6 +10,14 @@ import {
   appendInventarioAMensajeCobro,
   buildResumenInventarioCobro,
 } from "../src/utils/cobroAdvertencias.js";
+import {
+  E2E_PRODUCT_SIN_PROMO,
+  expandirCatalogo,
+  esperarAgregarHabilitado,
+  esperarFormularioProducto,
+  isContextoResponse,
+  isPostLineaResponse,
+} from "./perf-e2e-shared.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.resolve(__dirname, "../../docs/screenshots/rendimiento-flujos");
@@ -149,12 +157,6 @@ async function abrirCaja(token) {
   });
 }
 
-async function expandirCatalogo(page, term = "Latte") {
-  const search = page.getByPlaceholder(/Buscar producto/i);
-  await search.waitFor({ state: "visible", timeout: 30000 });
-  await search.fill(term);
-  await page.waitForSelector(".ventas-producto-item", { timeout: 60000 });
-}
 
 async function clickCobrar(page) {
   const btn = page.getByRole("button", { name: /Cerrar cuenta|Cobrar/i });
@@ -191,56 +193,17 @@ async function runFlujosViewport(page, session, token, uid, vpTag) {
   await page.goto(`${BASE}/ventas?mesa=1`, { waitUntil: "domcontentloaded" });
   await catalogWait;
   await page.waitForSelector(".ventas-mesas-bar__actual", { timeout: 30000 });
-  await expandirCatalogo(page);
+  await expandirCatalogo(page, E2E_PRODUCT_SIN_PROMO);
   const prodBtn = page.locator(".ventas-producto-item").first();
   await prodBtn.scrollIntoViewIfNeeded();
-  const postLinea = page.waitForResponse(
-    (r) =>
-      r.url().includes("/pedidos/mesa/") &&
-      r.url().includes("/lineas") &&
-      r.request().method() === "POST" &&
-      r.status() >= 200 &&
-      r.status() < 300,
-    { timeout: 90000 }
-  );
-  const ctxFirst = page.waitForResponse(
-    (r) => r.url().includes("/contexto") && r.status() === 200,
-    { timeout: 60000 }
-  );
+  const postLinea = page.waitForResponse(isPostLineaResponse, { timeout: 90000 });
+  const ctxFirst = page.waitForResponse(isContextoResponse, { timeout: 60000 });
   await prodBtn.click();
   await ctxFirst;
-  const promoHeading = page.getByRole("heading", { name: /Aplicar promoción/i });
-  let hasPromo = false;
-  try {
-    await promoHeading.waitFor({ state: "visible", timeout: 20000 });
-    hasPromo = true;
-  } catch {
-    hasPromo = false;
-  }
-  if (hasPromo) {
-    await page.getByRole("button", { name: /No, precio normal/i }).click();
-    await page.waitForResponse(
-      (r) =>
-        r.url().includes("/promociones/calcular") &&
-        r.request().method() === "POST" &&
-        r.status() === 200,
-      { timeout: 60000 }
-    );
-  }
+  await esperarFormularioProducto(page);
+  await esperarAgregarHabilitado(page);
   const agregarBtn = page.getByRole("button", { name: /Agregar al pedido/i });
-  if (await agregarBtn.isVisible().catch(() => false)) {
-    await page.waitForFunction(
-      () => {
-        const btn = [...document.querySelectorAll("button")].find((b) =>
-          (b.textContent || "").includes("Agregar al pedido")
-        );
-        return btn && !btn.disabled;
-      },
-      null,
-      { timeout: 45000 }
-    );
-    await agregarBtn.click();
-  }
+  await agregarBtn.click();
   const lineRes = await postLinea;
   if (!lineRes.ok()) {
     throw new Error(`Agregar línea falló HTTP ${lineRes.status()}`);
@@ -251,7 +214,7 @@ async function runFlujosViewport(page, session, token, uid, vpTag) {
   // 2 — Producto con extras (modal)
   await page.goto(`${BASE}/ventas?mesa=2`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1000);
-  await expandirCatalogo(page);
+  await expandirCatalogo(page, E2E_PRODUCT_SIN_PROMO);
   const personalizar = page.getByRole("button", { name: /Personalizar/i }).first();
   if (await personalizar.count()) {
     await personalizar.click();

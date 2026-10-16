@@ -13,9 +13,54 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
-from app.models.models import ClienteModel
+from app.models.models import ClienteModel, ProductoModel, PromocionModel, PromocionProductoModel
+from app.services.mesas_service import agregar_mesa
 from app.utils.timezone_mx import now_utc_naive
 from tests.seed_perf import seed_perf_db
+
+E2E_PRODUCT_SIN_PROMO = "E2E Sin Promo"
+E2E_PRODUCT_CON_PROMO = "E2E Con Promo"
+
+
+def _configure_e2e_catalog(db) -> None:
+    """Productos y promoción acotados para medición E2E determinista."""
+    promo = db.query(PromocionModel).filter(PromocionModel.nombre == "2x1 test").first()
+    if not promo:
+        raise RuntimeError("Seed perf: promoción 2x1 test no encontrada")
+    promo.aplica_toda_tienda = False
+    # DESCUENTO_FIJO es promoción de ticket y no abre el modal de línea en ventas.
+    promo.tipo = "PORCENTAJE"
+    promo.valor = 10
+
+    latte = db.query(ProductoModel).filter(ProductoModel.nombre == "Latte").first()
+    americano = db.query(ProductoModel).filter(ProductoModel.nombre == "Americano").first()
+    if not latte or not americano:
+        raise RuntimeError("Seed perf: Latte/Americano no encontrados")
+
+    latte.nombre = E2E_PRODUCT_CON_PROMO
+    americano.nombre = E2E_PRODUCT_SIN_PROMO
+    db.flush()
+
+    db.query(PromocionProductoModel).filter(
+        PromocionProductoModel.id_promocion == promo.id_promocion
+    ).delete()
+    db.add(
+        PromocionProductoModel(
+            id_promocion=promo.id_promocion,
+            id_producto=latte.id_producto,
+        )
+    )
+    from app.services.mesas_service import obtener_mesas as _obtener_mesas
+
+    existentes = set(_obtener_mesas(db))
+    for numero in range(10, 51):
+        if numero in existentes:
+            continue
+        try:
+            agregar_mesa(db, numero)
+            existentes.add(numero)
+        except Exception:
+            pass
 
 PROD_HOST_PATTERNS = re.compile(
     r"(amazonaws|rds\.|neon\.tech|supabase\.co|railway\.app|render\.com|azure|cloud\.google|elephantsql|heroku)",
@@ -61,6 +106,7 @@ def main() -> int:
     db = Session()
     try:
         seed_perf_db(db, num_ventas=30, admin_login=login, admin_password=password)
+        _configure_e2e_catalog(db)
         from app.services.mesas_service import obtener_mesas
 
         obtener_mesas(db)
