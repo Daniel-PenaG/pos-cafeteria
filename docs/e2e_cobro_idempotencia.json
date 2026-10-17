@@ -1,0 +1,20 @@
+{
+  "post_cobro_count": 1,
+  "post_cobro_urls": [
+    "http://127.0.0.1:8131/pedidos/1/cobrar"
+  ],
+  "posts_after_close_modal": 0,
+  "id_venta": 31,
+  "id_pedido": 1,
+  "cobro_http_status": 200,
+  "pedido_mesa_estado": "SIN_PEDIDO",
+  "pagos_sum": 0,
+  "venta_total": 35,
+  "mesa_sin_pedido_activo": true,
+  "single_venta": true,
+  "close_modal_no_extra_post": true,
+  "route_change_no_extra_post": true,
+  "venta_exists": true,
+  "pagos_match_total": true,
+  "double_tap_single_post": true
+}

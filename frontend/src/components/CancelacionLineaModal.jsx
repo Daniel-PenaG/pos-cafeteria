@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { formatApiError } from "../utils/apiError";
+import { toastError } from "../store/toastStore";
 import { cancelarLineaPedido, getMotivosCancelacion } from "../services/pedidosService";
 
 export default function CancelacionLineaModal({
@@ -34,7 +35,7 @@ export default function CancelacionLineaModal({
   const confirmar = async () => {
     if (enviando) return;
     if (motivo === "Otro" && !detalle.trim()) {
-      alert("Indica el detalle del motivo");
+      toastError("Indica el detalle del motivo");
       return;
     }
     setEnviando(true);
@@ -51,7 +52,7 @@ export default function CancelacionLineaModal({
         onOk(null, { stale: true, message: formatApiError(err, "Actualiza el pedido") });
         return;
       }
-      alert(formatApiError(err, "No se pudo cancelar la línea"));
+      toastError(formatApiError(err, "No se pudo cancelar la línea"));
     } finally {
       setEnviando(false);
     }

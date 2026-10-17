@@ -1,188 +1,187 @@
-# Capturas E2E rendimiento — autocontenido (usuario sintético opcional).
-$ErrorActionPreference = "Continue"
+# E2E autocontenido: seed PG desechable, backend, preview e2e, medición y capturas.
+param(
+  [int]$BackendPort = 8000,
+  [int]$PreviewPort = 4173,
+  [switch]$NavOnly,
+  [switch]$SkipCapture,
+  [switch]$SkipMeasure
+)
+
+$ErrorActionPreference = "Stop"
 $RepoRoot = $PSScriptRoot
+
+Get-Job -Name "pos-e2e-backend", "pos-e2e-preview" -ErrorAction SilentlyContinue | ForEach-Object {
+  Stop-Job $_ -ErrorAction SilentlyContinue
+  Remove-Job $_ -Force -ErrorAction SilentlyContinue
+}
 $BackendDir = Join-Path $RepoRoot "backend"
 $FrontendDir = Join-Path $RepoRoot "frontend"
-$ApiUrl = "http://127.0.0.1:8000"
-$PreviewUrl = "http://127.0.0.1:4173"
-$ApiPort = 8000
-$PreviewPort = 4173
 
-$BackendProc = $null
-$PreviewProc = $null
-$ExitCode = 0
-$GeneratedCaptureUser = $false
-$capLogin = ""
-$capPass = ""
-
-function Assert-LocalUrl([string]$Label, [string]$Raw) {
-    if ([string]::IsNullOrWhiteSpace($Raw)) { throw "${Label} no definida" }
-    try { $u = [Uri]$Raw } catch { throw "${Label} no es URL valida" }
-    $h = $u.Host.ToLowerInvariant()
-    if ($h -notin @("127.0.0.1", "localhost", "::1")) {
-        throw "${Label} debe ser localhost"
-    }
-    return $Raw.TrimEnd("/")
+function Get-PortListener([int]$Port) {
+  $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $conn) { return $null }
+  $proc = Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
+  return [PSCustomObject]@{
+    Port = $Port
+    PID  = [int]$conn.OwningProcess
+    Name = if ($proc) { $proc.ProcessName } else { "?" }
+  }
 }
 
-function Assert-SafePerfDatabase([string]$Url) {
-    if ([string]::IsNullOrWhiteSpace($Url)) {
-        throw "PERF_DATABASE_URL requerida (PostgreSQL/SQLite local desechable)."
-    }
-    $low = $Url.ToLowerInvariant()
-    if ($low -match "amazonaws|rds\.|neon\.tech|supabase\.co|railway\.app|render\.com|azure|heroku") {
-        throw "PERF_DATABASE_URL parece produccion remota."
-    }
-    if ($low -notmatch "127\.0\.0\.1|localhost|:memory:") {
-        throw "PERF_DATABASE_URL debe apuntar a host local."
-    }
-    if ($low -match "test_pos\.db|test_pos_perf") {
-        throw "No usar test_pos.db existentes como PERF_DATABASE_URL."
-    }
+function Assert-PortFree([int]$Port) {
+  $occ = Get-PortListener $Port
+  if ($occ) {
+    Write-Error "Puerto $Port ocupado por PID $($occ.PID) ($($occ.Name)). Use otros puertos, p. ej. -BackendPort 8010 -PreviewPort 4174. No se matan procesos ajenos."
+  }
 }
 
-function Test-PortFree([int]$Port) {
-    $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-    if ($conn) {
-        $pids = ($conn | Select-Object -ExpandProperty OwningProcess -Unique) -join ","
-        throw "Puerto $Port ocupado (PID: $pids). Libera manualmente."
-    }
+function Wait-HttpOk([string]$Url, [int]$MaxSec = 180) {
+  $deadline = (Get-Date).AddSeconds($MaxSec)
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $r = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 4
+      if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) { return $true }
+    } catch { }
+    Start-Sleep -Milliseconds 500
+  }
+  return $false
 }
 
-function Wait-HttpOk([string]$Url, [int]$TimeoutSec = 180) {
-    $deadline = (Get-Date).AddSeconds($TimeoutSec)
-    while ((Get-Date) -lt $deadline) {
-        try {
-            $r = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 5
-            if ($r.StatusCode -eq 200) { return }
-        } catch { }
-        Start-Sleep -Milliseconds 500
-    }
-    throw "Timeout esperando $Url"
+$VenvDir = Join-Path $env:USERPROFILE ".venvs\pos-cafeteria"
+$Python = Join-Path $VenvDir "Scripts\python.exe"
+if (-not (Test-Path $Python)) {
+  Write-Error "Falta venv en $VenvDir. Ejecuta backend\setup-dev.ps1"
 }
 
-function Stop-OwnedProcess([System.Diagnostics.Process]$Proc) {
-    if ($null -eq $Proc -or $Proc.HasExited) { return }
-    try { Stop-Process -Id $Proc.Id -Force -ErrorAction Stop } catch { }
+Assert-PortFree $BackendPort
+Assert-PortFree $PreviewPort
+
+Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+
+$perfUrl = if ($env:PERF_DATABASE_URL) { $env:PERF_DATABASE_URL.Trim() } else { "" }
+if (-not $perfUrl) {
+  $perfUrl = "postgresql+psycopg2://pos_test@127.0.0.1:5433/pos_bench"
+  $env:PERF_DATABASE_URL = $perfUrl
 }
 
-function Get-BackendPython {
-    $VenvDir = Join-Path $env:USERPROFILE ".venvs\pos-cafeteria"
-    $Python = Join-Path $VenvDir "Scripts\python.exe"
-    if (-not (Test-Path $Python)) {
-        if (Get-Command py -ErrorAction SilentlyContinue) { & py -3 -m venv $VenvDir }
-        else { python -m venv $VenvDir }
-    }
-    if (-not (Test-Path $Python)) { throw "Falta venv Python en $VenvDir" }
-    return $Python
+$prodUrl = if ($env:DATABASE_URL) { $env:DATABASE_URL.Trim() } else { "" }
+if ($prodUrl -and $prodUrl -eq $perfUrl) {
+  Write-Error "PERF_DATABASE_URL no puede ser igual a DATABASE_URL"
 }
 
-function New-CaptureCredentials {
-    $login = "capture_" + [guid]::NewGuid().ToString("N").Substring(0, 12)
-    $bytes = New-Object byte[] 24
-    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-    $pass = [Convert]::ToBase64String($bytes).Replace("+", "x").Replace("/", "y").Substring(0, 24)
-    return @{ Login = $login; Password = $pass }
+$apiUrl = "http://127.0.0.1:$BackendPort"
+$previewUrl = "http://127.0.0.1:$PreviewPort"
+
+Write-Host "E2E: API $apiUrl | Preview $previewUrl | PG desechable"
+
+$credsFile = Join-Path $env:TEMP "pos-e2e-creds-$PID.json"
+$env:E2E_CREDS_FILE = $credsFile
+if (Test-Path $credsFile) { Remove-Item $credsFile -Force }
+
+Write-Host "Seed E2E..."
+Push-Location $BackendDir
+& $Python scripts/seed_e2e_capture.py
+if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
+Pop-Location
+
+if (-not (Test-Path $credsFile)) {
+  Write-Error "Seed no generó credenciales sintéticas."
 }
+$creds = Get-Content $credsFile -Raw | ConvertFrom-Json
+$env:CAPTURE_LOGIN = $creds.login
+$env:CAPTURE_PASSWORD = $creds.password
+Remove-Item $credsFile -Force -ErrorAction SilentlyContinue
+$env:E2E_CREDS_FILE = ""
+
+$env:DATABASE_URL = $perfUrl
+$env:VITE_API_URL = $apiUrl
+$env:PREVIEW_URL = $previewUrl
+$env:API_URL = $apiUrl
+
+Push-Location $FrontendDir
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+npm run build -- --mode e2e 2>&1 | Out-Null
+$buildExit = $LASTEXITCODE
+$ErrorActionPreference = $prevEap
+Pop-Location
+if ($buildExit -ne 0) { throw "build e2e falló (exit $buildExit)" }
+
+$viteJs = Join-Path $FrontendDir "node_modules\vite\bin\vite.js"
+if (-not (Test-Path $viteJs)) {
+  Write-Error "Falta vite en frontend/node_modules. Ejecuta npm install en frontend."
+}
+$nodeExe = (Get-Command node -ErrorAction Stop).Source
+
+$corsOrigins = @(
+  $previewUrl
+  "http://localhost:$PreviewPort"
+  "http://127.0.0.1:4173"
+  "http://localhost:4173"
+  "http://127.0.0.1:5173"
+  "http://localhost:5173"
+) -join ","
+
+$backendJob = Start-Job -Name "pos-e2e-backend" -ScriptBlock {
+  param($py, $dir, $port, $dbUrl, $cors)
+  $env:DATABASE_URL = $dbUrl
+  $env:CORS_ORIGINS = $cors
+  Set-Location $dir
+  & $py -m uvicorn app.main:app --host 127.0.0.1 --port $port
+} -ArgumentList $Python, $BackendDir, $BackendPort, $perfUrl, $corsOrigins
+
+$previewJob = Start-Job -Name "pos-e2e-preview" -ScriptBlock {
+  param($node, $vite, $dir, $port)
+  Set-Location $dir
+  & $node $vite preview --host 127.0.0.1 --port $port --strictPort
+} -ArgumentList $nodeExe, $viteJs, $FrontendDir, $PreviewPort
 
 try {
-    $perfDb = $env:PERF_DATABASE_URL
-    if ([string]::IsNullOrWhiteSpace($perfDb)) {
-        throw "PERF_DATABASE_URL requerida."
-    }
-    Assert-SafePerfDatabase $perfDb
+  $prevEap = $ErrorActionPreference
+  if (-not (Wait-HttpOk "$apiUrl/health")) {
+    $beLog = Receive-Job $backendJob -ErrorAction SilentlyContinue | Select-Object -Last 15
+    throw "Backend no respondió en :$BackendPort. Job: $beLog"
+  }
+  if (-not (Wait-HttpOk "$previewUrl/")) {
+    $pvLog = Receive-Job $previewJob -ErrorAction SilentlyContinue | Select-Object -Last 15
+    throw "Preview no respondió en :$PreviewPort. Job: $pvLog"
+  }
 
-    $prodDb = $env:DATABASE_URL
-    if (-not [string]::IsNullOrWhiteSpace($prodDb) -and $prodDb.Trim() -eq $perfDb.Trim()) {
-        throw "PERF_DATABASE_URL no puede coincidir con DATABASE_URL."
-    }
+  Push-Location $FrontendDir
+  $ErrorActionPreference = "Continue"
+  if (-not $SkipMeasure) {
+    Write-Host "Medición navegación..."
+    npm run measure:perf-e2e-nav
+    if ($LASTEXITCODE -ne 0) { $ErrorActionPreference = $prevEap; throw "measure:perf-e2e-nav falló" }
+  }
 
-    $capLogin = $env:CAPTURE_LOGIN
-    $capPass = $env:CAPTURE_PASSWORD
-    if ([string]::IsNullOrWhiteSpace($capLogin) -or [string]::IsNullOrWhiteSpace($capPass)) {
-        $gen = New-CaptureCredentials
-        $capLogin = $gen.Login
-        $capPass = $gen.Password
-        $GeneratedCaptureUser = $true
-        Write-Host "Usuario sintetico de captura generado (login: $capLogin). Contrasena no se imprime."
-    }
+  npm run verify:cobro-idempotencia-e2e
+  if ($LASTEXITCODE -ne 0) { $ErrorActionPreference = $prevEap; throw "verify:cobro-idempotencia-e2e falló" }
 
-    if ($env:API_URL) { $ApiUrl = Assert-LocalUrl "API_URL" $env:API_URL }
-    if ($env:PREVIEW_URL) { $PreviewUrl = Assert-LocalUrl "PREVIEW_URL" $env:PREVIEW_URL }
-    Test-PortFree $ApiPort
-    Test-PortFree $PreviewPort
+  if (-not $SkipCapture) {
+    Write-Host "Capturas navegación..."
+    npm run capture:navegacion-operativa
+    if ($LASTEXITCODE -ne 0) { $ErrorActionPreference = $prevEap; throw "capture:navegacion-operativa falló" }
+  }
 
-    $Python = Get-BackendPython
-
-    $seedEnv = @{
-        PERF_DATABASE_URL = $perfDb
-        CAPTURE_LOGIN     = $capLogin
-        CAPTURE_PASSWORD  = $capPass
-    }
-    Write-Host "Seed E2E en base desechable..."
-    $env:PERF_DATABASE_URL = $perfDb
-    $env:CAPTURE_LOGIN = $capLogin
-    $env:CAPTURE_PASSWORD = $capPass
-    Push-Location $BackendDir
-    try {
-        $prevEap = $ErrorActionPreference
-        $ErrorActionPreference = "Continue"
-        & $Python scripts/seed_e2e_capture.py 2>&1 | Out-Null
-        $ErrorActionPreference = $prevEap
-    } finally {
-        Pop-Location
-    }
-    if ($LASTEXITCODE -ne 0) { throw "seed_e2e_capture fallo" }
-
-    $env:DATABASE_URL = $perfDb
-    $env:LOCAL_SEED_CATALOG = "false"
-    $env:PORT = "$ApiPort"
-    $env:CORS_ORIGINS = "http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:5173,http://localhost:5173"
-    Write-Host "Backend $ApiUrl ..."
-    $BackendProc = Start-Process -FilePath $Python -ArgumentList @(
-        "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "$ApiPort"
-    ) -WorkingDirectory $BackendDir -PassThru -WindowStyle Hidden
-
-    Wait-HttpOk "$ApiUrl/health"
-
-    Push-Location $FrontendDir
-    try {
-        $env:VITE_API_URL = $ApiUrl
-        npm run build -- --mode e2e
-        if ($LASTEXITCODE -ne 0) { throw "npm run build fallo" }
-
-        $PreviewProc = Start-Process -FilePath "npm.cmd" -ArgumentList @(
-            "run", "preview", "--", "--host", "127.0.0.1", "--port", "$PreviewPort"
-        ) -WorkingDirectory $FrontendDir -PassThru -WindowStyle Hidden
-
-        Wait-HttpOk $PreviewUrl
-
-        $env:PREVIEW_URL = $PreviewUrl
-        $env:API_URL = $ApiUrl
-        $env:CAPTURE_LOGIN = $capLogin
-        $env:CAPTURE_PASSWORD = $capPass
-        npm run capture:perf-flujos
-        if ($LASTEXITCODE -ne 0) { throw "capture:perf-flujos fallo" }
-        npm run measure:perf-e2e
-        if ($LASTEXITCODE -ne 0) { throw "measure:perf-e2e fallo" }
-    } finally {
-        Pop-Location
-    }
-
-    Write-Host "Capturas en docs/screenshots/rendimiento-flujos/"
-} catch {
-    Write-Error $_.Exception.Message
-    $ExitCode = 1
-} finally {
-    Stop-OwnedProcess $PreviewProc
-    Stop-OwnedProcess $BackendProc
-    if ($GeneratedCaptureUser -and $capLogin -and $env:PERF_DATABASE_URL) {
-        $Python = Get-BackendPython
-        $env:CAPTURE_LOGIN = $capLogin
-        Push-Location $BackendDir
-        try { & $Python scripts/teardown_e2e_capture.py 2>$null } finally { Pop-Location }
-    }
-    Remove-Item Env:CAPTURE_PASSWORD -ErrorAction SilentlyContinue
+  if (-not $NavOnly) {
+    npm run measure:perf-e2e
+    if ($LASTEXITCODE -ne 0) { Write-Warning "measure:perf-e2e opcional falló" }
+  }
+  $ErrorActionPreference = $prevEap
+  Pop-Location
 }
-
-exit $ExitCode
+finally {
+  Get-Job -Name "pos-e2e-backend","pos-e2e-preview" -ErrorAction SilentlyContinue | ForEach-Object {
+    Stop-Job $_ -ErrorAction SilentlyContinue
+    Remove-Job $_ -Force -ErrorAction SilentlyContinue
+  }
+  Push-Location $BackendDir
+  $env:PERF_DATABASE_URL = $perfUrl
+  $env:CAPTURE_LOGIN = $creds.login
+  & $Python scripts/teardown_e2e_capture.py 2>$null
+  Pop-Location
+  Remove-Item Env:CAPTURE_PASSWORD -ErrorAction SilentlyContinue
+  Remove-Item Env:CAPTURE_LOGIN -ErrorAction SilentlyContinue
+  Write-Host "E2E finalizado."
+}

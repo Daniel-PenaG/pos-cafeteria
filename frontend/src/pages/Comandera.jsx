@@ -1,17 +1,29 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { flushSync } from "react-dom";
 import { HiOutlineArrowPath } from "react-icons/hi2";
 import { getComandaPendientes, marcarLineaListo, marcarCancelacionVista } from "../services/pedidosService";
 import { formatApiError } from "../utils/apiError";
+import { toastError } from "../store/toastStore";
 import PageHeader from "../components/PageHeader";
 import ElapsedTimer from "../components/ElapsedTimer";
 import { formatDuration } from "../utils/formatDuration";
 import { elapsedSecondsUtc, parseUtcDate } from "../utils/parseUtcDate";
 import {
-  aplicarLineaListo,
+  applyOptimisticListoPlan,
+  buildOptimisticListoPlan,
+  isStaleListoOp,
+  reconcileListoServerLine,
   resolveComanderaMutacionError,
   resolveComanderaMutacionExito,
+  rollbackOptimisticLinea,
   shouldSkipComanderaFetch,
 } from "../utils/comanderaSync.js";
+
+function markListoE2e(phase) {
+  if (import.meta.env.MODE === "e2e") {
+    window.__posE2e?.markListo?.(phase);
+  }
+}
 
 export default function Comandera() {
   const [lineas, setLineas] = useState([]);
@@ -19,8 +31,19 @@ export default function Comandera() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [procesando, setProcesando] = useState(null);
   const procesandoRef = useRef(null);
+  const [lineSyncIds, setLineSyncIds] = useState(() => new Set());
+  const lineBusyRef = useRef(new Set());
+  const lineOpSeqRef = useRef({});
+  const mountedRef = useRef(true);
   const cargandoRef = useRef(false);
   const abortRef = useRef(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const load = useCallback(async (forzar = false) => {
     if (
@@ -68,65 +91,80 @@ export default function Comandera() {
     return () => clearInterval(t);
   }, []);
 
-  const conRefreshSiConflicto = async (run, { refrescarEnExito = false } = {}) => {
+  const setLineSyncing = useCallback((id, syncing) => {
+    if (syncing) lineBusyRef.current.add(id);
+    else lineBusyRef.current.delete(id);
+    setLineSyncIds((prev) => {
+      const next = new Set(prev);
+      if (syncing) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const ejecutarMarcarListo = async (linea, cantidad) => {
+    const id = linea.id_detalle_pedido;
+    if (lineBusyRef.current.has(id)) return;
+
+    markListoE2e("handler_start");
+    const opId = (lineOpSeqRef.current[id] || 0) + 1;
+    lineOpSeqRef.current[id] = opId;
+
+    const plan = buildOptimisticListoPlan(linea, cantidad);
+    markListoE2e("optimistic_requested");
+    flushSync(() => {
+      setLineas((prev) => applyOptimisticListoPlan(prev, plan));
+      setLineSyncing(id, true);
+    });
+    markListoE2e("visual_local");
+    const listoBtn = document.querySelector(`[data-nav-listo-btn="${id}"]`);
+    if (listoBtn?.textContent?.includes("Sincronizando")) {
+      markListoE2e("dom_syncing_visible");
+    }
+    requestAnimationFrame(() => {
+      markListoE2e("raf_after_paint");
+    });
+
     try {
-      const data = await run();
-      const ok = resolveComanderaMutacionExito(data, { refrescarEnExito });
+      markListoE2e("request_start");
+      const data = await marcarLineaListo(linea.id_detalle_pedido, cantidad, {
+        cantidad_actual: linea.cantidad,
+        cantidad_lista_actual: linea.cantidad_lista,
+      });
+      markListoE2e("response_received");
+      if (!mountedRef.current || isStaleListoOp(opId, lineOpSeqRef.current[id])) {
+        return;
+      }
+      const ok = resolveComanderaMutacionExito(data, { refrescarEnExito: false });
       if (ok.action === "refresh") {
         await load(true);
       } else if (ok.action === "local") {
-        setLineas((prev) => aplicarLineaListo(prev, ok.detalle));
+        setLineas((prev) => reconcileListoServerLine(prev, ok.detalle));
       }
+      markListoE2e("reconcile_done");
     } catch (err) {
+      if (!mountedRef.current || isStaleListoOp(opId, lineOpSeqRef.current[id])) {
+        return;
+      }
       const fail = resolveComanderaMutacionError(err.response?.status);
       if (fail.action === "refresh") {
-        alert(formatApiError(err, "La comandera cambió. Se actualiza la lista."));
+        setLineas((prev) => rollbackOptimisticLinea(prev, plan.rollback));
+        toastError(formatApiError(err, "La comandera cambió. Se actualiza la lista."));
         await load(true);
         return;
       }
-      alert(formatApiError(err, "No se pudo completar la operación"));
+      setLineas((prev) => rollbackOptimisticLinea(prev, plan.rollback));
+      toastError(formatApiError(err, "No se pudo completar la operación"));
+    } finally {
+      if (mountedRef.current && !isStaleListoOp(opId, lineOpSeqRef.current[id])) {
+        setLineSyncing(id, false);
+      }
     }
   };
 
-  const marcar = async (linea) => {
-    const key = `listo-${linea.id_detalle_pedido}`;
-    if (procesandoRef.current) return;
-    procesandoRef.current = key;
-    setProcesando(key);
-    try {
-      await conRefreshSiConflicto(
-        () =>
-          marcarLineaListo(linea.id_detalle_pedido, 1, {
-            cantidad_actual: linea.cantidad,
-            cantidad_lista_actual: linea.cantidad_lista,
-          }),
-        { refrescarEnExito: false }
-      );
-    } finally {
-      procesandoRef.current = null;
-      setProcesando(null);
-    }
-  };
+  const marcar = (linea) => ejecutarMarcarListo(linea, 1);
 
-  const marcarTodo = async (linea) => {
-    const key = `todo-${linea.id_detalle_pedido}`;
-    if (procesandoRef.current) return;
-    procesandoRef.current = key;
-    setProcesando(key);
-    try {
-      await conRefreshSiConflicto(
-        () =>
-          marcarLineaListo(linea.id_detalle_pedido, linea.cantidad_pendiente, {
-            cantidad_actual: linea.cantidad,
-            cantidad_lista_actual: linea.cantidad_lista,
-          }),
-        { refrescarEnExito: false }
-      );
-    } finally {
-      procesandoRef.current = null;
-      setProcesando(null);
-    }
-  };
+  const marcarTodo = (linea) => ejecutarMarcarListo(linea, linea.cantidad_pendiente);
 
   const marcarAvisoVisto = async (idCancelacion) => {
     const key = `visto-${idCancelacion}`;
@@ -137,7 +175,7 @@ export default function Comandera() {
       await marcarCancelacionVista(idCancelacion);
       await load(true);
     } catch (err) {
-      alert(formatApiError(err, "No se pudo marcar el aviso"));
+      toastError(formatApiError(err, "No se pudo marcar el aviso"));
     } finally {
       procesandoRef.current = null;
       setProcesando(null);
@@ -173,7 +211,11 @@ export default function Comandera() {
     Math.max(...items.map((l) => l.segundos_en_preparacion ?? 0), 0);
 
   return (
-    <div className="page comandera-page">
+    <div
+      className="page comandera-page"
+      data-nav-shell="comandera"
+      data-nav-pedidos-ready={lineas.length > 0 || !loading ? "ready" : "pending"}
+    >
       <PageHeader
         title="Comandera"
         subtitle="Cronómetro desde que se confirma el pedido en ventas hasta marcar listo"
@@ -241,8 +283,6 @@ export default function Comandera() {
                 {items.map((l) => {
                   const esAviso = l.tipo === "CANCELACION";
                   const keyVisto = `visto-${l.id_cancelacion}`;
-                  const keyListo = `listo-${l.id_detalle_pedido}`;
-                  const keyTodo = `todo-${l.id_detalle_pedido}`;
                   return (
                   <li
                     key={esAviso ? `cancel-${l.id_cancelacion}` : `linea-${l.id_detalle_pedido}`}
@@ -309,20 +349,21 @@ export default function Comandera() {
                         <>
                       <button
                         type="button"
-                        className="btn btn--success btn--sm"
+                        className="btn btn--success btn--sm comandera-listo-btn"
+                        data-nav-listo-btn={l.id_detalle_pedido}
                         onClick={() => marcar(l)}
-                        disabled={Boolean(procesando)}
+                        disabled={lineSyncIds.has(l.id_detalle_pedido) || Boolean(procesando)}
                       >
-                        {procesando === keyListo ? "Marcando…" : "1 listo"}
+                        {lineSyncIds.has(l.id_detalle_pedido) ? "Sincronizando…" : "1 listo"}
                       </button>
                       {l.cantidad_pendiente > 1 && (
                         <button
                           type="button"
-                          className="btn btn--primary btn--sm"
+                          className="btn btn--primary btn--sm comandera-listo-btn"
                           onClick={() => marcarTodo(l)}
-                          disabled={Boolean(procesando)}
+                          disabled={lineSyncIds.has(l.id_detalle_pedido) || Boolean(procesando)}
                         >
-                          {procesando === keyTodo ? "Marcando…" : "Todo"}
+                          {lineSyncIds.has(l.id_detalle_pedido) ? "Sincronizando…" : "Todo"}
                         </button>
                       )}
                         </>

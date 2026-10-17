@@ -1,5 +1,6 @@
 import axios from "axios";
 import { useAuthStore } from "../store/authStore";
+import { clearOperationalSession } from "../cache/sessionCleanup";
 
 const PRODUCTION_API = "https://pos-cafeteria-api.onrender.com";
 const LOCAL_API = "http://127.0.0.1:8000";
@@ -31,6 +32,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      clearOperationalSession();
       const { logout } = useAuthStore.getState();
       logout();
       if (window.location.pathname !== "/login") {

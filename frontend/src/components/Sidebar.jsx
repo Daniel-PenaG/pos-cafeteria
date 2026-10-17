@@ -4,6 +4,7 @@ import { HiOutlineBuildingStorefront, HiOutlineXMark } from "react-icons/hi2";
 import { useAuthStore } from "../store/authStore";
 import { canAccessRoute, normalizeRole } from "../config/permissions";
 import NavIcon from "./NavIcon";
+import { bindPrefetchHandlers } from "../utils/prefetchRoutes";
 
 const SIDEBAR_ID = "app-sidebar-nav";
 
@@ -109,6 +110,7 @@ export default function Sidebar({ open = false, onClose }) {
               {items.map((item) => (
                 <Link
                   key={item.to}
+                  ref={(el) => bindPrefetchHandlers(el, item.to)}
                   to={item.to}
                   className={
                     location.pathname === item.to

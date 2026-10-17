@@ -1,8 +1,10 @@
 """Seed desechable para capturas E2E (usuario/contraseña desde entorno)."""
 from __future__ import annotations
 
+import json
 import os
 import re
+import secrets
 import sys
 from pathlib import Path
 
@@ -13,7 +15,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
-from app.models.models import ClienteModel, ProductoModel, PromocionModel, PromocionProductoModel
+from app.models.models import (
+    ClienteModel,
+    InsumoModel,
+    ProductoModel,
+    PromocionModel,
+    PromocionProductoModel,
+)
 from app.services.mesas_service import agregar_mesa
 from app.utils.timezone_mx import now_utc_naive
 from tests.seed_perf import seed_perf_db
@@ -62,6 +70,12 @@ def _configure_e2e_catalog(db) -> None:
         except Exception:
             pass
 
+    cafe = db.query(InsumoModel).filter(InsumoModel.nombre == "Cafe").first()
+    if cafe:
+        cafe.stock_actual = 0.001
+        cafe.stock_minimo = 500
+
+
 PROD_HOST_PATTERNS = re.compile(
     r"(amazonaws|rds\.|neon\.tech|supabase\.co|railway\.app|render\.com|azure|cloud\.google|elephantsql|heroku)",
     re.I,
@@ -82,11 +96,21 @@ def _assert_safe_db_url(url: str) -> None:
         raise SystemExit("PERF_DATABASE_URL debe ser local (127.0.0.1/localhost) o :memory:")
 
 
+def _write_creds_file(login: str, password: str) -> None:
+    path = (os.environ.get("E2E_CREDS_FILE") or "").strip()
+    if not path:
+        return
+    Path(path).write_text(json.dumps({"login": login, "password": password}), encoding="utf-8")
+
+
 def main() -> int:
     login = (os.environ.get("CAPTURE_LOGIN") or os.environ.get("E2E_CAPTURE_LOGIN") or "").strip()
     password = (os.environ.get("CAPTURE_PASSWORD") or os.environ.get("E2E_CAPTURE_PASSWORD") or "").strip()
-    if not login or not password:
-        raise SystemExit("CAPTURE_LOGIN y CAPTURE_PASSWORD requeridos para seed E2E")
+    if not login:
+        login = f"capture_{secrets.token_hex(6)}"
+    if not password:
+        password = secrets.token_urlsafe(24)
+    _write_creds_file(login, password)
 
     url = os.environ.get("PERF_DATABASE_URL") or os.environ.get("DATABASE_URL", "")
     prod = (os.environ.get("DATABASE_URL") or "").strip()

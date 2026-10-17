@@ -7,6 +7,10 @@ import RoleRoute from "./components/RoleRoute";
 import PageLoader from "./components/PageLoader";
 import { getDefaultRoute } from "./config/permissions";
 import { useAuthStore } from "./store/authStore";
+import ToastHost from "./components/ToastHost";
+import CobroExitoHost from "./components/CobroExitoHost";
+import { prefetchOperationalRoutesIdle } from "./utils/prefetchRoutes";
+import { useEffect } from "react";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Productos = lazy(() => import("./pages/Productos"));
@@ -46,8 +50,22 @@ function LazyPage({ children }) {
 }
 
 export default function App() {
+  const token = useAuthStore((s) => s.token);
+
+  useEffect(() => {
+    if (token) prefetchOperationalRoutesIdle();
+  }, [token]);
+
+  useEffect(() => {
+    if (import.meta.env.MODE !== "e2e") return undefined;
+    import("./e2e/registerPosE2e.js");
+    return undefined;
+  }, []);
+
   return (
     <BrowserRouter>
+      <ToastHost />
+      <CobroExitoHost />
       <Routes>
         <Route path="/login" element={<Login />} />
 
