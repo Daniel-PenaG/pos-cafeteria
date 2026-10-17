@@ -5,6 +5,7 @@ import { useAuthStore } from "../store/authStore";
 import { useNavigate } from "react-router-dom";
 import { getDefaultRoute } from "../config/permissions";
 import { isNativeApp } from "../services/platformService";
+import { toastError } from "../store/toastStore";
 export default function Login() {
   const [usuario_login, setUsuario] = useState("");
   const [password, setPassword] = useState("");
@@ -40,7 +41,7 @@ export default function Login() {
             ? detail
             : "Credenciales incorrectas. En local usa admin / admin123";
       }
-      alert(msg);
+      toastError(msg);
     } finally {
       setLoading(false);
     }

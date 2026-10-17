@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { clearOperationalSession } from "../cache/sessionCleanup";
 
 const STORAGE_KEY = "pos_cafeteria_auth";
 
@@ -32,11 +33,13 @@ export const useAuthStore = create((set) => ({
   authReady: false,
 
   login: (token, user) => {
+    clearOperationalSession();
     persistAuth(token, user);
     set({ token, user, authReady: true });
   },
 
   logout: () => {
+    clearOperationalSession();
     persistAuth(null, null);
     set({ token: null, user: null, authReady: true });
   },

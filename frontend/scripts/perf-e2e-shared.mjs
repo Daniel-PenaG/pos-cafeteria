@@ -94,3 +94,13 @@ export async function rechazarPromoYCalcular(page) {
   );
   await esperarAgregarHabilitado(page);
 }
+
+/** Sidebar en móvil (<768px) requiere abrir menú antes del enlace. */
+export async function clickSidebarNav(page, labelRegex) {
+  const w = page.viewportSize()?.width ?? 1366;
+  if (w <= 767) {
+    await page.getByRole("button", { name: /Abrir menú/i }).click();
+    await page.locator("#app-sidebar-nav").waitFor({ state: "visible", timeout: 15000 });
+  }
+  await page.locator("#app-sidebar-nav").getByRole("link", { name: labelRegex }).click();
+}

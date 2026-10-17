@@ -1,15 +1,8 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import { getProductos, getCategorias } from "../services/productosService";
-import { getExtraTiposPos } from "../services/extrasVentaService";
+import { getProductoContexto } from "../services/productoContextoService";
 import {
-  getProductoContexto,
-  invalidateProductoContextoCache,
-} from "../services/productoContextoService";
-import {
-  getPedidosActivos,
   getPedidoMesa,
-  getMesasConfig,
   agregarMesa,
   quitarMesa,
   agregarLineaPedido,
@@ -53,8 +46,6 @@ import {
   resolverErrorCobro,
 } from "../utils/puntosPago";
 import { getSavedPrinter } from "../services/printerStorage";
-import { formatDuration } from "../utils/formatDuration";
-
 function segundosEnMesa(fechaApertura) {
   const segundos = Math.floor(
     (Date.now() - new Date(fechaApertura).getTime()) / 1000
@@ -90,8 +81,16 @@ import {
   lineasActivas,
   requiereCancelacionEnviada,
 } from "../utils/lineaPedidoAccion";
-import { appendInventarioAMensajeCobro } from "../utils/cobroAdvertencias";
 import { mergeMesaActivaFromPedido } from "../utils/ventasOperacionSync";
+import { bootstrapVentasShell } from "../services/ventasBootstrap";
+import {
+  fetchMesasActivasCached,
+  invalidateMesasActivas,
+} from "../cache/operationalCaches";
+import { readVentasSession, writeVentasSession } from "../store/ventasNavStore";
+import { toastError, toastInfo, toastSuccess } from "../store/toastStore";
+import { showCobroExitoResumen } from "../store/cobroExitoStore";
+import OperationalConfirmModal from "../components/OperationalConfirmModal";
 
 const MESA_PARA_LLEVAR = 99;
 
@@ -164,8 +163,41 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const [promoConfirm, setPromoConfirm] = useState(null);
   const [calculoInicialModal, setCalculoInicialModal] = useState(null);
+  const [revalidandoShell, setRevalidandoShell] = useState(false);
+  useEffect(() => {
+    if (import.meta.env.MODE !== "e2e") return undefined;
+    const onSwrProbe = () => setRevalidandoShell(true);
+    window.addEventListener("pos:e2e-catalog-swr-probe", onSwrProbe);
+    return () => window.removeEventListener("pos:e2e-catalog-swr-probe", onSwrProbe);
+  }, []);
+  const [recalculoConfirm, setRecalculoConfirm] = useState(null);
+  const [operConfirm, setOperConfirm] = useState(null);
+
+  const askOperConfirm = useCallback(
+    (options) =>
+      new Promise((resolve) => {
+        setOperConfirm({
+          title: options.title || "Confirmar",
+          message: options.message,
+          confirmLabel: options.confirmLabel || "Continuar",
+          cancelLabel: options.cancelLabel || "Cancelar",
+          onConfirm: () => {
+            setOperConfirm(null);
+            resolve(true);
+          },
+          onCancel: () => {
+            setOperConfirm(null);
+            resolve(false);
+          },
+        });
+      }),
+    []
+  );
 
   const calcRequestRef = useRef(0);
+  const pedidoEpochRef = useRef(0);
+  const ventasSnapshotRef = useRef({});
+  const catalogScrollRef = useRef(null);
   const productLockRef = useRef(createProductAddLock());
   const intentStoreRef = useRef(createIntentStore());
   const [agregandoIds, setAgregandoIds] = useState(() => new Set());
@@ -218,14 +250,10 @@ export default function Ventas({ modoParaLlevar = false }) {
     [lineasPedido]
   );
 
-  const refrescarMesasActivas = useCallback(async () => {
+  const refrescarMesasActivas = useCallback(async (force = true) => {
     try {
-      const list = await getPedidosActivos();
-      const map = {};
-      list.forEach((p) => {
-        map[p.numero_mesa] = p;
-      });
-      setMesasActivas(map);
+      const { value } = await fetchMesasActivasCached({ force, allowStale: !force });
+      setMesasActivas(value);
     } catch (err) {
       console.error(err);
     }
@@ -271,6 +299,7 @@ export default function Ventas({ modoParaLlevar = false }) {
           )
         );
         store.completeIntent(fingerprint);
+        pedidoEpochRef.current += 1;
         setPedido(pedidoActualizado);
         setCantidadEdit({});
         actualizarMesasTrasAgregar(pedidoActualizado);
@@ -285,16 +314,6 @@ export default function Ventas({ modoParaLlevar = false }) {
     [numeroMesa, usuario, modoParaLlevar, actualizarMesasTrasAgregar]
   );
 
-  const cargarMesasConfig = async () => {
-    try {
-      const data = await getMesasConfig();
-      setMesasLista(Array.isArray(data.mesas) ? data.mesas : []);
-    } catch (err) {
-      console.error(err);
-      setMesasLista([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    }
-  };
-
   const handleAgregarMesa = async () => {
     try {
       setGestionMesasLoading(true);
@@ -302,7 +321,7 @@ export default function Ventas({ modoParaLlevar = false }) {
       setMesasLista(data.mesas);
     } catch (err) {
       const detail = err.response?.data?.detail;
-      alert(typeof detail === "string" ? detail : "No se pudo agregar la mesa");
+      toastError(typeof detail === "string" ? detail : "No se pudo agregar la mesa");
     } finally {
       setGestionMesasLoading(false);
     }
@@ -312,10 +331,10 @@ export default function Ventas({ modoParaLlevar = false }) {
     e?.stopPropagation();
     const activa = mesasActivas[n];
     if (activa?.num_lineas > 0) {
-      alert(`La mesa ${n} tiene un pedido abierto. Ciérrala antes de quitarla.`);
+      toastError(`La mesa ${n} tiene un pedido abierto. Ciérrala antes de quitarla.`);
       return;
     }
-    if (!window.confirm(`¿Quitar la mesa ${n}?`)) return;
+    if (!(await askOperConfirm({ message: `¿Quitar la mesa ${n}?`, confirmLabel: "Quitar mesa" }))) return;
     try {
       setGestionMesasLoading(true);
       const data = await quitarMesa(n);
@@ -326,7 +345,7 @@ export default function Ventas({ modoParaLlevar = false }) {
       }
     } catch (err) {
       const detail = err.response?.data?.detail;
-      alert(typeof detail === "string" ? detail : "No se pudo quitar la mesa");
+      toastError(typeof detail === "string" ? detail : "No se pudo quitar la mesa");
     } finally {
       setGestionMesasLoading(false);
     }
@@ -334,16 +353,20 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const cargarPedidoMesa = useCallback(async (mesa, paraLlevar = modoParaLlevar) => {
     if (!usuario?.id_usuario) return;
+    const ticket = ++pedidoEpochRef.current;
     try {
       const p = await getPedidoMesa(mesa, usuario.id_usuario, paraLlevar);
+      if (ticket !== pedidoEpochRef.current) return;
       setPedido(p);
       setCantidadEdit({});
       if (!paraLlevar) {
-        refrescarMesasActivas().catch(console.error);
+        refrescarMesasActivas(true).catch(console.error);
       }
     } catch (err) {
       console.error(err);
-      alert(paraLlevar ? "Error al cargar pedido para llevar" : "Error al cargar pedido de la mesa");
+      toastError(
+        paraLlevar ? "Error al cargar pedido para llevar" : "Error al cargar pedido de la mesa"
+      );
     }
   }, [modoParaLlevar, usuario, refrescarMesasActivas]);
 
@@ -353,31 +376,79 @@ export default function Ventas({ modoParaLlevar = false }) {
   }, [cargarPedidoMesa]);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const [prods, cats, tipos] = await Promise.all([
-          getProductos(),
-          getCategorias(),
-          getExtraTiposPos(),
-        ]);
-        const activos = prods.filter((p) => p.activo !== false);
-        setProductos(activos);
-        invalidateProductoContextoCache();
-        setCategorias(
-          [...cats].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
-        );
-        setTiposPosLabels(
-          Object.fromEntries(tipos.map((t) => [t.codigo, t.etiqueta]))
-        );
-      } catch (err) {
-        console.error(err);
-        alert("Error al cargar productos");
+    const uid = usuario?.id_usuario;
+    if (!uid) return undefined;
+
+    const snap = readVentasSession(uid, modoParaLlevar);
+    if (snap) {
+      if (snap.productos?.length) setProductos(snap.productos);
+      if (snap.categorias?.length) setCategorias(snap.categorias);
+      if (snap.tiposPosLabels) setTiposPosLabels(snap.tiposPosLabels);
+      if (snap.mesasLista?.length) setMesasLista(snap.mesasLista);
+      if (snap.mesasActivas) setMesasActivas(snap.mesasActivas);
+      if (!modoParaLlevar && snap.numeroMesa) setNumeroMesa(snap.numeroMesa);
+      if (snap.pedido) setPedido(snap.pedido);
+      if (snap.categoriasAbiertas) setCategoriasAbiertas(snap.categoriasAbiertas);
+      if (snap.busquedaProducto) setBusquedaProducto(snap.busquedaProducto);
+      if (snap.pedido && snap.numeroMesa) {
+        cargarPedidoMesa(snap.numeroMesa, modoParaLlevar).catch(console.error);
       }
+      requestAnimationFrame(() => {
+        if (snap.scrollY && catalogScrollRef.current) {
+          catalogScrollRef.current.scrollTop = snap.scrollY;
+        }
+      });
+    }
+
+    let cancelled = false;
+    (async () => {
+      if (snap?.productos?.length) setRevalidandoShell(true);
+      const { partial, errors } = await bootstrapVentasShell({ force: false });
+      if (cancelled) return;
+      if (partial.revalidating) setRevalidandoShell(true);
+      if (partial.catalog?.value) {
+        setProductos(partial.catalog.value.productos);
+        setCategorias(partial.catalog.value.categorias);
+        setTiposPosLabels(partial.catalog.value.tiposPosLabels);
+      }
+      if (partial.mesasLista?.value) setMesasLista(partial.mesasLista.value);
+      if (partial.mesasActivas?.value) setMesasActivas(partial.mesasActivas.value);
+      if (errors.length && !snap?.productos?.length) {
+        toastError("Error al cargar el catálogo");
+      }
+      setRevalidandoShell(false);
+    })();
+
+    return () => {
+      cancelled = true;
+      writeVentasSession(uid, modoParaLlevar, ventasSnapshotRef.current);
     };
-    load();
-    cargarMesasConfig();
-    refrescarMesasActivas();
-  }, [modoParaLlevar, refrescarMesasActivas]);
+  }, [modoParaLlevar, usuario?.id_usuario, cargarPedidoMesa]);
+
+  useEffect(() => {
+    ventasSnapshotRef.current = {
+      productos,
+      categorias,
+      tiposPosLabels,
+      mesasLista,
+      mesasActivas,
+      numeroMesa,
+      pedido,
+      categoriasAbiertas,
+      busquedaProducto,
+      scrollY: catalogScrollRef.current?.scrollTop ?? 0,
+    };
+  }, [
+    productos,
+    categorias,
+    tiposPosLabels,
+    mesasLista,
+    mesasActivas,
+    numeroMesa,
+    pedido,
+    categoriasAbiertas,
+    busquedaProducto,
+  ]);
 
   useEffect(() => {
     if (!modoParaLlevar || !usuario?.id_usuario) return;
@@ -488,7 +559,7 @@ export default function Ventas({ modoParaLlevar = false }) {
   const resolverQrCobro = async (codigoRaw) => {
     const c = parseCodigoFidelidad(codigoRaw);
     if (!c) {
-      alert("Código QR no válido. Debe ser CAFE- seguido de 6 caracteres.");
+      toastError("Código QR no válido. Debe ser CAFE- seguido de 6 caracteres.");
       return;
     }
     try {
@@ -497,7 +568,7 @@ export default function Ventas({ modoParaLlevar = false }) {
       setQrCobro("");
       setShowQrScanner(false);
     } catch (err) {
-      alert(err.response?.data?.detail || "Cliente no encontrado");
+      toastError(err.response?.data?.detail || "Cliente no encontrado");
       setQrCobro("");
     }
   };
@@ -511,7 +582,7 @@ export default function Ventas({ modoParaLlevar = false }) {
       setNuevoTelefono("");
       setClienteQrRecienCreado(c);
     } catch (err) {
-      alert(err.response?.data?.detail || "Error al registrar cliente");
+      toastError(err.response?.data?.detail || "Error al registrar cliente");
     }
   };
 
@@ -549,7 +620,7 @@ export default function Ventas({ modoParaLlevar = false }) {
   const handleReimprimirPrecuenta = async () => {
     const printResult = await imprimirPrecuenta();
     if (!printResult.skipped && !printResult.ok) {
-      alert(`Precuenta: ${printResult.message || "no se pudo imprimir"}`);
+      toastError(`Precuenta: ${printResult.message || "no se pudo imprimir"}`);
     }
   };
 
@@ -559,14 +630,16 @@ export default function Ventas({ modoParaLlevar = false }) {
 
     if (lineasPendientesConfirmar.length > 0) {
       if (modoParaLlevar) {
-        const enviar = window.confirm(
-          `Hay ${lineasPendientesConfirmar.length} producto(s) sin enviar a comandera.\n\n¿Enviar a comandera ahora?`
-        );
+        const enviar = await askOperConfirm({
+          title: "Enviar a comandera",
+          message: `Hay ${lineasPendientesConfirmar.length} producto(s) sin enviar a comandera.\n\n¿Enviar a comandera ahora?`,
+          confirmLabel: "Enviar a comandera",
+        });
         if (!enviar) return;
         const ok = await confirmarPedidoComanda();
         if (!ok) return;
       } else {
-        alert("Confirma el pedido en comanda antes de cerrar la cuenta.");
+        toastInfo("Confirma el pedido en comanda antes de cerrar la cuenta.");
         return;
       }
     }
@@ -580,7 +653,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     if (canUseBluetoothPrinter()) {
       const printResult = await imprimirPrecuenta();
       if (!printResult.skipped && !printResult.ok) {
-        alert(`Precuenta: ${printResult.message || "no se pudo imprimir"}`);
+        toastError(`Precuenta: ${printResult.message || "no se pudo imprimir"}`);
       }
     }
 
@@ -661,7 +734,7 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const abrirModalProducto = async (producto, opts = {}) => {
     if (!numeroMesa) {
-      alert(modoParaLlevar ? "Espera a que cargue el pedido" : "Primero selecciona el número de mesa");
+      toastError(modoParaLlevar ? "Espera a que cargue el pedido" : "Primero selecciona el número de mesa");
       return;
     }
     setProductoModal(producto);
@@ -685,7 +758,7 @@ export default function Ventas({ modoParaLlevar = false }) {
       }
     } catch (err) {
       console.error(err);
-      alert("Error al cargar opciones del producto");
+      toastError("Error al cargar opciones del producto");
       setProductoModal(null);
     } finally {
       setCargandoExtras(false);
@@ -700,7 +773,7 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const handleProductoClick = async (producto) => {
     if (!numeroMesa) {
-      alert(modoParaLlevar ? "Espera a que cargue el pedido" : "Primero selecciona el número de mesa");
+      toastError(modoParaLlevar ? "Espera a que cargue el pedido" : "Primero selecciona el número de mesa");
       return;
     }
     if (!usuario?.id_usuario) return;
@@ -735,7 +808,7 @@ export default function Ventas({ modoParaLlevar = false }) {
         try {
           await agregarLineaConCalculo(producto, ctx.calculo_inicial);
         } catch (err) {
-          alert(formatApiError(err, "Error al agregar al pedido"));
+          toastError(formatApiError(err, "Error al agregar al pedido"));
         }
         return;
       }
@@ -753,7 +826,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     } catch (err) {
       if (err?.code === "ERR_CANCELED" || ac.signal.aborted) return;
       console.error("Contexto producto:", err.response?.status, err.response?.data?.detail);
-      alert(formatApiError(err, "Error al cargar opciones del producto"));
+      toastError(formatApiError(err, "Error al cargar opciones del producto"));
     } finally {
       productLockRef.current.end(producto.id_producto);
       setAgregandoIds((prev) => {
@@ -809,7 +882,7 @@ export default function Ventas({ modoParaLlevar = false }) {
         if (!shouldKeepPendingKey(err)) {
           store.completeIntent(fingerprint);
         }
-        alert(formatApiError(err, "Error al agregar combo"));
+        toastError(formatApiError(err, "Error al agregar combo"));
         abrirModalProducto(producto, { promoModo: "none" });
       } finally {
         setGuardandoLinea(false);
@@ -847,11 +920,11 @@ export default function Ventas({ modoParaLlevar = false }) {
     if (guardandoLinea) return;
     const cant = parseInt(cantidadModal, 10);
     if (!cantidadModal || isNaN(cant) || cant < 1) {
-      alert("Indica una cantidad mayor a 0");
+      toastError("Indica una cantidad mayor a 0");
       return;
     }
     if (!calculoPromo.margen_ok) {
-      alert(calculoPromo.mensaje || "La promoción no cumple el margen mínimo");
+      toastError(calculoPromo.mensaje || "La promoción no cumple el margen mínimo");
       return;
     }
 
@@ -865,7 +938,7 @@ export default function Ventas({ modoParaLlevar = false }) {
         comentarioModal
       );
     } catch (err) {
-      alert(formatApiError(err, "Error al agregar al pedido"));
+      toastError(formatApiError(err, "Error al agregar al pedido"));
       return;
     } finally {
       setGuardandoLinea(false);
@@ -902,11 +975,11 @@ export default function Ventas({ modoParaLlevar = false }) {
       return true;
     } catch (err) {
       if (debeRefrescarPedidoPorConflicto(err) && numeroMesa) {
-        alert(formatApiError(err, "Actualiza el pedido"));
+        toastError(formatApiError(err, "Actualiza el pedido"));
         await cargarPedidoMesa(numeroMesa, modoParaLlevar);
         return false;
       }
-      alert(formatApiError(err, "Error al actualizar cantidad"));
+      toastError(formatApiError(err, "Error al actualizar cantidad"));
       return false;
     }
   };
@@ -932,7 +1005,7 @@ export default function Ventas({ modoParaLlevar = false }) {
 
     const cant = parseInt(String(raw).trim(), 10);
     if (isNaN(cant) || cant < 1) {
-      alert("La cantidad debe ser un número mayor a 0");
+      toastError("La cantidad debe ser un número mayor a 0");
       return;
     }
 
@@ -954,12 +1027,13 @@ export default function Ventas({ modoParaLlevar = false }) {
       await actualizarLineaPedido(idDetalle, { comentario: nuevo });
       await cargarPedidoMesa(numeroMesa, modoParaLlevar);
     } catch (err) {
-      alert(formatApiError(err, "Error al actualizar comentario"));
+      toastError(formatApiError(err, "Error al actualizar comentario"));
     }
   };
 
   const aplicarPedidoServidor = (pedidoActualizado) => {
     if (!pedidoActualizado) return;
+    pedidoEpochRef.current += 1;
     setPedido(pedidoActualizado);
     setCantidadEdit({});
   };
@@ -971,7 +1045,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     if (accion === "ninguna") return;
     if (accion === "cancelar_enviada") {
       if (!canCancelarProductoEnComanda(usuario)) {
-        alert("No tienes permiso para cancelar productos enviados.");
+        toastError("No tienes permiso para cancelar productos enviados.");
         return;
       }
       setLineaCancelar(linea);
@@ -983,11 +1057,11 @@ export default function Ventas({ modoParaLlevar = false }) {
       await cargarPedidoMesa(numeroMesa, modoParaLlevar);
     } catch (err) {
       if (debeRefrescarPedidoPorConflicto(err)) {
-        alert(formatApiError(err, "Actualiza el pedido"));
+        toastError(formatApiError(err, "Actualiza el pedido"));
         await cargarPedidoMesa(numeroMesa, modoParaLlevar);
         return;
       }
-      alert(formatApiError(err, "Error al eliminar línea"));
+      toastError(formatApiError(err, "Error al eliminar línea"));
     } finally {
       setQuitandoId(null);
     }
@@ -996,7 +1070,7 @@ export default function Ventas({ modoParaLlevar = false }) {
   const onCancelacionOk = async (pedidoActualizado, meta) => {
     setLineaCancelar(null);
     if (meta?.stale) {
-      alert(meta.message);
+      toastInfo(meta.message);
       await cargarPedidoMesa(numeroMesa, modoParaLlevar);
       return;
     }
@@ -1010,21 +1084,22 @@ export default function Ventas({ modoParaLlevar = false }) {
   const confirmarPedidoComanda = async () => {
     if (!pedido?.id_pedido) return false;
     if (lineasPendientesConfirmar.length === 0) {
-      alert("No hay productos pendientes de confirmar");
+      toastError("No hay productos pendientes de confirmar");
       return false;
     }
     try {
       setLoading(true);
       const pedidoActualizado = await confirmarComandaPedido(pedido.id_pedido);
       aplicarPedidoServidor(pedidoActualizado);
-      alert(
-        modoParaLlevar
-          ? "Pedido enviado a comandera"
-          : "Pedido confirmado y enviado a comanda"
+      invalidateMesasActivas();
+      refrescarMesasActivas(true).catch(console.error);
+      toastSuccess(
+        modoParaLlevar ? "Pedido enviado a comandera" : "Pedido confirmado y enviado a comanda",
+        { dedupeKey: "confirmar-comanda-ok" }
       );
       return true;
     } catch (err) {
-      alert(formatApiError(err, "Error al confirmar pedido"));
+      toastError(formatApiError(err, "Error al confirmar pedido"));
       return false;
     } finally {
       setLoading(false);
@@ -1033,15 +1108,15 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const iniciarConfirmacionCobro = (conCliente) => {
     if (canjeCobro.bloquea) {
-      alert(canjeCobro.error);
+      toastError(canjeCobro.error);
       return;
     }
     if (!conCliente && canjeCobro.puntos > 0) {
-      alert("Selecciona el cliente para usar puntos");
+      toastError("Selecciona el cliente para usar puntos");
       return;
     }
     if (cobroEfectivoInvalido) {
-      alert(`Indica cuánto paga el cliente (mínimo $${aCubrir.toFixed(2)})`);
+      toastError(`Indica cuánto paga el cliente (mínimo $${aCubrir.toFixed(2)})`);
       return;
     }
     if (modoParaLlevar && canUseBluetoothPrinter()) {
@@ -1057,15 +1132,15 @@ export default function Ventas({ modoParaLlevar = false }) {
     const usaCliente = Boolean(conCliente) && !desasociarCliente;
 
     if (!desasociarCliente && canjeCobro.bloquea) {
-      alert(canjeCobro.error);
+      toastError(canjeCobro.error);
       return;
     }
     if (!usaCliente && !desasociarCliente && canjeCobro.puntos > 0) {
-      alert("Selecciona el cliente para usar puntos");
+      toastError("Selecciona el cliente para usar puntos");
       return;
     }
     if (cobroEfectivoInvalido) {
-      alert(`Indica cuánto paga el cliente (mínimo $${aCubrir.toFixed(2)})`);
+      toastError(`Indica cuánto paga el cliente (mínimo $${aCubrir.toFixed(2)})`);
       return;
     }
 
@@ -1119,51 +1194,47 @@ export default function Ventas({ modoParaLlevar = false }) {
         });
       }
 
-      let msg = modoParaLlevar
-        ? `Venta para llevar — Folio: ${res.id_venta}\nTotal: $${Number(res.total).toFixed(2)}`
-        : `Cuenta cerrada. Mesa ${res.numero_mesa} — Folio: ${res.id_venta}\nTotal: $${Number(res.total).toFixed(2)}`;
-      if (!modoParaLlevar && pedidoParaTicket?.fecha_apertura) {
-        const segundos = segundosEnMesa(pedidoParaTicket.fecha_apertura);
-        if (segundos != null) {
-          msg += `\n\nTiempo en mesa: ${formatDuration(segundos)}`;
-        }
-      }
-      if (cobroEfectivo && pagaCon != null && cambio != null) {
-        msg += `\n\nPaga con: $${pagaCon.toFixed(2)}\nCambio: $${cambio.toFixed(2)}`;
-      }
       const avisosInv = res.advertencias_inventario?.length
         ? res.advertencias_inventario
         : (res.advertencias_stock || []).map((texto) => ({ nombre: texto }));
-      msg = appendInventarioAMensajeCobro(msg, avisosInv);
-      if (res.saldo_anterior != null) {
-        msg += `\n\nSaldo anterior: ${res.saldo_anterior}`;
-        msg += `\nPuntos usados: ${res.puntos_canje || 0}`;
-        msg += `\nPuntos generados: ${res.puntos_generados || 0}`;
-        msg += `\nSaldo final: ${res.saldo_final}`;
-      }
+      let printHint = null;
       if (!printResult.skipped && !printResult.ok) {
-        msg += `\n\n⚠ Impresión: ${printResult.message}`;
+        printHint = `⚠ Impresión: ${printResult.message}`;
       } else if (!printResult.skipped && printResult.ok) {
-        msg += "\n\nTicket impreso.";
+        printHint = "Ticket impreso.";
       }
-      alert(msg);
       cerrarCobroModal();
       setShowImprimirTicketModal(false);
       setCobroPendiente(null);
+      pedidoEpochRef.current += 1;
+      invalidateMesasActivas();
+      const mesaCobradaRef = numeroMesa;
       if (modoParaLlevar) {
         setPedido(null);
         await cargarPedidoMesa(MESA_PARA_LLEVAR, true);
       } else {
-        const mesaCobrada = numeroMesa;
         setPedido(null);
         setNumeroMesa(null);
         setMesasActivas((prev) => {
           const next = { ...prev };
-          if (mesaCobrada) delete next[mesaCobrada];
+          if (mesaCobradaRef) delete next[mesaCobradaRef];
           return next;
         });
-        await refrescarMesasActivas();
+        await refrescarMesasActivas(true);
       }
+      showCobroExitoResumen({
+        venta: res,
+        modoParaLlevar,
+        numeroMesa: mesaCobradaRef,
+        segundosEnMesa: pedidoParaTicket?.fecha_apertura
+          ? segundosEnMesa(pedidoParaTicket.fecha_apertura)
+          : null,
+        pagaCon: cobroEfectivo ? pagaCon : null,
+        cambio: cobroEfectivo ? cambio : null,
+        advertenciasInventario: avisosInv,
+        printHint,
+        clienteNombre: usaCliente && clienteCobro ? clienteCobro.nombre : null,
+      });
     } catch (err) {
       console.error(err);
       if (!shouldKeepPendingKey(err)) {
@@ -1194,16 +1265,19 @@ export default function Ventas({ modoParaLlevar = false }) {
             (typeof cuerpo?.detail === "object" && cuerpo.detail?.detail) ||
             (typeof texto === "string" && texto) ||
             "El total cambió. Confirma el nuevo total.";
-          if (window.confirm(aviso)) {
-            setLoading(false);
-            return ejecutarCobro(conCliente, imprimirTicket, desasociarCliente, true);
-          }
+          setRecalculoConfirm({
+            message: aviso,
+            onConfirm: () => {
+              setRecalculoConfirm(null);
+              ejecutarCobro(conCliente, imprimirTicket, desasociarCliente, true);
+            },
+          });
           return;
         }
-        alert(texto);
+        toastError(texto);
         return;
       }
-      alert(err.response?.data?.detail || "Error al cobrar");
+      toastError(formatApiError(err, "Error al cobrar"));
     } finally {
       setLoading(false);
     }
@@ -1212,7 +1286,20 @@ export default function Ventas({ modoParaLlevar = false }) {
   const ventasHabilitadas = Boolean(numeroMesa);
 
   return (
-    <div className="page page--ventas">
+    <div
+      className="page page--ventas"
+      data-nav-shell="ventas"
+      data-nav-catalog={productos.length ? "ready" : "pending"}
+      data-nav-mesas={mesasLista.length ? "ready" : "pending"}
+      data-nav-pedido={pedido && numeroMesa ? "ready" : "pending"}
+      data-nav-mesa-seleccionada={numeroMesa != null ? String(numeroMesa) : ""}
+      data-nav-total-ready={pedido && carritoActivo.length >= 0 ? "ready" : "pending"}
+    >
+      {revalidandoShell && (
+        <p className="hint ventas-revalidando" data-nav-revalidating="1">
+          Actualizando…
+        </p>
+      )}
       <PageHeader
         title={modoParaLlevar ? "Venta para llevar" : "Punto de venta"}
         subtitle={
@@ -1329,7 +1416,7 @@ export default function Ventas({ modoParaLlevar = false }) {
               <p className="hint">Selecciona una mesa</p>
             )}
           </div>
-          <div className="ventas-catalogo">
+          <div className="ventas-catalogo" ref={catalogScrollRef}>
             <SearchField
               value={busquedaProducto}
               onChange={(e) => setBusquedaProducto(e.target.value)}
@@ -2118,9 +2205,13 @@ export default function Ventas({ modoParaLlevar = false }) {
                 <button
                   type="button"
                   className="btn btn--secondary"
-                  onClick={() => {
+                  onClick={async () => {
                     const nombre = clienteCobro?.nombre || pedido.cliente_nombre || "el cliente";
-                    if (!window.confirm(`¿Quitar a ${nombre} de este pedido y cobrar sin puntos?`)) return;
+                    const ok = await askOperConfirm({
+                      message: `¿Quitar a ${nombre} de este pedido y cobrar sin puntos?`,
+                      confirmLabel: "Quitar y cobrar",
+                    });
+                    if (!ok) return;
                     ejecutarCobro(false, false, true);
                   }}
                   disabled={botonCobroBloqueado({ loading, bloquea: false })}
@@ -2246,6 +2337,23 @@ export default function Ventas({ modoParaLlevar = false }) {
           onOk={onCancelacionOk}
         />
       )}
+      <OperationalConfirmModal
+        open={Boolean(recalculoConfirm)}
+        title="Confirmar nuevo total"
+        message={recalculoConfirm?.message || ""}
+        confirmLabel="Cobrar con el total actualizado"
+        onConfirm={() => recalculoConfirm?.onConfirm?.()}
+        onCancel={() => setRecalculoConfirm(null)}
+      />
+      <OperationalConfirmModal
+        open={Boolean(operConfirm)}
+        title={operConfirm?.title || "Confirmar"}
+        message={operConfirm?.message || ""}
+        confirmLabel={operConfirm?.confirmLabel || "Continuar"}
+        cancelLabel={operConfirm?.cancelLabel || "Cancelar"}
+        onConfirm={() => operConfirm?.onConfirm?.()}
+        onCancel={() => operConfirm?.onCancel?.()}
+      />
     </div>
   );
 }
