@@ -23,6 +23,57 @@ function subtotalDesdeCalculo(calculo, cantidad) {
  * Actualiza el pedido local al tocar un producto simple (antes de la respuesta POST).
  * @returns {object|null} pedido actualizado o null si no aplica
  */
+function nuevaLineaOptimista(producto, calculo, cantidad, extras, comentario, forzarNormal) {
+  const subtotal = subtotalDesdeCalculo(calculo, cantidad);
+  return {
+    id_detalle_pedido: `opt-${producto.id_producto}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id_producto: producto.id_producto,
+    nombre_producto: producto.nombre,
+    cantidad,
+    cantidad_lista: 0,
+    cantidad_pendiente: cantidad,
+    precio_unitario: Number(calculo.precio_unitario),
+    precio_original: Number(calculo.precio_original_unitario ?? calculo.precio_unitario),
+    id_promocion: forzarNormal ? null : calculo.id_promocion ?? null,
+    nombre_promocion: forzarNormal ? null : calculo.nombre_promocion ?? null,
+    subtotal,
+    extras: (extras ?? []).map((e) => ({
+      id_extra: e.id_extra,
+      nombre: e.nombre,
+      precio: Number(e.precio),
+    })),
+    comentario: comentario || null,
+    en_comanda: false,
+    estado_linea: "ACTIVA",
+    _optimistic: true,
+  };
+}
+
+/** Modal personalizar: extras, comentario o cantidad > 1 con promos. */
+export function aplicarLineaPersonalizadaOptimista(
+  pedido,
+  producto,
+  calculo,
+  { cantidad = 1, extras = [], comentario = null, forzar_normal = false } = {}
+) {
+  if (!pedido?.id_pedido || !producto?.id_producto || !calculo?.margen_ok) return null;
+  const cant = Number(cantidad);
+  if (!Number.isFinite(cant) || cant < 1) return null;
+
+  if (!extras.length && !comentario && !forzar_normal && !calculo.id_promocion) {
+    return aplicarAgregadoOptimista(pedido, producto, calculo, cant);
+  }
+
+  const lineas = [...(pedido.lineas ?? [])];
+  lineas.push(nuevaLineaOptimista(producto, calculo, cant, extras, comentario, forzar_normal));
+  const activas = lineas.filter((l) => l.estado_linea !== "CANCELADA" && Number(l.cantidad) > 0);
+  return {
+    ...pedido,
+    lineas,
+    total: sumaImportes(activas),
+  };
+}
+
 export function aplicarAgregadoOptimista(pedido, producto, calculo, cantidad = 1) {
   if (!pedido?.id_pedido || !producto?.id_producto || !calculo?.margen_ok) return null;
 
@@ -48,22 +99,7 @@ export function aplicarAgregadoOptimista(pedido, producto, calculo, cantidad = 1
       _optimistic: true,
     };
   } else {
-    const subtotal = subtotalDesdeCalculo(calculo, cantidad);
-    lineas.push({
-      id_detalle_pedido: `opt-${producto.id_producto}-${Date.now()}`,
-      id_producto: producto.id_producto,
-      nombre_producto: producto.nombre,
-      cantidad,
-      cantidad_lista: 0,
-      cantidad_pendiente: cantidad,
-      precio_unitario: Number(calculo.precio_unitario),
-      precio_original: Number(calculo.precio_original_unitario ?? calculo.precio_unitario),
-      subtotal,
-      extras: [],
-      en_comanda: false,
-      estado_linea: "ACTIVA",
-      _optimistic: true,
-    });
+    lineas.push(nuevaLineaOptimista(producto, calculo, cantidad, [], null, false));
   }
 
   const activas = lineas.filter((l) => l.estado_linea !== "CANCELADA" && Number(l.cantidad) > 0);

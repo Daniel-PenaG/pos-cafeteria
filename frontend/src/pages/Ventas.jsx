@@ -86,7 +86,10 @@ import {
   requiereCancelacionEnviada,
 } from "../utils/lineaPedidoAccion";
 import { mergeMesaActivaFromPedido } from "../utils/ventasOperacionSync";
-import { aplicarAgregadoOptimista } from "../utils/ventasOptimisticAdd";
+import {
+  aplicarAgregadoOptimista,
+  aplicarLineaPersonalizadaOptimista,
+} from "../utils/ventasOptimisticAdd";
 import { bootstrapVentasShell } from "../services/ventasBootstrap";
 import {
   fetchMesasActivasCached,
@@ -975,7 +978,30 @@ export default function Ventas({ modoParaLlevar = false }) {
     });
   };
 
-  const confirmarAgregarAlCarrito = async () => {
+  const cerrarModalProducto = useCallback(() => {
+    setProductoModal(null);
+    setExtrasSeleccionados([]);
+    setExtrasModal([]);
+    setPromosDisponibles([]);
+    setPromoModo("auto");
+    setCalculoPromo(null);
+    setCalculoInicialModal(null);
+    setCantidadModal("");
+    setComentarioModal("");
+  }, []);
+
+  const recargarPedidoTrasErrorLinea = useCallback(async () => {
+    if (!numeroMesa || !usuario?.id_usuario) return;
+    try {
+      const p = await getPedidoMesa(numeroMesa, usuario.id_usuario, modoParaLlevar);
+      setPedido(p);
+      actualizarMesasTrasAgregar(p);
+    } catch {
+      /* toast ya mostró el error */
+    }
+  }, [actualizarMesasTrasAgregar, modoParaLlevar, numeroMesa, usuario]);
+
+  const confirmarAgregarAlCarrito = () => {
     if (!productoModal || !calculoPromo || !numeroMesa || !usuario?.id_usuario) return;
     if (guardandoLinea) return;
     const cant = parseInt(cantidadModal, 10);
@@ -988,31 +1014,41 @@ export default function Ventas({ modoParaLlevar = false }) {
       return;
     }
 
-    try {
-      setGuardandoLinea(true);
-      await agregarLineaConCalculo(
-        productoModal,
-        promoModo === "none" ? { ...calculoPromo, forzar_normal: true, id_promocion: null } : calculoPromo,
-        extrasSeleccionados,
-        cant,
-        comentarioModal
-      );
-    } catch (err) {
-      toastError(formatApiError(err, "Error al agregar al pedido"));
-      return;
-    } finally {
-      setGuardandoLinea(false);
-    }
+    const producto = productoModal;
+    const extras = extrasSeleccionados;
+    const comentario = comentarioModal;
+    const forzarNormal = promoModo === "none";
+    const calcParaApi = forzarNormal
+      ? { ...calculoPromo, forzar_normal: true, id_promocion: null }
+      : calculoPromo;
 
-    setProductoModal(null);
-    setExtrasSeleccionados([]);
-    setExtrasModal([]);
-    setPromosDisponibles([]);
-    setPromoModo("auto");
-    setCalculoPromo(null);
-    setCalculoInicialModal(null);
-    setCantidadModal("");
-    setComentarioModal("");
+    setGuardandoLinea(true);
+    cerrarModalProducto();
+
+    setPedido((prev) => {
+      if (!prev?.id_pedido) {
+        void Promise.resolve().then(() => setGuardandoLinea(false));
+        return prev;
+      }
+      const optimista = aplicarLineaPersonalizadaOptimista(prev, producto, calculoPromo, {
+        cantidad: cant,
+        extras,
+        comentario: comentario?.trim() || null,
+        forzar_normal: forzarNormal,
+      });
+      if (!optimista) {
+        void Promise.resolve().then(() => setGuardandoLinea(false));
+        return prev;
+      }
+      queueMicrotask(() => actualizarMesasTrasAgregar(optimista));
+      void agregarLineaConCalculo(producto, calcParaApi, extras, cant, comentario)
+        .catch(async (err) => {
+          toastError(formatApiError(err, "Error al agregar al pedido"));
+          await recargarPedidoTrasErrorLinea();
+        })
+        .finally(() => setGuardandoLinea(false));
+      return optimista;
+    });
   };
 
   const cambiarCantidad = async (idDetalle, value) => {
@@ -1989,15 +2025,7 @@ export default function Ventas({ modoParaLlevar = false }) {
             )}
 
             <div className="modal-footer">
-              <button
-                type="button"
-                className="btn btn--secondary"
-                onClick={() => {
-                  setProductoModal(null);
-                  setExtrasSeleccionados([]);
-                  setExtrasModal([]);
-                }}
-              >
+              <button type="button" className="btn btn--secondary" onClick={cerrarModalProducto}>
                 Cancelar
               </button>
               <button

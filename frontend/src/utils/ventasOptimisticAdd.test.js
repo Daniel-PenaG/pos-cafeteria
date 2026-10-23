@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { aplicarAgregadoOptimista } from "./ventasOptimisticAdd.js";
+import { aplicarAgregadoOptimista, aplicarLineaPersonalizadaOptimista } from "./ventasOptimisticAdd.js";
 
 const calculo = {
   margen_ok: true,
@@ -16,6 +16,18 @@ describe("ventasOptimisticAdd", () => {
     const next = aplicarAgregadoOptimista(pedido, producto, calculo);
     assert.equal(next.lineas.length, 1);
     assert.equal(next.lineas[0].nombre_producto, "Latte");
+    assert.equal(next.total, 42);
+  });
+
+  it("modal con extras agrega línea con detalle", () => {
+    const pedido = { id_pedido: 1, lineas: [], total: 0 };
+    const producto = { id_producto: 3, nombre: "Latte" };
+    const next = aplicarLineaPersonalizadaOptimista(pedido, producto, calculo, {
+      cantidad: 1,
+      extras: [{ id_extra: 1, nombre: "Vainilla", precio: 5 }],
+    });
+    assert.equal(next.lineas.length, 1);
+    assert.equal(next.lineas[0].extras.length, 1);
     assert.equal(next.total, 42);
   });
 
