@@ -650,14 +650,14 @@ export default function Ventas({ modoParaLlevar = false }) {
     }
 
     setPrecuentaImpresa(false);
-    if (canUseBluetoothPrinter()) {
-      const printResult = await imprimirPrecuenta();
-      if (!printResult.skipped && !printResult.ok) {
-        toastError(`Precuenta: ${printResult.message || "no se pudo imprimir"}`);
-      }
-    }
-
     abrirCobroModal();
+    if (canUseBluetoothPrinter()) {
+      void imprimirPrecuenta().then((printResult) => {
+        if (!printResult.skipped && !printResult.ok) {
+          toastError(`Precuenta: ${printResult.message || "no se pudo imprimir"}`);
+        }
+      });
+    }
   };
 
   const cerrarCobroModal = () => {
@@ -1209,20 +1209,7 @@ export default function Ventas({ modoParaLlevar = false }) {
       pedidoEpochRef.current += 1;
       invalidateMesasActivas();
       const mesaCobradaRef = numeroMesa;
-      if (modoParaLlevar) {
-        setPedido(null);
-        await cargarPedidoMesa(MESA_PARA_LLEVAR, true);
-      } else {
-        setPedido(null);
-        setNumeroMesa(null);
-        setMesasActivas((prev) => {
-          const next = { ...prev };
-          if (mesaCobradaRef) delete next[mesaCobradaRef];
-          return next;
-        });
-        await refrescarMesasActivas(true);
-      }
-      showCobroExitoResumen({
+      const resumenPostCobro = {
         venta: res,
         modoParaLlevar,
         numeroMesa: mesaCobradaRef,
@@ -1234,7 +1221,24 @@ export default function Ventas({ modoParaLlevar = false }) {
         advertenciasInventario: avisosInv,
         printHint,
         clienteNombre: usaCliente && clienteCobro ? clienteCobro.nombre : null,
-      });
+      };
+      if (modoParaLlevar) {
+        setPedido(null);
+      } else {
+        setPedido(null);
+        setNumeroMesa(null);
+        setMesasActivas((prev) => {
+          const next = { ...prev };
+          if (mesaCobradaRef) delete next[mesaCobradaRef];
+          return next;
+        });
+      }
+      showCobroExitoResumen(resumenPostCobro);
+      if (modoParaLlevar) {
+        void cargarPedidoMesa(MESA_PARA_LLEVAR, true).catch(console.error);
+      } else {
+        void refrescarMesasActivas(true).catch(console.error);
+      }
     } catch (err) {
       console.error(err);
       if (!shouldKeepPendingKey(err)) {
@@ -2188,7 +2192,7 @@ export default function Ventas({ modoParaLlevar = false }) {
                   {imprimiendoPrecuenta ? "Imprimiendo…" : "Reimprimir precuenta"}
                 </button>
               )}
-              <button type="button" className="btn btn--secondary" onClick={cerrarCobroModal} disabled={loading || imprimiendoPrecuenta}>
+              <button type="button" className="btn btn--secondary" onClick={cerrarCobroModal} disabled={loading}>
                 Cancelar
               </button>
               {!pedido?.id_cliente && (

@@ -14,6 +14,23 @@ describe("navegación operativa", () => {
     assert.doesNotMatch(src, /\b(window\.)?(alert|confirm)\s*\(/);
   });
 
+  it("post-cobro muestra resumen antes de refrescar mesas en background", () => {
+    const src = readFileSync(path.join(root, "pages/Ventas.jsx"), "utf8");
+    const idxResumen = src.indexOf("showCobroExitoResumen(resumenPostCobro)");
+    const idxRefresh = src.indexOf("void refrescarMesasActivas(true)");
+    assert.ok(idxResumen > 0);
+    assert.ok(idxRefresh > idxResumen);
+    assert.match(src, /void cargarPedidoMesa\(MESA_PARA_LLEVAR, true\)/);
+  });
+
+  it("cerrar cuenta abre modal de cobro sin esperar precuenta", () => {
+    const src = readFileSync(path.join(root, "pages/Ventas.jsx"), "utf8");
+    const block = src.slice(src.indexOf("const handleCerrarCuenta"), src.indexOf("const cerrarCobroModal"));
+    assert.match(block, /abrirCobroModal\(\)/);
+    assert.doesNotMatch(block, /await imprimirPrecuenta/);
+    assert.match(block, /void imprimirPrecuenta\(\)/);
+  });
+
   it("Comandera.jsx sin alert/confirm nativos", () => {
     const src = readFileSync(path.join(root, "pages/Comandera.jsx"), "utf8");
     assert.doesNotMatch(src, /\b(window\.)?(alert|confirm)\s*\(/);
