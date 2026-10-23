@@ -1584,25 +1584,86 @@ export default function Ventas({ modoParaLlevar = false }) {
             </div>
           ) : (
             <div className="cart-panel__items">
+              <ul className="cart-list">
               {carrito.map((item) => {
                 const cancelada = esLineaCancelada(item);
                 const enviada = requiereCancelacionEnviada(item);
+                const unitHint =
+                  Array.isArray(item.desglose) && item.desglose.length > 0
+                    ? item.desglose
+                        .map((parte) => `${parte.etiqueta} $${Number(parte.importe).toFixed(2)}`)
+                        .join(" · ")
+                    : (item.descuento_unitario ?? 0) > 0 && Number(item.unidades_normales || 0) === 0
+                      ? `$${Number(item.precio_original).toFixed(2)} → $${Number(item.precio_unitario).toFixed(2)} c/u`
+                      : `$${Number(item.precio_unitario).toFixed(2)} c/u`;
+                const showMeta =
+                  item.nombre_promocion ||
+                  cancelada ||
+                  (!cancelada && !item.en_comanda && !modoParaLlevar) ||
+                  (!cancelada && item.cantidad_pendiente > 0 && item.en_comanda) ||
+                  (item.en_comanda && item.cantidad_pendiente > 0 && item.fecha_envio_comanda && !cancelada) ||
+                  item.comentario ||
+                  unitHint;
                 return (
-                <article
+                <li
                   key={item.id_detalle_pedido}
-                  className={`cart-item${cancelada ? " cart-item--cancelada" : ""}`}
+                  className={`cart-list__row${cancelada ? " cart-list__row--cancelada" : ""}`}
                 >
-                  <div className="cart-item__row-main">
-                    <h3 className="cart-item__title">{item.nombre_producto}</h3>
-                    <span className="cart-item__amount">${importeLinea(item).toFixed(2)}</span>
+                  <div className="cart-list__line">
+                    <p className="cart-list__name" title={item.nombre_producto}>
+                      {item.nombre_producto}
+                    </p>
+                    <div className="cart-list__end">
+                      <input
+                        type="number"
+                        min="1"
+                        value={cantidadEdit[item.id_detalle_pedido] ?? item.cantidad}
+                        onChange={(e) =>
+                          onCantidadLineaChange(item.id_detalle_pedido, e.target.value)
+                        }
+                        onFocus={(e) => e.target.select()}
+                        onBlur={() => confirmarCantidadLinea(item.id_detalle_pedido)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.currentTarget.blur();
+                        }}
+                        className="input cart-list__qty"
+                        disabled={cancelada || enviada}
+                        readOnly={enviada}
+                        aria-label={`Cantidad ${item.nombre_producto}`}
+                        title={enviada ? "Para reducir una línea en comanda, registra una cancelación" : undefined}
+                      />
+                      <span className="cart-list__price">${importeLinea(item).toFixed(2)}</span>
+                      {!cancelada && comentarioEdit[item.id_detalle_pedido] === undefined && (
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm cart-list__icon-btn cart-item__nota-btn"
+                          onClick={() =>
+                            setComentarioEdit((prev) => ({
+                              ...prev,
+                              [item.id_detalle_pedido]: item.comentario || "",
+                            }))
+                          }
+                          aria-label={item.comentario ? "Editar nota" : "Agregar nota"}
+                          title="Nota para cocina"
+                        >
+                          <HiOutlinePencilSquare className="size-3.5" aria-hidden />
+                        </button>
+                      )}
+                      {!cancelada && (
+                        <button
+                          type="button"
+                          className="btn btn--danger cart-list__remove"
+                          onClick={() => eliminarDelCarrito(item.id_detalle_pedido)}
+                          disabled={quitandoId === item.id_detalle_pedido}
+                          aria-label={enviada ? "Cancelar producto enviado" : "Quitar"}
+                        >
+                          {quitandoId === item.id_detalle_pedido ? "…" : "✕"}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  {(item.nombre_promocion ||
-                    cancelada ||
-                    (!cancelada && !item.en_comanda && !modoParaLlevar) ||
-                    (!cancelada && item.cantidad_pendiente > 0 && item.en_comanda) ||
-                    (item.en_comanda && item.cantidad_pendiente > 0 && item.fecha_envio_comanda && !cancelada) ||
-                    item.comentario) && (
-                    <div className="cart-item__sub">
+                  {showMeta && (
+                    <div className="cart-list__meta">
                       {item.nombre_promocion && (
                         <span className="badge">{item.nombre_promocion}</span>
                       )}
@@ -1617,14 +1678,13 @@ export default function Ventas({ modoParaLlevar = false }) {
                         <ElapsedTimer since={item.fecha_envio_comanda} />
                       )}
                       {item.comentario && (
-                        <span className="cart-item__comentario" title={item.comentario}>
-                          📝 {item.comentario}
-                        </span>
+                        <span title={item.comentario}>📝 {item.comentario}</span>
                       )}
+                      <span>{unitHint}</span>
                     </div>
                   )}
                   {item.extras?.length > 0 && (
-                    <ul className="cart-item__extras">
+                    <ul className="cart-list__extras">
                       {item.extras.map((e) => (
                         <li key={e.id_extra}>
                           + {e.nombre}
@@ -1637,7 +1697,7 @@ export default function Ventas({ modoParaLlevar = false }) {
                     </ul>
                   )}
                   {!cancelada && comentarioEdit[item.id_detalle_pedido] !== undefined && (
-                    <div className="cart-item__comentario-edit">
+                    <div className="cart-list__note">
                       <textarea
                         className="input"
                         rows={2}
@@ -1654,67 +1714,10 @@ export default function Ventas({ modoParaLlevar = false }) {
                       />
                     </div>
                   )}
-                  <div className="cart-item__toolbar">
-                    <p className="cart-item__unit">
-                      {Array.isArray(item.desglose) && item.desglose.length > 0
-                        ? item.desglose
-                            .map((parte) => `${parte.etiqueta} $${Number(parte.importe).toFixed(2)}`)
-                            .join(" · ")
-                        : (item.descuento_unitario ?? 0) > 0 && Number(item.unidades_normales || 0) === 0
-                          ? `$${Number(item.precio_original).toFixed(2)} → $${Number(item.precio_unitario).toFixed(2)} c/u`
-                          : `$${Number(item.precio_unitario).toFixed(2)} c/u`}
-                    </p>
-                    <div className="cart-item__controls">
-                      {!cancelada && comentarioEdit[item.id_detalle_pedido] === undefined && (
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm cart-item__icon-btn cart-item__nota-btn"
-                          onClick={() =>
-                            setComentarioEdit((prev) => ({
-                              ...prev,
-                              [item.id_detalle_pedido]: item.comentario || "",
-                            }))
-                          }
-                          aria-label={item.comentario ? "Editar nota" : "Agregar nota"}
-                          title="Nota para cocina"
-                        >
-                          <HiOutlinePencilSquare className="size-4" aria-hidden />
-                        </button>
-                      )}
-                      <input
-                        type="number"
-                        min="1"
-                        value={cantidadEdit[item.id_detalle_pedido] ?? item.cantidad}
-                        onChange={(e) =>
-                          onCantidadLineaChange(item.id_detalle_pedido, e.target.value)
-                        }
-                        onFocus={(e) => e.target.select()}
-                        onBlur={() => confirmarCantidadLinea(item.id_detalle_pedido)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") e.currentTarget.blur();
-                        }}
-                        className="input cart-item__qty"
-                        disabled={cancelada || enviada}
-                        readOnly={enviada}
-                        aria-label={`Cantidad ${item.nombre_producto}`}
-                        title={enviada ? "Para reducir una línea en comanda, registra una cancelación" : undefined}
-                      />
-                      {!cancelada && (
-                        <button
-                          type="button"
-                          className="btn btn--danger cart-item__remove"
-                          onClick={() => eliminarDelCarrito(item.id_detalle_pedido)}
-                          disabled={quitandoId === item.id_detalle_pedido}
-                          aria-label={enviada ? "Cancelar producto enviado" : "Quitar"}
-                        >
-                          {quitandoId === item.id_detalle_pedido ? "…" : "✕"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </article>
+                </li>
                 );
               })}
+              </ul>
             </div>
           )}
 
