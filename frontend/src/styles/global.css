@@ -839,6 +839,7 @@ body {
 @media (max-width: 900px) {
   .ventas-workspace {
     grid-template-columns: 1fr;
+    gap: 0.85rem;
   }
 
   .ventas-workspace > .ventas-catalogo-panel {
@@ -846,9 +847,13 @@ body {
   }
 
   .ventas-workspace > .cart-panel--pos {
-    position: static;
+    position: sticky;
+    bottom: 0;
+    z-index: 30;
     height: auto;
-    max-height: none;
+    max-height: min(52dvh, 420px);
+    margin-top: 0.25rem;
+    box-shadow: var(--shadow-md), 0 -8px 24px rgba(61, 79, 34, 0.12);
   }
 }
 
@@ -1225,8 +1230,22 @@ body {
 
   .cart-panel--pos {
     height: auto;
-    max-height: none;
-    overflow: visible;
+    max-height: inherit;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Con height:auto del panel, flex:1 1 0 colapsaba la lista de líneas a 0px */
+  .cart-panel--pos .cart-panel__items {
+    flex: 1 1 auto;
+    min-height: 3.5rem;
+    max-height: min(22dvh, 200px);
+    overflow-y: auto;
+  }
+
+  .page--ventas {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
   }
 }
 
