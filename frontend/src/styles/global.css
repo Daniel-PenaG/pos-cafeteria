@@ -820,21 +820,35 @@ body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
   gap: 1.15rem;
-  align-items: stretch;
-  min-height: calc(100dvh - 10rem);
-  height: calc(100dvh - 10rem);
+  align-items: start;
 }
 
-.ventas-workspace > .ventas-catalogo-panel,
+.ventas-workspace > .ventas-catalogo-panel {
+  min-height: 0;
+  max-height: calc(100dvh - 10rem);
+}
+
 .ventas-workspace > .cart-panel--pos {
   min-height: 0;
+  position: sticky;
+  top: 0.75rem;
+  height: calc(100dvh - 10rem);
+  max-height: calc(100dvh - 10rem);
 }
 
 @media (max-width: 900px) {
   .ventas-workspace {
     grid-template-columns: 1fr;
-    min-height: auto;
+  }
+
+  .ventas-workspace > .ventas-catalogo-panel {
+    max-height: none;
+  }
+
+  .ventas-workspace > .cart-panel--pos {
+    position: static;
     height: auto;
+    max-height: none;
   }
 }
 
@@ -883,17 +897,21 @@ body {
 .ventas-catalogo {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   padding: 1rem 1.15rem 1.15rem;
   background: var(--olive-soft);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.ventas-catalogo .input {
+  padding-left: 2.5rem;
 }
 
 .ventas-categorias-list {
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
   margin-top: 0.75rem;
-  overflow-y: auto;
   padding-right: 0.25rem;
   display: flex;
   flex-direction: column;
