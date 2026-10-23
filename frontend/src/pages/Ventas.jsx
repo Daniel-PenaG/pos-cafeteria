@@ -1560,174 +1560,171 @@ export default function Ventas({ modoParaLlevar = false }) {
           </div>
         </section>
 
-        <aside className="cart-panel">
-          <h2 className="flex items-center gap-2">
-            {modoParaLlevar ? (
-              <HiOutlineShoppingBag className="size-5 text-olive shrink-0" aria-hidden />
-            ) : (
-              <HiOutlineShoppingCart className="size-5 text-olive shrink-0" aria-hidden />
+        <aside className="cart-panel cart-panel--pos">
+          <header className="cart-panel__head">
+            <h2 className="flex items-center gap-2">
+              {modoParaLlevar ? (
+                <HiOutlineShoppingBag className="size-5 shrink-0" aria-hidden />
+              ) : (
+                <HiOutlineShoppingCart className="size-5 shrink-0" aria-hidden />
+              )}
+              {modoParaLlevar
+                ? "Pedido para llevar"
+                : `Pedido ${numeroMesa ? `(Mesa ${numeroMesa})` : ""}`}
+            </h2>
+            {carritoActivo.length > 0 && (
+              <span className="cart-panel__count">
+                {carritoActivo.length} {carritoActivo.length === 1 ? "producto" : "productos"}
+              </span>
             )}
-            {modoParaLlevar
-              ? "Pedido para llevar"
-              : `Pedido ${numeroMesa ? `(Mesa ${numeroMesa})` : ""}`}
-          </h2>
+          </header>
           {carrito.length === 0 ? (
-            <p className="empty-state">Sin productos en el pedido</p>
+            <div className="cart-panel__items">
+              <p className="empty-state">Sin productos en el pedido</p>
+            </div>
           ) : (
             <div className="cart-panel__items">
               {carrito.map((item) => {
                 const cancelada = esLineaCancelada(item);
                 const enviada = requiereCancelacionEnviada(item);
                 return (
-                <div
+                <article
                   key={item.id_detalle_pedido}
                   className={`cart-item${cancelada ? " cart-item--cancelada" : ""}`}
                 >
-                  <div style={{ flex: 1 }}>
-                    <strong>{item.nombre_producto}</strong>
+                  <div className="cart-item__head">
+                    <h3 className="cart-item__title">{item.nombre_producto}</h3>
+                    <span className="cart-item__amount">${importeLinea(item).toFixed(2)}</span>
+                  </div>
+                  <div className="cart-item__badges">
                     {item.nombre_promocion && (
-                      <span className="badge" style={{ marginLeft: "0.35rem" }}>
-                        {item.nombre_promocion}
-                      </span>
+                      <span className="badge">{item.nombre_promocion}</span>
                     )}
-                    {cancelada && (
-                      <span className="badge badge--danger" style={{ marginLeft: "0.35rem" }}>
-                        CANCELADO
-                      </span>
-                    )}
+                    {cancelada && <span className="badge badge--danger">CANCELADO</span>}
                     {!cancelada && !item.en_comanda && !modoParaLlevar && (
-                      <span className="badge badge--pending" style={{ marginLeft: "0.35rem" }}>
-                        sin confirmar
-                      </span>
+                      <span className="badge badge--pending">sin confirmar</span>
                     )}
                     {!cancelada && item.cantidad_pendiente > 0 && item.en_comanda && (
-                      <span className="badge badge--kitchen" style={{ marginLeft: "0.35rem" }}>
-                        en comanda
-                      </span>
+                      <span className="badge badge--kitchen">en comanda</span>
                     )}
                     {item.en_comanda && item.cantidad_pendiente > 0 && item.fecha_envio_comanda && !cancelada && (
-                      <span style={{ marginLeft: "0.35rem" }}>
-                        <ElapsedTimer since={item.fecha_envio_comanda} />
-                      </span>
+                      <ElapsedTimer since={item.fecha_envio_comanda} />
                     )}
-                    {item.extras?.length > 0 && (
-                      <ul className="cart-item__extras">
-                        {item.extras.map((e) => (
-                          <li key={e.id_extra}>
-                            + {e.nombre}
-                            {Number(e.precio) > 0 && ` ($${Number(e.precio).toFixed(2)})`}
-                            {admin && Number(e.costo) > 0 && (
-                              <span className="hint"> · costo ${Number(e.costo).toFixed(2)}</span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {!cancelada && comentarioEdit[item.id_detalle_pedido] !== undefined ? (
-                      <div className="cart-item__comentario-edit">
-                        <textarea
-                          className="input"
-                          rows={2}
-                          maxLength={300}
-                          value={comentarioEdit[item.id_detalle_pedido]}
-                          onChange={(e) =>
+                  </div>
+                  {item.extras?.length > 0 && (
+                    <ul className="cart-item__extras">
+                      {item.extras.map((e) => (
+                        <li key={e.id_extra}>
+                          + {e.nombre}
+                          {Number(e.precio) > 0 && ` ($${Number(e.precio).toFixed(2)})`}
+                          {admin && Number(e.costo) > 0 && (
+                            <span className="hint"> · costo ${Number(e.costo).toFixed(2)}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {!cancelada && comentarioEdit[item.id_detalle_pedido] !== undefined ? (
+                    <div className="cart-item__comentario-edit">
+                      <textarea
+                        className="input"
+                        rows={2}
+                        maxLength={300}
+                        value={comentarioEdit[item.id_detalle_pedido]}
+                        onChange={(e) =>
+                          setComentarioEdit((prev) => ({
+                            ...prev,
+                            [item.id_detalle_pedido]: e.target.value,
+                          }))
+                        }
+                        onBlur={() => guardarComentarioLinea(item.id_detalle_pedido)}
+                        placeholder="Comentario para cocina"
+                      />
+                    </div>
+                  ) : (
+                    <p className="cart-item__comentario">
+                      {item.comentario ? `📝 ${item.comentario}` : (
+                        !cancelada && (
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm cart-item__nota-btn"
+                          onClick={() =>
                             setComentarioEdit((prev) => ({
                               ...prev,
-                              [item.id_detalle_pedido]: e.target.value,
+                              [item.id_detalle_pedido]: item.comentario || "",
                             }))
                           }
-                          onBlur={() => guardarComentarioLinea(item.id_detalle_pedido)}
-                          placeholder="Comentario para cocina"
-                        />
-                      </div>
-                    ) : (
-                      <p className="cart-item__comentario">
-                        {item.comentario ? `📝 ${item.comentario}` : (
-                          !cancelada && (
-                          <button
-                            type="button"
-                            className="btn btn--ghost btn--sm cart-item__nota-btn"
-                            onClick={() =>
-                              setComentarioEdit((prev) => ({
-                                ...prev,
-                                [item.id_detalle_pedido]: item.comentario || "",
-                              }))
-                            }
-                          >
-                            <HiOutlinePencilSquare className="size-4" aria-hidden />
-                            Nota
-                          </button>
-                          )
-                        )}
-                        {item.comentario && !cancelada && (
-                          <button
-                            type="button"
-                            className="btn btn--ghost btn--sm cart-item__nota-btn"
-                            onClick={() =>
-                              setComentarioEdit((prev) => ({
-                                ...prev,
-                                [item.id_detalle_pedido]: item.comentario || "",
-                              }))
-                            }
-                            aria-label="Editar comentario"
-                          >
-                            <HiOutlinePencilSquare className="size-4" aria-hidden />
-                          </button>
-                        )}
-                      </p>
-                    )}
-                    <div className="hint" style={{ marginTop: "0.25rem" }}>
-                      {Array.isArray(item.desglose) && item.desglose.length > 0 ? (
-                        item.desglose.map((parte) => (
-                          <div key={parte.etiqueta}>
-                            {parte.etiqueta}: ${Number(parte.importe).toFixed(2)}
-                          </div>
-                        ))
-                      ) : (item.descuento_unitario ?? 0) > 0 && Number(item.unidades_normales || 0) === 0 ? (
-                        <>
-                          <s>${Number(item.precio_original).toFixed(2)}</s> → $
-                          {Number(item.precio_unitario).toFixed(2)} c/u
-                        </>
-                      ) : (
-                        <>${Number(item.precio_unitario).toFixed(2)} c/u</>
+                        >
+                          <HiOutlinePencilSquare className="size-4" aria-hidden />
+                          Nota
+                        </button>
+                        )
                       )}
-                    </div>
-                  </div>
-                  <input
-                    type="number"
-                    min="1"
-                    value={
-                      cantidadEdit[item.id_detalle_pedido] ?? item.cantidad
-                    }
-                    onChange={(e) =>
-                      onCantidadLineaChange(item.id_detalle_pedido, e.target.value)
-                    }
-                    onFocus={(e) => e.target.select()}
-                    onBlur={() => confirmarCantidadLinea(item.id_detalle_pedido)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") e.currentTarget.blur();
-                    }}
-                    style={{ width: 56 }}
-                    className="input"
-                    disabled={cancelada || enviada}
-                    readOnly={enviada}
-                    title={enviada ? "Para reducir una línea en comanda, registra una cancelación" : undefined}
-                  />
-                  <span style={{ minWidth: 72, fontWeight: 600 }}>
-                    ${importeLinea(item).toFixed(2)}
-                  </span>
-                  {!cancelada && (
-                  <button
-                    type="button"
-                    className="btn btn--danger"
-                    onClick={() => eliminarDelCarrito(item.id_detalle_pedido)}
-                    disabled={quitandoId === item.id_detalle_pedido}
-                    aria-label={enviada ? "Cancelar producto enviado" : "Quitar"}
-                  >
-                    {quitandoId === item.id_detalle_pedido ? "…" : "✕"}
-                  </button>
+                      {item.comentario && !cancelada && (
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm cart-item__nota-btn"
+                          onClick={() =>
+                            setComentarioEdit((prev) => ({
+                              ...prev,
+                              [item.id_detalle_pedido]: item.comentario || "",
+                            }))
+                          }
+                          aria-label="Editar comentario"
+                        >
+                          <HiOutlinePencilSquare className="size-4" aria-hidden />
+                        </button>
+                      )}
+                    </p>
                   )}
-                </div>
+                  <p className="cart-item__pricing">
+                    {Array.isArray(item.desglose) && item.desglose.length > 0 ? (
+                      item.desglose.map((parte) => (
+                        <div key={parte.etiqueta}>
+                          {parte.etiqueta}: ${Number(parte.importe).toFixed(2)}
+                        </div>
+                      ))
+                    ) : (item.descuento_unitario ?? 0) > 0 && Number(item.unidades_normales || 0) === 0 ? (
+                      <>
+                        <s>${Number(item.precio_original).toFixed(2)}</s> → $
+                        {Number(item.precio_unitario).toFixed(2)} c/u
+                      </>
+                    ) : (
+                      <>${Number(item.precio_unitario).toFixed(2)} c/u</>
+                    )}
+                  </p>
+                  <div className="cart-item__actions">
+                    <input
+                      type="number"
+                      min="1"
+                      value={cantidadEdit[item.id_detalle_pedido] ?? item.cantidad}
+                      onChange={(e) =>
+                        onCantidadLineaChange(item.id_detalle_pedido, e.target.value)
+                      }
+                      onFocus={(e) => e.target.select()}
+                      onBlur={() => confirmarCantidadLinea(item.id_detalle_pedido)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                      }}
+                      className="input cart-item__qty"
+                      disabled={cancelada || enviada}
+                      readOnly={enviada}
+                      aria-label={`Cantidad ${item.nombre_producto}`}
+                      title={enviada ? "Para reducir una línea en comanda, registra una cancelación" : undefined}
+                    />
+                    {!cancelada && (
+                      <button
+                        type="button"
+                        className="btn btn--danger cart-item__remove"
+                        onClick={() => eliminarDelCarrito(item.id_detalle_pedido)}
+                        disabled={quitandoId === item.id_detalle_pedido}
+                        aria-label={enviada ? "Cancelar producto enviado" : "Quitar"}
+                      >
+                        {quitandoId === item.id_detalle_pedido ? "…" : "✕"}
+                      </button>
+                    )}
+                  </div>
+                </article>
                 );
               })}
             </div>
@@ -1759,12 +1756,15 @@ export default function Ventas({ modoParaLlevar = false }) {
               )}
             </div>
           ) : null}
-          <div className="cart-total">Total: ${total.toFixed(2)}</div>
+          <div className="cart-total">
+            <span className="cart-total__label">Total</span>
+            <span>${total.toFixed(2)}</span>
+          </div>
+          <div className="cart-panel__actions">
           {!modoParaLlevar && (
             <button
               type="button"
               className="btn btn--accent inline-flex w-full items-center justify-center gap-2"
-              style={{ marginTop: "0.75rem", padding: "0.75rem" }}
               onClick={confirmarPedidoComanda}
               disabled={
                 loading ||
@@ -1781,7 +1781,6 @@ export default function Ventas({ modoParaLlevar = false }) {
             <button
               type="button"
               className="btn btn--accent inline-flex w-full items-center justify-center gap-2"
-              style={{ marginTop: "0.75rem", padding: "0.75rem" }}
               onClick={confirmarPedidoComanda}
               disabled={loading || carritoActivo.length === 0 || !numeroMesa}
             >
@@ -1792,13 +1791,13 @@ export default function Ventas({ modoParaLlevar = false }) {
           <button
             type="button"
             className="btn btn--success inline-flex w-full items-center justify-center gap-2"
-            style={{ marginTop: "0.75rem", padding: "0.75rem" }}
             onClick={handleCerrarCuenta}
             disabled={loading || imprimiendoPrecuenta || showCobroModal || carritoActivo.length === 0 || !numeroMesa}
           >
             <HiOutlineBanknotes className="size-5 shrink-0" aria-hidden />
             {modoParaLlevar ? "Cobrar para llevar" : "Cerrar cuenta / Cobrar"}
           </button>
+          </div>
           </div>
         </aside>
       </div>
