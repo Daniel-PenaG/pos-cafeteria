@@ -861,11 +861,14 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   background: var(--paper);
   border: 1px solid var(--olive-pale);
   border-radius: var(--radius);
   box-shadow: var(--shadow-md);
   overflow: hidden;
+  container-type: inline-size;
+  container-name: ventas-catalogo;
 }
 
 .ventas-catalogo-panel__head {
@@ -899,8 +902,10 @@ body {
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   padding: 1rem 1.15rem 1.15rem;
   background: var(--olive-soft);
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -981,13 +986,15 @@ body {
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.65rem;
+  min-width: 0;
+  max-width: 100%;
   background: linear-gradient(180deg, #fafcf8 0%, var(--paper) 100%);
 }
 
-@media (min-width: 1280px) {
+@container ventas-catalogo (min-width: 720px) {
   .ventas-productos-list {
     display: grid;
-    grid-template-columns: repeat(2, minmax(300px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.55rem;
   }
 }
@@ -997,6 +1004,7 @@ body {
   align-items: stretch;
   gap: 0.45rem;
   min-width: 0;
+  max-width: 100%;
 }
 
 .ventas-producto-item {
@@ -1006,6 +1014,7 @@ body {
   gap: 0.5rem 0.65rem;
   padding: 0.55rem 0.65rem;
   min-height: 2.75rem;
+  width: 100%;
   border: 1px solid var(--olive-pale);
   border-radius: var(--radius-sm);
   background: var(--paper);
@@ -1055,8 +1064,8 @@ body {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .ventas-producto-item__dot {
