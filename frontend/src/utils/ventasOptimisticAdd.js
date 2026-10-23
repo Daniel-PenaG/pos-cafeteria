@@ -1,5 +1,11 @@
 import { sumaImportes } from "./promoCantidad.js";
 
+function pedidoListoParaOptimista(pedido) {
+  if (!pedido) return false;
+  if (pedido.id_pedido) return true;
+  return Boolean(pedido.sin_pedido || pedido.numero_mesa != null);
+}
+
 function lineaMergeable(item, idProducto) {
   if (!item || item.id_producto !== idProducto) return false;
   if (item.estado_linea === "CANCELADA" || Number(item.cantidad) <= 0) return false;
@@ -56,7 +62,7 @@ export function aplicarLineaPersonalizadaOptimista(
   calculo,
   { cantidad = 1, extras = [], comentario = null, forzar_normal = false } = {}
 ) {
-  if (!pedido?.id_pedido || !producto?.id_producto || !calculo?.margen_ok) return null;
+  if (!pedidoListoParaOptimista(pedido) || !producto?.id_producto || !calculo?.margen_ok) return null;
   const cant = Number(cantidad);
   if (!Number.isFinite(cant) || cant < 1) return null;
 
@@ -75,7 +81,7 @@ export function aplicarLineaPersonalizadaOptimista(
 }
 
 export function aplicarAgregadoOptimista(pedido, producto, calculo, cantidad = 1) {
-  if (!pedido?.id_pedido || !producto?.id_producto || !calculo?.margen_ok) return null;
+  if (!pedidoListoParaOptimista(pedido) || !producto?.id_producto || !calculo?.margen_ok) return null;
 
   const lineas = [...(pedido.lineas ?? [])];
   const idx = lineas.findIndex((l) => lineaMergeable(l, producto.id_producto));

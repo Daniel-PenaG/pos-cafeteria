@@ -10,6 +10,20 @@ const calculo = {
 };
 
 describe("ventasOptimisticAdd", () => {
+  it("mesa sin pedido abierto (sin_pedido) acepta optimista", () => {
+    const pedido = {
+      numero_mesa: 1,
+      sin_pedido: true,
+      estado: "SIN_PEDIDO",
+      lineas: [],
+      total: 0,
+    };
+    const producto = { id_producto: 5, nombre: "Agua" };
+    const next = aplicarAgregadoOptimista(pedido, producto, calculo);
+    assert.equal(next.lineas.length, 1);
+    assert.equal(next.total, 42);
+  });
+
   it("añade línea nueva y total", () => {
     const pedido = { id_pedido: 1, lineas: [], total: 0 };
     const producto = { id_producto: 5, nombre: "Latte" };

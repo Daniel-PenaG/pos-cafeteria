@@ -149,6 +149,7 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [tiposPosLabels, setTiposPosLabels] = useState({});
 
   const [showCobroModal, setShowCobroModal] = useState(false);
+  const [cobroSubmitting, setCobroSubmitting] = useState(false);
   const [showImprimirTicketModal, setShowImprimirTicketModal] = useState(false);
   const [cobroPendiente, setCobroPendiente] = useState(null);
   const [clienteCobro, setClienteCobro] = useState(null);
@@ -322,39 +323,60 @@ export default function Ventas({ modoParaLlevar = false }) {
     [numeroMesa, usuario, modoParaLlevar, actualizarMesasTrasAgregar]
   );
 
+  const recargarPedidoTrasErrorLinea = useCallback(async () => {
+    if (!numeroMesa || !usuario?.id_usuario) return;
+    try {
+      const p = await getPedidoMesa(numeroMesa, usuario.id_usuario, modoParaLlevar);
+      setPedido(p);
+      actualizarMesasTrasAgregar(p);
+    } catch {
+      /* El toast ya informó; el cajero puede reintentar. */
+    }
+  }, [actualizarMesasTrasAgregar, modoParaLlevar, numeroMesa, usuario?.id_usuario]);
+
+  const shellPedidoMesa = useCallback(
+    () => ({
+      numero_mesa: numeroMesa,
+      para_llevar: modoParaLlevar,
+      estado: "SIN_PEDIDO",
+      sin_pedido: true,
+      lineas: [],
+      total: 0,
+    }),
+    [modoParaLlevar, numeroMesa]
+  );
+
   const ejecutarAgregadoRapido = useCallback(
-    (producto, ctx) => {
+    (producto, ctx, pedidoBase = null) => {
+      let optimista = null;
       setPedido((prev) => {
-        if (!prev?.id_pedido) return prev;
-        const optimista = aplicarAgregadoOptimista(prev, producto, ctx.calculo_inicial);
-        if (!optimista) return prev;
-        queueMicrotask(() => actualizarMesasTrasAgregar(optimista));
+        const base =
+          prev && (prev.id_pedido || prev.sin_pedido) && prev.numero_mesa === pedidoBase?.numero_mesa
+            ? prev
+            : pedidoBase;
+        if (!base) return prev;
+        optimista = aplicarAgregadoOptimista(base, producto, ctx.calculo_inicial);
+        return optimista ?? prev;
+      });
+
+      const syncPedido = () =>
         void agregarLineaConCalculo(producto, ctx.calculo_inicial).catch(async (err) => {
           toastError(formatApiError(err, "Error al agregar al pedido"));
-          if (numeroMesa && usuario?.id_usuario) {
-            try {
-              const p = await getPedidoMesa(numeroMesa, usuario.id_usuario, modoParaLlevar);
-              setPedido(p);
-              actualizarMesasTrasAgregar(p);
-            } catch {
-              /* El toast ya informó; el cajero puede reintentar. */
-            }
-          }
+          await recargarPedidoTrasErrorLinea();
         });
-        return optimista;
-      });
+
+      if (optimista) {
+        actualizarMesasTrasAgregar(optimista);
+        syncPedido();
+        return;
+      }
+      syncPedido();
     },
-    [
-      agregarLineaConCalculo,
-      actualizarMesasTrasAgregar,
-      modoParaLlevar,
-      numeroMesa,
-      usuario?.id_usuario,
-    ]
+    [agregarLineaConCalculo, actualizarMesasTrasAgregar, recargarPedidoTrasErrorLinea]
   );
 
   const resolverContextoProducto = useCallback(
-    async (producto, ctx, { optimista = false } = {}) => {
+    async (producto, ctx, { optimista = false, pedidoBase = null } = {}) => {
       const paquetes = ctx.paquetes ?? [];
       const promos = ctx.promociones ?? [];
       const extras = ctx.extras ?? [];
@@ -370,7 +392,7 @@ export default function Ventas({ modoParaLlevar = false }) {
 
       if (puedeAgregarRapido({ ...ctx, extras, promociones: promos, paquetes })) {
         if (optimista) {
-          ejecutarAgregadoRapido(producto, ctx);
+          ejecutarAgregadoRapido(producto, ctx, pedidoBase);
         } else {
           try {
             await agregarLineaConCalculo(producto, ctx.calculo_inicial);
@@ -434,21 +456,23 @@ export default function Ventas({ modoParaLlevar = false }) {
   };
 
   const cargarPedidoMesa = useCallback(async (mesa, paraLlevar = modoParaLlevar) => {
-    if (!usuario?.id_usuario) return;
+    if (!usuario?.id_usuario) return null;
     const ticket = ++pedidoEpochRef.current;
     try {
       const p = await getPedidoMesa(mesa, usuario.id_usuario, paraLlevar);
-      if (ticket !== pedidoEpochRef.current) return;
+      if (ticket !== pedidoEpochRef.current) return null;
       setPedido(p);
       setCantidadEdit({});
       if (!paraLlevar) {
         refrescarMesasActivas(true).catch(console.error);
       }
+      return p;
     } catch (err) {
       console.error(err);
       toastError(
         paraLlevar ? "Error al cargar pedido para llevar" : "Error al cargar pedido de la mesa"
       );
+      return null;
     }
   }, [modoParaLlevar, usuario, refrescarMesasActivas]);
 
@@ -713,7 +737,7 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const handleCerrarCuenta = async () => {
     if (!pedido?.id_pedido || carritoActivo.length === 0) return;
-    if (imprimiendoPrecuenta || loading || showCobroModal) return;
+    if (imprimiendoPrecuenta || loading || cobroSubmitting || showCobroModal) return;
 
     if (lineasPendientesConfirmar.length > 0) {
       if (modoParaLlevar) {
@@ -877,9 +901,18 @@ export default function Ventas({ modoParaLlevar = false }) {
     };
 
     try {
+      let pedidoBase = pedido;
+      const pedidoDeEstaMesa =
+        pedidoBase &&
+        pedidoBase.numero_mesa === numeroMesa &&
+        (pedidoBase.id_pedido || pedidoBase.sin_pedido);
+      if (!pedidoDeEstaMesa) {
+        pedidoBase = (await cargarPedidoMesa(numeroMesa)) ?? shellPedidoMesa();
+      }
+
       const cached = getCachedProductoContexto(producto.id_producto);
       if (cached) {
-        await resolverContextoProducto(producto, cached, { optimista: true });
+        await resolverContextoProducto(producto, cached, { optimista: true, pedidoBase });
         return;
       }
 
@@ -890,7 +923,7 @@ export default function Ventas({ modoParaLlevar = false }) {
       });
 
       const ctx = await getProductoContexto(producto.id_producto);
-      await resolverContextoProducto(producto, ctx, { optimista: true });
+      await resolverContextoProducto(producto, ctx, { optimista: true, pedidoBase });
     } catch (err) {
       if (err?.code === "ERR_CANCELED") return;
       console.error("Contexto producto:", err.response?.status, err.response?.data?.detail);
@@ -990,17 +1023,6 @@ export default function Ventas({ modoParaLlevar = false }) {
     setComentarioModal("");
   }, []);
 
-  const recargarPedidoTrasErrorLinea = useCallback(async () => {
-    if (!numeroMesa || !usuario?.id_usuario) return;
-    try {
-      const p = await getPedidoMesa(numeroMesa, usuario.id_usuario, modoParaLlevar);
-      setPedido(p);
-      actualizarMesasTrasAgregar(p);
-    } catch {
-      /* toast ya mostró el error */
-    }
-  }, [actualizarMesasTrasAgregar, modoParaLlevar, numeroMesa, usuario]);
-
   const confirmarAgregarAlCarrito = () => {
     if (!productoModal || !calculoPromo || !numeroMesa || !usuario?.id_usuario) return;
     if (guardandoLinea) return;
@@ -1025,30 +1047,34 @@ export default function Ventas({ modoParaLlevar = false }) {
     setGuardandoLinea(true);
     cerrarModalProducto();
 
-    setPedido((prev) => {
-      if (!prev?.id_pedido) {
-        void Promise.resolve().then(() => setGuardandoLinea(false));
-        return prev;
-      }
-      const optimista = aplicarLineaPersonalizadaOptimista(prev, producto, calculoPromo, {
-        cantidad: cant,
-        extras,
-        comentario: comentario?.trim() || null,
-        forzar_normal: forzarNormal,
-      });
-      if (!optimista) {
-        void Promise.resolve().then(() => setGuardandoLinea(false));
-        return prev;
-      }
-      queueMicrotask(() => actualizarMesasTrasAgregar(optimista));
+    const syncLinea = () =>
       void agregarLineaConCalculo(producto, calcParaApi, extras, cant, comentario)
         .catch(async (err) => {
           toastError(formatApiError(err, "Error al agregar al pedido"));
           await recargarPedidoTrasErrorLinea();
         })
         .finally(() => setGuardandoLinea(false));
-      return optimista;
+
+    let optimista = null;
+    setPedido((prev) => {
+      const base =
+        prev && (prev.id_pedido || prev.sin_pedido) && prev.numero_mesa === numeroMesa ? prev : null;
+      if (!base) return prev;
+      optimista = aplicarLineaPersonalizadaOptimista(base, producto, calculoPromo, {
+        cantidad: cant,
+        extras,
+        comentario: comentario?.trim() || null,
+        forzar_normal: forzarNormal,
+      });
+      return optimista ?? prev;
     });
+
+    if (optimista) {
+      actualizarMesasTrasAgregar(optimista);
+      syncLinea();
+      return;
+    }
+    syncLinea();
   };
 
   const cambiarCantidad = async (idDetalle, value) => {
@@ -1273,37 +1299,14 @@ export default function Ventas({ modoParaLlevar = false }) {
     });
 
     try {
-      setLoading(true);
+      setCobroSubmitting(true);
       const pedidoParaTicket = pedido;
       const res = await withIntentRetry(() => cobrarPedido(pedido.id_pedido, payload));
       intentStoreRef.current.completeIntent(huellaCobro);
 
-      let printResult = { skipped: true };
-      if (modoParaLlevar && imprimirTicket) {
-        printResult = await printTicketSafely(buildCobroTicket, {
-          venta: res,
-          pedido: pedidoParaTicket,
-          usuario,
-          clienteNombre: usaCliente && clienteCobro ? clienteCobro.nombre : null,
-          montoRecibido: pagaCon,
-          cambio,
-        });
-      }
-
       const avisosInv = res.advertencias_inventario?.length
         ? res.advertencias_inventario
         : (res.advertencias_stock || []).map((texto) => ({ nombre: texto }));
-      let printHint = null;
-      if (!printResult.skipped && !printResult.ok) {
-        printHint = `⚠ Impresión: ${printResult.message}`;
-      } else if (!printResult.skipped && printResult.ok) {
-        printHint = "Ticket impreso.";
-      }
-      cerrarCobroModal();
-      setShowImprimirTicketModal(false);
-      setCobroPendiente(null);
-      pedidoEpochRef.current += 1;
-      invalidateMesasActivas();
       const mesaCobradaRef = numeroMesa;
       const resumenPostCobro = {
         venta: res,
@@ -1315,9 +1318,18 @@ export default function Ventas({ modoParaLlevar = false }) {
         pagaCon: cobroEfectivo ? pagaCon : null,
         cambio: cobroEfectivo ? cambio : null,
         advertenciasInventario: avisosInv,
-        printHint,
+        printHint: null,
         clienteNombre: usaCliente && clienteCobro ? clienteCobro.nombre : null,
       };
+
+      setCobroSubmitting(false);
+      cerrarCobroModal();
+      setShowImprimirTicketModal(false);
+      setCobroPendiente(null);
+      showCobroExitoResumen(resumenPostCobro);
+
+      pedidoEpochRef.current += 1;
+      invalidateMesasActivas();
       if (modoParaLlevar) {
         setPedido(null);
       } else {
@@ -1329,11 +1341,29 @@ export default function Ventas({ modoParaLlevar = false }) {
           return next;
         });
       }
-      showCobroExitoResumen(resumenPostCobro);
+
       if (modoParaLlevar) {
         void cargarPedidoMesa(MESA_PARA_LLEVAR, true).catch(console.error);
       } else {
         void refrescarMesasActivas(true).catch(console.error);
+      }
+
+      if (modoParaLlevar && imprimirTicket) {
+        void printTicketSafely(buildCobroTicket, {
+          venta: res,
+          pedido: pedidoParaTicket,
+          usuario,
+          clienteNombre: usaCliente && clienteCobro ? clienteCobro.nombre : null,
+          montoRecibido: pagaCon,
+          cambio,
+        }).then((printResult) => {
+          if (printResult.skipped) return;
+          if (printResult.ok) {
+            toastSuccess("Ticket impreso.", { dedupeKey: "cobro-ticket-ok" });
+          } else {
+            toastError(`Impresión: ${printResult.message || "no se pudo imprimir"}`);
+          }
+        });
       }
     } catch (err) {
       console.error(err);
@@ -1379,7 +1409,7 @@ export default function Ventas({ modoParaLlevar = false }) {
       }
       toastError(formatApiError(err, "Error al cobrar"));
     } finally {
-      setLoading(false);
+      setCobroSubmitting(false);
     }
   };
 
@@ -1819,7 +1849,7 @@ export default function Ventas({ modoParaLlevar = false }) {
             type="button"
             className="btn btn--success inline-flex w-full items-center justify-center gap-2"
             onClick={handleCerrarCuenta}
-            disabled={loading || imprimiendoPrecuenta || showCobroModal || carritoActivo.length === 0 || !numeroMesa}
+            disabled={loading || cobroSubmitting || imprimiendoPrecuenta || showCobroModal || carritoActivo.length === 0 || !numeroMesa}
           >
             <HiOutlineBanknotes className="size-5 shrink-0" aria-hidden />
             {modoParaLlevar ? "Cobrar para llevar" : "Cerrar cuenta / Cobrar"}
@@ -2265,13 +2295,13 @@ export default function Ventas({ modoParaLlevar = false }) {
                   type="button"
                   className="btn btn--secondary inline-flex items-center gap-2"
                   onClick={handleReimprimirPrecuenta}
-                  disabled={loading || imprimiendoPrecuenta}
+                  disabled={cobroSubmitting || imprimiendoPrecuenta}
                 >
                   <HiOutlinePrinter className="size-5" aria-hidden />
                   {imprimiendoPrecuenta ? "Imprimiendo…" : "Reimprimir precuenta"}
                 </button>
               )}
-              <button type="button" className="btn btn--secondary" onClick={cerrarCobroModal} disabled={loading}>
+              <button type="button" className="btn btn--secondary" onClick={cerrarCobroModal} disabled={cobroSubmitting}>
                 Cancelar
               </button>
               {!pedido?.id_cliente && (
@@ -2279,9 +2309,9 @@ export default function Ventas({ modoParaLlevar = false }) {
                   type="button"
                   className="btn btn--secondary"
                   onClick={() => iniciarConfirmacionCobro(false)}
-                  disabled={botonCobroBloqueado({ loading, bloquea: cobroBloqueado }) || canjeCobro.puntos > 0}
+                  disabled={botonCobroBloqueado({ loading: cobroSubmitting, bloquea: cobroBloqueado }) || canjeCobro.puntos > 0}
                 >
-                  Cobrar sin cliente
+                  {cobroSubmitting ? "Procesando…" : "Cobrar sin cliente"}
                 </button>
               )}
               {pedido?.id_cliente && (
@@ -2297,7 +2327,7 @@ export default function Ventas({ modoParaLlevar = false }) {
                     if (!ok) return;
                     ejecutarCobro(false, false, true);
                   }}
-                  disabled={botonCobroBloqueado({ loading, bloquea: false })}
+                  disabled={botonCobroBloqueado({ loading: cobroSubmitting, bloquea: false })}
                 >
                   Quitar cliente y cobrar sin puntos
                 </button>
@@ -2306,9 +2336,9 @@ export default function Ventas({ modoParaLlevar = false }) {
                 type="button"
                 className="btn btn--success"
                 onClick={() => iniciarConfirmacionCobro(true)}
-                disabled={botonCobroBloqueado({ loading, bloquea: cobroBloqueado }) || !clienteCobro}
+                disabled={botonCobroBloqueado({ loading: cobroSubmitting, bloquea: cobroBloqueado }) || !clienteCobro}
               >
-                {loading
+                {cobroSubmitting
                   ? "Procesando…"
                   : clienteCobro
                     ? puntosPreviewCobro > 0
@@ -2333,7 +2363,7 @@ export default function Ventas({ modoParaLlevar = false }) {
               <button
                 type="button"
                 className="btn btn--secondary"
-                disabled={loading}
+                disabled={cobroSubmitting}
                 onClick={() => {
                   const { conCliente } = cobroPendiente || { conCliente: false };
                   setShowImprimirTicketModal(false);
@@ -2345,7 +2375,7 @@ export default function Ventas({ modoParaLlevar = false }) {
               <button
                 type="button"
                 className="btn btn--primary"
-                disabled={loading}
+                disabled={cobroSubmitting}
                 onClick={() => {
                   const { conCliente } = cobroPendiente || { conCliente: false };
                   setShowImprimirTicketModal(false);
