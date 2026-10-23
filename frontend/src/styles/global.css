@@ -1004,6 +1004,23 @@ body {
   opacity: 0.55;
 }
 
+.ventas-producto-item--busy .ventas-producto-item__dot {
+  animation: ventas-producto-pulse 0.85s ease-in-out infinite;
+  background: var(--olive);
+}
+
+@keyframes ventas-producto-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
 .ventas-producto-item__main {
   display: flex;
   align-items: center;

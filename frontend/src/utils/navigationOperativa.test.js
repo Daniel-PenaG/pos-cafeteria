@@ -23,6 +23,16 @@ describe("navegación operativa", () => {
     assert.match(src, /void cargarPedidoMesa\(MESA_PARA_LLEVAR, true\)/);
   });
 
+  it("agregar producto usa contexto en caché y agregado optimista", () => {
+    const src = readFileSync(path.join(root, "pages/Ventas.jsx"), "utf8");
+    assert.match(src, /getCachedProductoContexto\(producto\.id_producto\)/);
+    assert.match(src, /ejecutarAgregadoRapido/);
+    assert.match(src, /aplicarAgregadoOptimista/);
+    const catalogo = src.slice(src.indexOf("ventas-producto-item__nombre"), src.indexOf("cart-panel"));
+    assert.match(catalogo, /\{p\.nombre\}/);
+    assert.doesNotMatch(catalogo, /Agregando…/);
+  });
+
   it("cerrar cuenta abre modal de cobro sin esperar precuenta", () => {
     const src = readFileSync(path.join(root, "pages/Ventas.jsx"), "utf8");
     const block = src.slice(src.indexOf("const handleCerrarCuenta"), src.indexOf("const cerrarCobroModal"));
