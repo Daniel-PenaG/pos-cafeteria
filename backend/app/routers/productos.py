@@ -140,6 +140,32 @@ def guardar_config_para_llevar(data: ParaLlevarConfigUpdate, db: Session = Depen
     return {"ok": True, "total": len(ids)}
 
 
+@router.get(
+    "/productos/restaurar-precios-historial",
+    dependencies=_prod_admin,
+)
+def previsualizar_restaurar_precios_historial(db: Session = Depends(get_db)):
+    """Lista precios de catálogo sugeridos desde ventas/pedidos (sin escribir)."""
+    from app.services.precio_historial_service import previsualizar_restauracion_precios
+
+    cambios = previsualizar_restauracion_precios(db)
+    return {"actualizados": len(cambios), "cambios": cambios}
+
+
+@router.post(
+    "/productos/restaurar-precios-historial",
+    dependencies=_prod_admin,
+)
+def restaurar_precios_historial(db: Session = Depends(get_db)):
+    """
+    Restaura precio_venta con el precio histórico más plausible por producto.
+    Útil tras un recálculo automático que sobrescribió el menú (p. ej. cafés).
+    """
+    from app.services.precio_historial_service import restaurar_precios_desde_historial
+
+    return restaurar_precios_desde_historial(db)
+
+
 @router.get("/productos/{id_producto}", response_model=Producto, dependencies=[_prod_read])
 def obtener_producto(id_producto: int, db: Session = Depends(get_db)):
     producto = db.query(ProductoModel).filter(ProductoModel.id_producto == id_producto).first()

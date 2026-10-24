@@ -2,6 +2,7 @@ import { getCategorias, getProductos } from "../services/productosService";
 import { getExtraTiposPos } from "../services/extrasVentaService";
 import { getMesasConfig, getPedidosActivos } from "../services/pedidosService";
 import { invalidateProductoContextoCache } from "../services/productoContextoService";
+import { clearVentasSessionCatalog } from "../store/ventasNavStore";
 import { createResourceCache } from "./resourceCache";
 
 export const CATALOG_TTL_MS = 45_000;
@@ -61,6 +62,8 @@ export function invalidateMesasActivas() {
 export function invalidateCatalogCache() {
   catalogCache.invalidate();
   invalidateProductoContextoCache();
+  // Evita que Ventas pinte precios viejos desde el snapshot de navegación.
+  clearVentasSessionCatalog();
 }
 
 export function clearAllOperationalCaches() {

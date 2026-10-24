@@ -31,8 +31,12 @@ export function createResourceCache({ ttlMs, sessionKey = () => "anon" }) {
   }
 
   function invalidate() {
+    // Dato inválido: no servir stale-while-revalidate (p. ej. precio recién editado).
     ensureSession();
+    generation += 1;
+    data = null;
     expiresAt = 0;
+    inflight = null;
   }
 
   function set(value, now = Date.now()) {
