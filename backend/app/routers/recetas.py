@@ -93,14 +93,14 @@ def obtener_receta(id_receta: int, db: Session = Depends(get_db)):
 def crear_receta(data: RecetaCreate, db: Session = Depends(get_db)):
     """
     Crea una nueva receta con sus insumos.
-    
+
     El flujo es:
     1. Validar que el producto existe
     2. Validar que cada insumo existe y cantidad > 0
     3. Calcular costo total de la receta
-    4. Obtener margen de ganancia desde configuracion
-    5. Calcular precio_venta = costo_total * (1 + margen)
-    6. Guardar receta, insumos y actualizar producto
+    4. Guardar receta e insumos
+
+    No modifica producto.precio_venta (ese valor se gestiona en Productos).
     """
     try:
         # Validar producto
@@ -108,10 +108,6 @@ def crear_receta(data: RecetaCreate, db: Session = Depends(get_db)):
         
         # Validar y calcular costo total de insumos
         costo_total = RecetaService.calcular_costo_total(data.insumos, db)
-        
-        # Obtener margen y gastos fijos, luego calcular precio
-        margen, gastos_fijos = RecetaService.obtener_configuracion(db)
-        precio_venta = RecetaService.calcular_precio_venta(costo_total, margen, gastos_fijos)
         
         # Crear receta
         receta = RecetaModel(
@@ -133,9 +129,6 @@ def crear_receta(data: RecetaCreate, db: Session = Depends(get_db)):
                 cantidad=insumo_item.cantidad
             )
             db.add(receta_insumo)
-        
-        # Actualizar precio del producto
-        producto.precio_venta = precio_venta
         
         db.commit()
         db.refresh(receta)
@@ -185,7 +178,7 @@ def actualizar_receta(
 ):
     """
     Actualiza una receta existente.
-    Si se actualizan los insumos, recalcula el costo y precio.
+    Si se actualizan los insumos, recalcula solo el costo_total (no el precio de venta).
     """
     try:
         receta = db.query(RecetaModel).filter(
@@ -209,16 +202,6 @@ def actualizar_receta(
         if data.insumos is not None:
             costo_total = RecetaService.calcular_costo_total(data.insumos, db)
             receta.costo_total = costo_total
-            
-            margen, gastos_fijos = RecetaService.obtener_configuracion(db)
-            precio_venta = RecetaService.calcular_precio_venta(costo_total, margen, gastos_fijos)
-            
-            producto = db.query(ProductoModel).filter(
-                ProductoModel.id_producto == receta.id_producto
-            ).first()
-            
-            if producto:
-                producto.precio_venta = precio_venta
             
             # Eliminar insumos anteriores
             db.query(RecetaInsumoModel).filter(

@@ -194,21 +194,10 @@ export default function Insumos() {
 
     try {
       if (editing) {
-        const costoCambio =
-          parseFloat(costoUnitario) !== Number(editing.costo_unitario ?? 0);
-        const updated = await updateInsumo(editing.id_insumo, payload);
-        const n = updated.productos_precio_actualizados ?? 0;
-        if (costoCambio && n > 0) {
-          alert(
-            `Insumo actualizado. Se recalcularon los precios de ${n} producto(s) con receta activa.`
-          );
-        } else if (costoCambio) {
-          alert(
-            "Insumo actualizado. El costo cambió pero no hay productos con receta activa que recalcular."
-          );
-        } else {
-          alert("Insumo actualizado");
-        }
+        await updateInsumo(editing.id_insumo, payload);
+        alert(
+          "Insumo actualizado. Los precios del catálogo no se modifican; se editan en Productos."
+        );
       } else {
         await createInsumo(payload);
         alert("Insumo creado");

@@ -85,11 +85,8 @@ export default function Dashboard() {
       });
       setConfig(updated);
       setEditing(false);
-      const n = updated.productos_precio_actualizados ?? 0;
       alert(
-        n > 0
-          ? `Configuración guardada. Se actualizaron los precios de ${n} producto(s) con receta activa.`
-          : "Configuración guardada. No hay productos con receta activa para recalcular precios."
+        "Configuración guardada. Los precios del catálogo no se modifican; se editan en Productos."
       );
     } catch (err) {
       console.error(err);

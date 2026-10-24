@@ -8,6 +8,7 @@ import {
   getCategorias,
 } from "../services/productosService";
 import { createCategoria } from "../services/categoriasService";
+import { invalidateCatalogCache } from "../cache/operationalCaches";
 import PageHeader from "../components/PageHeader";
 
 export default function Productos() {
@@ -134,6 +135,7 @@ export default function Productos() {
         await createProducto(payload);
         alert("Producto creado");
       }
+      invalidateCatalogCache();
       setShowModal(false);
       resetForm();
       await loadProductos();
@@ -148,6 +150,7 @@ export default function Productos() {
 
     try {
       await deleteProducto(producto.id_producto);
+      invalidateCatalogCache();
       alert("Producto eliminado");
       await loadProductos();
     } catch (err) {
