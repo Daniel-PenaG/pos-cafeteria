@@ -29,3 +29,15 @@ export function clearVentasSessionsForUser(userId) {
 export function clearAllVentasSessions() {
   sessions.clear();
 }
+
+/** Quita el catálogo cacheado en sesiones Ventas (precios/productos). */
+export function clearVentasSessionCatalog() {
+  for (const [key, snap] of sessions.entries()) {
+    if (!snap || typeof snap !== "object") continue;
+    const next = { ...snap };
+    delete next.productos;
+    delete next.categorias;
+    delete next.tiposPosLabels;
+    sessions.set(key, next);
+  }
+}

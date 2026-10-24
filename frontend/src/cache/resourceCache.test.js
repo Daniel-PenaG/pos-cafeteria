@@ -71,6 +71,19 @@ describe("resourceCache", () => {
     assert.equal(cache.peek(), null);
   });
 
+  it("invalidate descarta dato y no sirve stale tras editar precios", async () => {
+    let v = 42;
+    const cache = createResourceCache({ ttlMs: 60_000, sessionKey: () => "cafes" });
+    await cache.load(async () => v);
+    assert.equal(cache.peek(), 42);
+    v = 35;
+    cache.invalidate();
+    assert.equal(cache.peek(), null);
+    const hit = await cache.load(async () => v, { allowStale: true });
+    assert.equal(hit.stale, false);
+    assert.equal(hit.value, 35);
+  });
+
   it("fallo elimina inflight y permite reintentar", async () => {
     let calls = 0;
     const cache = createResourceCache({ ttlMs: 5000, sessionKey: () => "r" });

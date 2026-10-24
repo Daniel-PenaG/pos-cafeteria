@@ -85,3 +85,19 @@ export async function saveParaLlevarConfig(idsProductos) {
   );
   return res.data;
 }
+
+export async function previewRestaurarPreciosHistorial() {
+  const res = await api.get("/catalogo/productos/restaurar-precios-historial", {
+    headers: getAuthHeader(),
+  });
+  return res.data;
+}
+
+export async function restaurarPreciosHistorial() {
+  const res = await api.post(
+    "/catalogo/productos/restaurar-precios-historial",
+    {},
+    { headers: getAuthHeader() }
+  );
+  return res.data;
+}

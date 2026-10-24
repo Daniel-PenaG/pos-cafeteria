@@ -6,6 +6,8 @@ import {
   updateProducto,
   deleteProducto,
   getCategorias,
+  previewRestaurarPreciosHistorial,
+  restaurarPreciosHistorial,
 } from "../services/productosService";
 import { createCategoria } from "../services/categoriasService";
 import { invalidateCatalogCache } from "../cache/operationalCaches";
@@ -15,6 +17,7 @@ export default function Productos() {
   const [productos, setProductos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [restaurando, setRestaurando] = useState(false);
   const navigate = useNavigate();
 
   const [showModal, setShowModal] = useState(false);
@@ -164,9 +167,56 @@ export default function Productos() {
     return cat ? cat.nombre : "N/A";
   };
 
+  const handleRestaurarPreciosHistorial = async () => {
+    try {
+      setRestaurando(true);
+      const preview = await previewRestaurarPreciosHistorial();
+      const cambios = preview?.cambios || [];
+      if (!cambios.length) {
+        alert(
+          "No hay precios distintos en el historial de ventas para restaurar."
+        );
+        return;
+      }
+      const muestra = cambios
+        .slice(0, 12)
+        .map(
+          (c) =>
+            `• ${c.nombre}: $${Number(c.precio_actual).toFixed(2)} → $${Number(
+              c.precio_sugerido
+            ).toFixed(2)}`
+        )
+        .join("\n");
+      const extra =
+        cambios.length > 12 ? `\n… y ${cambios.length - 12} más` : "";
+      const ok = window.confirm(
+        `Se actualizarán ${cambios.length} producto(s) con el precio más frecuente del historial (útil para cafés recalculados por receta):\n\n${muestra}${extra}\n\n¿Aplicar?`
+      );
+      if (!ok) return;
+      const res = await restaurarPreciosHistorial();
+      invalidateCatalogCache();
+      await loadProductos();
+      alert(`Precios restaurados: ${res?.actualizados ?? 0}`);
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Error al restaurar precios");
+    } finally {
+      setRestaurando(false);
+    }
+  };
+
   return (
     <div className="page">
       <PageHeader title="Productos" subtitle="Menú y precios de venta">
+        <button
+          type="button"
+          className="btn btn--secondary"
+          onClick={handleRestaurarPreciosHistorial}
+          disabled={restaurando || loading}
+          title="Recupera precios del menú desde ventas anteriores"
+        >
+          {restaurando ? "Restaurando…" : "Restaurar precios"}
+        </button>
         <button type="button" className="btn btn--primary" onClick={openNewModal}>
           Nuevo producto
         </button>
@@ -218,12 +268,8 @@ export default function Productos() {
                         <button
                           type="button"
                           className="btn btn--accent btn--sm"
-                          onClick={() => {
-                            alert(
-                              `Para actualizar el precio de "${p.nombre}", crea o edita su receta en Recetas.`
-                            );
-                            navigate("/recetas");
-                          }}
+                          onClick={() => navigate("/recetas")}
+                          title="Ver o editar la receta (costo). El precio de venta se cambia con Editar."
                         >
                           Receta
                         </button>
@@ -298,7 +344,8 @@ export default function Productos() {
                   placeholder="Ej. 45.00"
                 />
                 <p className="hint" style={{ marginTop: "0.35rem" }}>
-                  Con receta activa, el precio se recalcula automáticamente.
+                  Este es el precio del catálogo y de ventas. Las recetas solo
+                  actualizan el costo, no este valor.
                 </p>
               </div>
 
