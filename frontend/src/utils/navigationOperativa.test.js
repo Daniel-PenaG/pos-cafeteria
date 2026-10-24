@@ -14,46 +14,6 @@ describe("navegación operativa", () => {
     assert.doesNotMatch(src, /\b(window\.)?(alert|confirm)\s*\(/);
   });
 
-  it("post-cobro muestra resumen antes de refrescar mesas en background", () => {
-    const src = readFileSync(path.join(root, "pages/Ventas.jsx"), "utf8");
-    const idxResumen = src.indexOf("showCobroExitoResumen(resumenPostCobro)");
-    const idxRefresh = src.indexOf("void refrescarMesasActivas(true)");
-    assert.ok(idxResumen > 0);
-    assert.ok(idxRefresh > idxResumen);
-    assert.match(src, /void cargarPedidoMesa\(MESA_PARA_LLEVAR, true\)/);
-  });
-
-  it("cobro no bloquea el modal esperando impresión de ticket", () => {
-    const src = readFileSync(path.join(root, "pages/Ventas.jsx"), "utf8");
-    const block = src.slice(src.indexOf("const ejecutarCobro"), src.indexOf("const ventasHabilitadas"));
-    const idxResumen = block.indexOf("showCobroExitoResumen(resumenPostCobro)");
-    const idxPrint = block.indexOf("void printTicketSafely(buildCobroTicket");
-    assert.ok(idxResumen > 0);
-    assert.ok(idxPrint > idxResumen);
-    assert.doesNotMatch(block, /await printTicketSafely\(buildCobroTicket/);
-  });
-
-  it("agregar producto usa contexto en caché y agregado optimista", () => {
-    const src = readFileSync(path.join(root, "pages/Ventas.jsx"), "utf8");
-    assert.match(src, /getCachedProductoContexto\(producto\.id_producto\)/);
-    assert.match(src, /ejecutarAgregadoRapido/);
-    assert.match(src, /aplicarAgregadoOptimista/);
-    assert.match(src, /pedidoBase\.sin_pedido/);
-    assert.doesNotMatch(src, /No se pudo abrir el pedido de la mesa/);
-    assert.doesNotMatch(src, /startTransition/);
-    const catalogo = src.slice(src.indexOf("ventas-producto-item__nombre"), src.indexOf("cart-panel"));
-    assert.match(catalogo, /\{p\.nombre\}/);
-    assert.doesNotMatch(catalogo, /Agregando…/);
-  });
-
-  it("cerrar cuenta abre modal de cobro sin esperar precuenta", () => {
-    const src = readFileSync(path.join(root, "pages/Ventas.jsx"), "utf8");
-    const block = src.slice(src.indexOf("const handleCerrarCuenta"), src.indexOf("const cerrarCobroModal"));
-    assert.match(block, /abrirCobroModal\(\)/);
-    assert.doesNotMatch(block, /await imprimirPrecuenta/);
-    assert.match(block, /void imprimirPrecuenta\(\)/);
-  });
-
   it("Comandera.jsx sin alert/confirm nativos", () => {
     const src = readFileSync(path.join(root, "pages/Comandera.jsx"), "utf8");
     assert.doesNotMatch(src, /\b(window\.)?(alert|confirm)\s*\(/);

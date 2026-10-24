@@ -1,10 +1,6 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import {
-  getCachedProductoContexto,
-  getProductoContexto,
-} from "../services/productoContextoService";
-import { schedulePrefetchProductoContextos } from "../services/productoContextoPrefetch";
+import { getProductoContexto } from "../services/productoContextoService";
 import {
   getPedidoMesa,
   agregarMesa,
@@ -86,10 +82,6 @@ import {
   requiereCancelacionEnviada,
 } from "../utils/lineaPedidoAccion";
 import { mergeMesaActivaFromPedido } from "../utils/ventasOperacionSync";
-import {
-  aplicarAgregadoOptimista,
-  aplicarLineaPersonalizadaOptimista,
-} from "../utils/ventasOptimisticAdd";
 import { bootstrapVentasShell } from "../services/ventasBootstrap";
 import {
   fetchMesasActivasCached,
@@ -149,7 +141,6 @@ export default function Ventas({ modoParaLlevar = false }) {
   const [tiposPosLabels, setTiposPosLabels] = useState({});
 
   const [showCobroModal, setShowCobroModal] = useState(false);
-  const [cobroSubmitting, setCobroSubmitting] = useState(false);
   const [showImprimirTicketModal, setShowImprimirTicketModal] = useState(false);
   const [cobroPendiente, setCobroPendiente] = useState(null);
   const [clienteCobro, setClienteCobro] = useState(null);
@@ -323,101 +314,6 @@ export default function Ventas({ modoParaLlevar = false }) {
     [numeroMesa, usuario, modoParaLlevar, actualizarMesasTrasAgregar]
   );
 
-  const recargarPedidoTrasErrorLinea = useCallback(async () => {
-    if (!numeroMesa || !usuario?.id_usuario) return;
-    try {
-      const p = await getPedidoMesa(numeroMesa, usuario.id_usuario, modoParaLlevar);
-      setPedido(p);
-      actualizarMesasTrasAgregar(p);
-    } catch {
-      /* El toast ya informó; el cajero puede reintentar. */
-    }
-  }, [actualizarMesasTrasAgregar, modoParaLlevar, numeroMesa, usuario?.id_usuario]);
-
-  const shellPedidoMesa = useCallback(
-    () => ({
-      numero_mesa: numeroMesa,
-      para_llevar: modoParaLlevar,
-      estado: "SIN_PEDIDO",
-      sin_pedido: true,
-      lineas: [],
-      total: 0,
-    }),
-    [modoParaLlevar, numeroMesa]
-  );
-
-  const ejecutarAgregadoRapido = useCallback(
-    (producto, ctx, pedidoBase = null) => {
-      let optimista = null;
-      setPedido((prev) => {
-        const base =
-          prev && (prev.id_pedido || prev.sin_pedido) && prev.numero_mesa === pedidoBase?.numero_mesa
-            ? prev
-            : pedidoBase;
-        if (!base) return prev;
-        optimista = aplicarAgregadoOptimista(base, producto, ctx.calculo_inicial);
-        return optimista ?? prev;
-      });
-
-      const syncPedido = () =>
-        void agregarLineaConCalculo(producto, ctx.calculo_inicial).catch(async (err) => {
-          toastError(formatApiError(err, "Error al agregar al pedido"));
-          await recargarPedidoTrasErrorLinea();
-        });
-
-      if (optimista) {
-        actualizarMesasTrasAgregar(optimista);
-        syncPedido();
-        return;
-      }
-      syncPedido();
-    },
-    [agregarLineaConCalculo, actualizarMesasTrasAgregar, recargarPedidoTrasErrorLinea]
-  );
-
-  const resolverContextoProducto = useCallback(
-    async (producto, ctx, { optimista = false, pedidoBase = null } = {}) => {
-      const paquetes = ctx.paquetes ?? [];
-      const promos = ctx.promociones ?? [];
-      const extras = ctx.extras ?? [];
-
-      if (paquetes.length > 0) {
-        setPromoConfirm({ kind: "combo", combo: paquetes[0], producto });
-        return "promo";
-      }
-      if (promos.length > 0) {
-        setPromoConfirm({ kind: "promo", promo: promos[0], producto });
-        return "promo";
-      }
-
-      if (puedeAgregarRapido({ ...ctx, extras, promociones: promos, paquetes })) {
-        if (optimista) {
-          ejecutarAgregadoRapido(producto, ctx, pedidoBase);
-        } else {
-          try {
-            await agregarLineaConCalculo(producto, ctx.calculo_inicial);
-          } catch (err) {
-            toastError(formatApiError(err, "Error al agregar al pedido"));
-          }
-        }
-        return "added";
-      }
-
-      setProductoModal(producto);
-      setExtrasSeleccionados([]);
-      setExtrasModal(extras);
-      setPromosDisponibles(ctx.promociones ?? []);
-      setPromoModo("auto");
-      setCalculoInicialModal(ctx.calculo_inicial ?? null);
-      setCalculoPromo(ctx.calculo_inicial ?? null);
-      setCantidadModal("1");
-      setComentarioModal("");
-      setCargandoExtras(false);
-      return "modal";
-    },
-    [agregarLineaConCalculo, ejecutarAgregadoRapido]
-  );
-
   const handleAgregarMesa = async () => {
     try {
       setGestionMesasLoading(true);
@@ -456,23 +352,21 @@ export default function Ventas({ modoParaLlevar = false }) {
   };
 
   const cargarPedidoMesa = useCallback(async (mesa, paraLlevar = modoParaLlevar) => {
-    if (!usuario?.id_usuario) return null;
+    if (!usuario?.id_usuario) return;
     const ticket = ++pedidoEpochRef.current;
     try {
       const p = await getPedidoMesa(mesa, usuario.id_usuario, paraLlevar);
-      if (ticket !== pedidoEpochRef.current) return null;
+      if (ticket !== pedidoEpochRef.current) return;
       setPedido(p);
       setCantidadEdit({});
       if (!paraLlevar) {
         refrescarMesasActivas(true).catch(console.error);
       }
-      return p;
     } catch (err) {
       console.error(err);
       toastError(
         paraLlevar ? "Error al cargar pedido para llevar" : "Error al cargar pedido de la mesa"
       );
-      return null;
     }
   }, [modoParaLlevar, usuario, refrescarMesasActivas]);
 
@@ -555,11 +449,6 @@ export default function Ventas({ modoParaLlevar = false }) {
     categoriasAbiertas,
     busquedaProducto,
   ]);
-
-  useEffect(() => {
-    if (!productos.length || !usuario?.id_usuario) return undefined;
-    return schedulePrefetchProductoContextos(productos.map((p) => p.id_producto));
-  }, [productos, usuario?.id_usuario]);
 
   useEffect(() => {
     if (!modoParaLlevar || !usuario?.id_usuario) return;
@@ -737,7 +626,7 @@ export default function Ventas({ modoParaLlevar = false }) {
 
   const handleCerrarCuenta = async () => {
     if (!pedido?.id_pedido || carritoActivo.length === 0) return;
-    if (imprimiendoPrecuenta || loading || cobroSubmitting || showCobroModal) return;
+    if (imprimiendoPrecuenta || loading || showCobroModal) return;
 
     if (lineasPendientesConfirmar.length > 0) {
       if (modoParaLlevar) {
@@ -761,14 +650,14 @@ export default function Ventas({ modoParaLlevar = false }) {
     }
 
     setPrecuentaImpresa(false);
-    abrirCobroModal();
     if (canUseBluetoothPrinter()) {
-      void imprimirPrecuenta().then((printResult) => {
-        if (!printResult.skipped && !printResult.ok) {
-          toastError(`Precuenta: ${printResult.message || "no se pudo imprimir"}`);
-        }
-      });
+      const printResult = await imprimirPrecuenta();
+      if (!printResult.skipped && !printResult.ok) {
+        toastError(`Precuenta: ${printResult.message || "no se pudo imprimir"}`);
+      }
     }
+
+    abrirCobroModal();
   };
 
   const cerrarCobroModal = () => {
@@ -890,46 +779,61 @@ export default function Ventas({ modoParaLlevar = false }) {
     if (!usuario?.id_usuario) return;
     if (!productLockRef.current.tryBegin(producto.id_producto)) return;
 
-    const liberarProducto = () => {
+    const ac = new AbortController();
+    setAgregandoIds((prev) => {
+      const next = new Set(prev);
+      next.add(producto.id_producto);
+      return next;
+    });
+
+    try {
+      const ctx = await getProductoContexto(producto.id_producto, { signal: ac.signal });
+      if (ac.signal.aborted) return;
+
+      const paquetes = ctx.paquetes ?? [];
+      const promos = ctx.promociones ?? [];
+      const extras = ctx.extras ?? [];
+
+      if (paquetes.length > 0) {
+        setPromoConfirm({ kind: "combo", combo: paquetes[0], producto });
+        return;
+      }
+
+      if (promos.length > 0) {
+        setPromoConfirm({ kind: "promo", promo: promos[0], producto });
+        return;
+      }
+
+      if (puedeAgregarRapido({ ...ctx, extras, promociones: promos, paquetes })) {
+        try {
+          await agregarLineaConCalculo(producto, ctx.calculo_inicial);
+        } catch (err) {
+          toastError(formatApiError(err, "Error al agregar al pedido"));
+        }
+        return;
+      }
+
+      setProductoModal(producto);
+      setExtrasSeleccionados([]);
+      setExtrasModal(extras);
+      setPromosDisponibles(ctx.promociones ?? []);
+      setPromoModo("auto");
+      setCalculoInicialModal(ctx.calculo_inicial ?? null);
+      setCalculoPromo(ctx.calculo_inicial ?? null);
+      setCantidadModal("1");
+      setComentarioModal("");
+      setCargandoExtras(false);
+    } catch (err) {
+      if (err?.code === "ERR_CANCELED" || ac.signal.aborted) return;
+      console.error("Contexto producto:", err.response?.status, err.response?.data?.detail);
+      toastError(formatApiError(err, "Error al cargar opciones del producto"));
+    } finally {
       productLockRef.current.end(producto.id_producto);
       setAgregandoIds((prev) => {
-        if (!prev.has(producto.id_producto)) return prev;
         const next = new Set(prev);
         next.delete(producto.id_producto);
         return next;
       });
-    };
-
-    try {
-      let pedidoBase = pedido;
-      const pedidoDeEstaMesa =
-        pedidoBase &&
-        pedidoBase.numero_mesa === numeroMesa &&
-        (pedidoBase.id_pedido || pedidoBase.sin_pedido);
-      if (!pedidoDeEstaMesa) {
-        pedidoBase = (await cargarPedidoMesa(numeroMesa)) ?? shellPedidoMesa();
-      }
-
-      const cached = getCachedProductoContexto(producto.id_producto);
-      if (cached) {
-        await resolverContextoProducto(producto, cached, { optimista: true, pedidoBase });
-        return;
-      }
-
-      setAgregandoIds((prev) => {
-        const next = new Set(prev);
-        next.add(producto.id_producto);
-        return next;
-      });
-
-      const ctx = await getProductoContexto(producto.id_producto);
-      await resolverContextoProducto(producto, ctx, { optimista: true, pedidoBase });
-    } catch (err) {
-      if (err?.code === "ERR_CANCELED") return;
-      console.error("Contexto producto:", err.response?.status, err.response?.data?.detail);
-      toastError(formatApiError(err, "Error al cargar opciones del producto"));
-    } finally {
-      liberarProducto();
     }
   };
 
@@ -1011,19 +915,7 @@ export default function Ventas({ modoParaLlevar = false }) {
     });
   };
 
-  const cerrarModalProducto = useCallback(() => {
-    setProductoModal(null);
-    setExtrasSeleccionados([]);
-    setExtrasModal([]);
-    setPromosDisponibles([]);
-    setPromoModo("auto");
-    setCalculoPromo(null);
-    setCalculoInicialModal(null);
-    setCantidadModal("");
-    setComentarioModal("");
-  }, []);
-
-  const confirmarAgregarAlCarrito = () => {
+  const confirmarAgregarAlCarrito = async () => {
     if (!productoModal || !calculoPromo || !numeroMesa || !usuario?.id_usuario) return;
     if (guardandoLinea) return;
     const cant = parseInt(cantidadModal, 10);
@@ -1036,45 +928,31 @@ export default function Ventas({ modoParaLlevar = false }) {
       return;
     }
 
-    const producto = productoModal;
-    const extras = extrasSeleccionados;
-    const comentario = comentarioModal;
-    const forzarNormal = promoModo === "none";
-    const calcParaApi = forzarNormal
-      ? { ...calculoPromo, forzar_normal: true, id_promocion: null }
-      : calculoPromo;
-
-    setGuardandoLinea(true);
-    cerrarModalProducto();
-
-    const syncLinea = () =>
-      void agregarLineaConCalculo(producto, calcParaApi, extras, cant, comentario)
-        .catch(async (err) => {
-          toastError(formatApiError(err, "Error al agregar al pedido"));
-          await recargarPedidoTrasErrorLinea();
-        })
-        .finally(() => setGuardandoLinea(false));
-
-    let optimista = null;
-    setPedido((prev) => {
-      const base =
-        prev && (prev.id_pedido || prev.sin_pedido) && prev.numero_mesa === numeroMesa ? prev : null;
-      if (!base) return prev;
-      optimista = aplicarLineaPersonalizadaOptimista(base, producto, calculoPromo, {
-        cantidad: cant,
-        extras,
-        comentario: comentario?.trim() || null,
-        forzar_normal: forzarNormal,
-      });
-      return optimista ?? prev;
-    });
-
-    if (optimista) {
-      actualizarMesasTrasAgregar(optimista);
-      syncLinea();
+    try {
+      setGuardandoLinea(true);
+      await agregarLineaConCalculo(
+        productoModal,
+        promoModo === "none" ? { ...calculoPromo, forzar_normal: true, id_promocion: null } : calculoPromo,
+        extrasSeleccionados,
+        cant,
+        comentarioModal
+      );
+    } catch (err) {
+      toastError(formatApiError(err, "Error al agregar al pedido"));
       return;
+    } finally {
+      setGuardandoLinea(false);
     }
-    syncLinea();
+
+    setProductoModal(null);
+    setExtrasSeleccionados([]);
+    setExtrasModal([]);
+    setPromosDisponibles([]);
+    setPromoModo("auto");
+    setCalculoPromo(null);
+    setCalculoInicialModal(null);
+    setCantidadModal("");
+    setComentarioModal("");
   };
 
   const cambiarCantidad = async (idDetalle, value) => {
@@ -1299,16 +1177,52 @@ export default function Ventas({ modoParaLlevar = false }) {
     });
 
     try {
-      setCobroSubmitting(true);
+      setLoading(true);
       const pedidoParaTicket = pedido;
       const res = await withIntentRetry(() => cobrarPedido(pedido.id_pedido, payload));
       intentStoreRef.current.completeIntent(huellaCobro);
 
+      let printResult = { skipped: true };
+      if (modoParaLlevar && imprimirTicket) {
+        printResult = await printTicketSafely(buildCobroTicket, {
+          venta: res,
+          pedido: pedidoParaTicket,
+          usuario,
+          clienteNombre: usaCliente && clienteCobro ? clienteCobro.nombre : null,
+          montoRecibido: pagaCon,
+          cambio,
+        });
+      }
+
       const avisosInv = res.advertencias_inventario?.length
         ? res.advertencias_inventario
         : (res.advertencias_stock || []).map((texto) => ({ nombre: texto }));
+      let printHint = null;
+      if (!printResult.skipped && !printResult.ok) {
+        printHint = `⚠ Impresión: ${printResult.message}`;
+      } else if (!printResult.skipped && printResult.ok) {
+        printHint = "Ticket impreso.";
+      }
+      cerrarCobroModal();
+      setShowImprimirTicketModal(false);
+      setCobroPendiente(null);
+      pedidoEpochRef.current += 1;
+      invalidateMesasActivas();
       const mesaCobradaRef = numeroMesa;
-      const resumenPostCobro = {
+      if (modoParaLlevar) {
+        setPedido(null);
+        await cargarPedidoMesa(MESA_PARA_LLEVAR, true);
+      } else {
+        setPedido(null);
+        setNumeroMesa(null);
+        setMesasActivas((prev) => {
+          const next = { ...prev };
+          if (mesaCobradaRef) delete next[mesaCobradaRef];
+          return next;
+        });
+        await refrescarMesasActivas(true);
+      }
+      showCobroExitoResumen({
         venta: res,
         modoParaLlevar,
         numeroMesa: mesaCobradaRef,
@@ -1318,53 +1232,9 @@ export default function Ventas({ modoParaLlevar = false }) {
         pagaCon: cobroEfectivo ? pagaCon : null,
         cambio: cobroEfectivo ? cambio : null,
         advertenciasInventario: avisosInv,
-        printHint: null,
+        printHint,
         clienteNombre: usaCliente && clienteCobro ? clienteCobro.nombre : null,
-      };
-
-      setCobroSubmitting(false);
-      cerrarCobroModal();
-      setShowImprimirTicketModal(false);
-      setCobroPendiente(null);
-      showCobroExitoResumen(resumenPostCobro);
-
-      pedidoEpochRef.current += 1;
-      invalidateMesasActivas();
-      if (modoParaLlevar) {
-        setPedido(null);
-      } else {
-        setPedido(null);
-        setNumeroMesa(null);
-        setMesasActivas((prev) => {
-          const next = { ...prev };
-          if (mesaCobradaRef) delete next[mesaCobradaRef];
-          return next;
-        });
-      }
-
-      if (modoParaLlevar) {
-        void cargarPedidoMesa(MESA_PARA_LLEVAR, true).catch(console.error);
-      } else {
-        void refrescarMesasActivas(true).catch(console.error);
-      }
-
-      if (modoParaLlevar && imprimirTicket) {
-        void printTicketSafely(buildCobroTicket, {
-          venta: res,
-          pedido: pedidoParaTicket,
-          usuario,
-          clienteNombre: usaCliente && clienteCobro ? clienteCobro.nombre : null,
-          montoRecibido: pagaCon,
-          cambio,
-        }).then((printResult) => {
-          if (printResult.skipped) return;
-          if (printResult.ok) {
-            toastSuccess("Ticket impreso.", { dedupeKey: "cobro-ticket-ok" });
-          } else {
-            toastError(`Impresión: ${printResult.message || "no se pudo imprimir"}`);
-          }
-        });
-      }
+      });
     } catch (err) {
       console.error(err);
       if (!shouldKeepPendingKey(err)) {
@@ -1409,7 +1279,7 @@ export default function Ventas({ modoParaLlevar = false }) {
       }
       toastError(formatApiError(err, "Error al cobrar"));
     } finally {
-      setCobroSubmitting(false);
+      setLoading(false);
     }
   };
 
@@ -1586,19 +1456,18 @@ export default function Ventas({ modoParaLlevar = false }) {
                             <div key={p.id_producto} className="ventas-producto-row">
                               <button
                                 type="button"
-                                className={`ventas-producto-item${
-                                  agregandoIds.has(p.id_producto) ? " ventas-producto-item--busy" : ""
-                                }`}
+                                className="ventas-producto-item"
                                 onClick={() => handleProductoClick(p)}
                                 disabled={
                                   !ventasHabilitadas ||
                                   agregandoIds.has(p.id_producto)
                                 }
-                                aria-busy={agregandoIds.has(p.id_producto) || undefined}
                               >
                                 <span className="ventas-producto-item__main">
                                   <span className="ventas-producto-item__dot" aria-hidden />
-                                  <span className="ventas-producto-item__nombre">{p.nombre}</span>
+                                  <span className="ventas-producto-item__nombre">
+                                    {agregandoIds.has(p.id_producto) ? "Agregando…" : p.nombre}
+                                  </span>
                                 </span>
                                 <span className="ventas-producto-item__precio">
                                   ${Number(p.precio_venta).toFixed(2)}
@@ -1626,164 +1495,176 @@ export default function Ventas({ modoParaLlevar = false }) {
           </div>
         </section>
 
-        <aside className="cart-panel cart-panel--pos">
-          <header className="cart-panel__head">
-            <h2 className="flex items-center gap-2">
-              {modoParaLlevar ? (
-                <HiOutlineShoppingBag className="size-5 shrink-0" aria-hidden />
-              ) : (
-                <HiOutlineShoppingCart className="size-5 shrink-0" aria-hidden />
-              )}
-              {modoParaLlevar
-                ? "Pedido para llevar"
-                : `Pedido ${numeroMesa ? `(Mesa ${numeroMesa})` : ""}`}
-            </h2>
-            {carritoActivo.length > 0 && (
-              <span className="cart-panel__count">
-                {carritoActivo.length} {carritoActivo.length === 1 ? "producto" : "productos"}
-              </span>
+        <aside className="cart-panel">
+          <h2 className="flex items-center gap-2">
+            {modoParaLlevar ? (
+              <HiOutlineShoppingBag className="size-5 text-olive shrink-0" aria-hidden />
+            ) : (
+              <HiOutlineShoppingCart className="size-5 text-olive shrink-0" aria-hidden />
             )}
-          </header>
+            {modoParaLlevar
+              ? "Pedido para llevar"
+              : `Pedido ${numeroMesa ? `(Mesa ${numeroMesa})` : ""}`}
+          </h2>
           {carrito.length === 0 ? (
-            <div className="cart-panel__items">
-              <p className="empty-state">Sin productos en el pedido</p>
-            </div>
+            <p className="empty-state">Sin productos en el pedido</p>
           ) : (
             <div className="cart-panel__items">
-              <ul className="cart-list">
               {carrito.map((item) => {
                 const cancelada = esLineaCancelada(item);
                 const enviada = requiereCancelacionEnviada(item);
-                const unitHint =
-                  Array.isArray(item.desglose) && item.desglose.length > 0
-                    ? item.desglose
-                        .map((parte) => `${parte.etiqueta} $${Number(parte.importe).toFixed(2)}`)
-                        .join(" · ")
-                    : (item.descuento_unitario ?? 0) > 0 && Number(item.unidades_normales || 0) === 0
-                      ? `$${Number(item.precio_original).toFixed(2)} → $${Number(item.precio_unitario).toFixed(2)} c/u`
-                      : `$${Number(item.precio_unitario).toFixed(2)} c/u`;
-                const showMeta =
-                  item.nombre_promocion ||
-                  cancelada ||
-                  (!cancelada && !item.en_comanda && !modoParaLlevar) ||
-                  (!cancelada && item.cantidad_pendiente > 0 && item.en_comanda) ||
-                  (item.en_comanda && item.cantidad_pendiente > 0 && item.fecha_envio_comanda && !cancelada) ||
-                  item.comentario ||
-                  unitHint;
                 return (
-                <li
+                <div
                   key={item.id_detalle_pedido}
-                  className={`cart-list__row${cancelada ? " cart-list__row--cancelada" : ""}`}
+                  className={`cart-item${cancelada ? " cart-item--cancelada" : ""}`}
                 >
-                  <div className="cart-list__line">
-                    <p className="cart-list__name" title={item.nombre_producto}>
-                      {item.nombre_producto}
-                    </p>
-                    <div className="cart-list__end">
-                      <input
-                        type="number"
-                        min="1"
-                        value={cantidadEdit[item.id_detalle_pedido] ?? item.cantidad}
-                        onChange={(e) =>
-                          onCantidadLineaChange(item.id_detalle_pedido, e.target.value)
-                        }
-                        onFocus={(e) => e.target.select()}
-                        onBlur={() => confirmarCantidadLinea(item.id_detalle_pedido)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") e.currentTarget.blur();
-                        }}
-                        className="input cart-list__qty"
-                        disabled={cancelada || enviada}
-                        readOnly={enviada}
-                        aria-label={`Cantidad ${item.nombre_producto}`}
-                        title={enviada ? "Para reducir una línea en comanda, registra una cancelación" : undefined}
-                      />
-                      <span className="cart-list__price">${importeLinea(item).toFixed(2)}</span>
-                      {!cancelada && comentarioEdit[item.id_detalle_pedido] === undefined && (
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm cart-list__icon-btn cart-item__nota-btn"
-                          onClick={() =>
+                  <div style={{ flex: 1 }}>
+                    <strong>{item.nombre_producto}</strong>
+                    {item.nombre_promocion && (
+                      <span className="badge" style={{ marginLeft: "0.35rem" }}>
+                        {item.nombre_promocion}
+                      </span>
+                    )}
+                    {cancelada && (
+                      <span className="badge badge--danger" style={{ marginLeft: "0.35rem" }}>
+                        CANCELADO
+                      </span>
+                    )}
+                    {!cancelada && !item.en_comanda && !modoParaLlevar && (
+                      <span className="badge badge--pending" style={{ marginLeft: "0.35rem" }}>
+                        sin confirmar
+                      </span>
+                    )}
+                    {!cancelada && item.cantidad_pendiente > 0 && item.en_comanda && (
+                      <span className="badge badge--kitchen" style={{ marginLeft: "0.35rem" }}>
+                        en comanda
+                      </span>
+                    )}
+                    {item.en_comanda && item.cantidad_pendiente > 0 && item.fecha_envio_comanda && !cancelada && (
+                      <span style={{ marginLeft: "0.35rem" }}>
+                        <ElapsedTimer since={item.fecha_envio_comanda} />
+                      </span>
+                    )}
+                    {item.extras?.length > 0 && (
+                      <ul className="cart-item__extras">
+                        {item.extras.map((e) => (
+                          <li key={e.id_extra}>
+                            + {e.nombre}
+                            {Number(e.precio) > 0 && ` ($${Number(e.precio).toFixed(2)})`}
+                            {admin && Number(e.costo) > 0 && (
+                              <span className="hint"> · costo ${Number(e.costo).toFixed(2)}</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {!cancelada && comentarioEdit[item.id_detalle_pedido] !== undefined ? (
+                      <div className="cart-item__comentario-edit">
+                        <textarea
+                          className="input"
+                          rows={2}
+                          maxLength={300}
+                          value={comentarioEdit[item.id_detalle_pedido]}
+                          onChange={(e) =>
                             setComentarioEdit((prev) => ({
                               ...prev,
-                              [item.id_detalle_pedido]: item.comentario || "",
+                              [item.id_detalle_pedido]: e.target.value,
                             }))
                           }
-                          aria-label={item.comentario ? "Editar nota" : "Agregar nota"}
-                          title="Nota para cocina"
-                        >
-                          <HiOutlinePencilSquare className="size-3.5" aria-hidden />
-                        </button>
-                      )}
-                      {!cancelada && (
-                        <button
-                          type="button"
-                          className="btn btn--danger cart-list__remove"
-                          onClick={() => eliminarDelCarrito(item.id_detalle_pedido)}
-                          disabled={quitandoId === item.id_detalle_pedido}
-                          aria-label={enviada ? "Cancelar producto enviado" : "Quitar"}
-                        >
-                          {quitandoId === item.id_detalle_pedido ? "…" : "✕"}
-                        </button>
+                          onBlur={() => guardarComentarioLinea(item.id_detalle_pedido)}
+                          placeholder="Comentario para cocina"
+                        />
+                      </div>
+                    ) : (
+                      <p className="cart-item__comentario">
+                        {item.comentario ? `📝 ${item.comentario}` : (
+                          !cancelada && (
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm cart-item__nota-btn"
+                            onClick={() =>
+                              setComentarioEdit((prev) => ({
+                                ...prev,
+                                [item.id_detalle_pedido]: item.comentario || "",
+                              }))
+                            }
+                          >
+                            <HiOutlinePencilSquare className="size-4" aria-hidden />
+                            Nota
+                          </button>
+                          )
+                        )}
+                        {item.comentario && !cancelada && (
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm cart-item__nota-btn"
+                            onClick={() =>
+                              setComentarioEdit((prev) => ({
+                                ...prev,
+                                [item.id_detalle_pedido]: item.comentario || "",
+                              }))
+                            }
+                            aria-label="Editar comentario"
+                          >
+                            <HiOutlinePencilSquare className="size-4" aria-hidden />
+                          </button>
+                        )}
+                      </p>
+                    )}
+                    <div className="hint" style={{ marginTop: "0.25rem" }}>
+                      {Array.isArray(item.desglose) && item.desglose.length > 0 ? (
+                        item.desglose.map((parte) => (
+                          <div key={parte.etiqueta}>
+                            {parte.etiqueta}: ${Number(parte.importe).toFixed(2)}
+                          </div>
+                        ))
+                      ) : (item.descuento_unitario ?? 0) > 0 && Number(item.unidades_normales || 0) === 0 ? (
+                        <>
+                          <s>${Number(item.precio_original).toFixed(2)}</s> → $
+                          {Number(item.precio_unitario).toFixed(2)} c/u
+                        </>
+                      ) : (
+                        <>${Number(item.precio_unitario).toFixed(2)} c/u</>
                       )}
                     </div>
                   </div>
-                  {showMeta && (
-                    <div className="cart-list__meta">
-                      {item.nombre_promocion && (
-                        <span className="badge">{item.nombre_promocion}</span>
-                      )}
-                      {cancelada && <span className="badge badge--danger">CANCELADO</span>}
-                      {!cancelada && !item.en_comanda && !modoParaLlevar && (
-                        <span className="badge badge--pending">sin confirmar</span>
-                      )}
-                      {!cancelada && item.cantidad_pendiente > 0 && item.en_comanda && (
-                        <span className="badge badge--kitchen">en comanda</span>
-                      )}
-                      {item.en_comanda && item.cantidad_pendiente > 0 && item.fecha_envio_comanda && !cancelada && (
-                        <ElapsedTimer since={item.fecha_envio_comanda} />
-                      )}
-                      {item.comentario && (
-                        <span title={item.comentario}>📝 {item.comentario}</span>
-                      )}
-                      <span>{unitHint}</span>
-                    </div>
+                  <input
+                    type="number"
+                    min="1"
+                    value={
+                      cantidadEdit[item.id_detalle_pedido] ?? item.cantidad
+                    }
+                    onChange={(e) =>
+                      onCantidadLineaChange(item.id_detalle_pedido, e.target.value)
+                    }
+                    onFocus={(e) => e.target.select()}
+                    onBlur={() => confirmarCantidadLinea(item.id_detalle_pedido)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
+                    }}
+                    style={{ width: 56 }}
+                    className="input"
+                    disabled={cancelada || enviada}
+                    readOnly={enviada}
+                    title={enviada ? "Para reducir una línea en comanda, registra una cancelación" : undefined}
+                  />
+                  <span style={{ minWidth: 72, fontWeight: 600 }}>
+                    ${importeLinea(item).toFixed(2)}
+                  </span>
+                  {!cancelada && (
+                  <button
+                    type="button"
+                    className="btn btn--danger"
+                    onClick={() => eliminarDelCarrito(item.id_detalle_pedido)}
+                    disabled={quitandoId === item.id_detalle_pedido}
+                    aria-label={enviada ? "Cancelar producto enviado" : "Quitar"}
+                  >
+                    {quitandoId === item.id_detalle_pedido ? "…" : "✕"}
+                  </button>
                   )}
-                  {item.extras?.length > 0 && (
-                    <ul className="cart-list__extras">
-                      {item.extras.map((e) => (
-                        <li key={e.id_extra}>
-                          + {e.nombre}
-                          {Number(e.precio) > 0 && ` ($${Number(e.precio).toFixed(2)})`}
-                          {admin && Number(e.costo) > 0 && (
-                            <span className="hint"> · costo ${Number(e.costo).toFixed(2)}</span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {!cancelada && comentarioEdit[item.id_detalle_pedido] !== undefined && (
-                    <div className="cart-list__note">
-                      <textarea
-                        className="input"
-                        rows={2}
-                        maxLength={300}
-                        value={comentarioEdit[item.id_detalle_pedido]}
-                        onChange={(e) =>
-                          setComentarioEdit((prev) => ({
-                            ...prev,
-                            [item.id_detalle_pedido]: e.target.value,
-                          }))
-                        }
-                        onBlur={() => guardarComentarioLinea(item.id_detalle_pedido)}
-                        placeholder="Comentario para cocina"
-                      />
-                    </div>
-                  )}
-                </li>
+                </div>
                 );
               })}
-              </ul>
             </div>
           )}
 
@@ -1813,15 +1694,12 @@ export default function Ventas({ modoParaLlevar = false }) {
               )}
             </div>
           ) : null}
-          <div className="cart-total">
-            <span className="cart-total__label">Total</span>
-            <span>${total.toFixed(2)}</span>
-          </div>
-          <div className="cart-panel__actions">
+          <div className="cart-total">Total: ${total.toFixed(2)}</div>
           {!modoParaLlevar && (
             <button
               type="button"
               className="btn btn--accent inline-flex w-full items-center justify-center gap-2"
+              style={{ marginTop: "0.75rem", padding: "0.75rem" }}
               onClick={confirmarPedidoComanda}
               disabled={
                 loading ||
@@ -1838,6 +1716,7 @@ export default function Ventas({ modoParaLlevar = false }) {
             <button
               type="button"
               className="btn btn--accent inline-flex w-full items-center justify-center gap-2"
+              style={{ marginTop: "0.75rem", padding: "0.75rem" }}
               onClick={confirmarPedidoComanda}
               disabled={loading || carritoActivo.length === 0 || !numeroMesa}
             >
@@ -1848,13 +1727,13 @@ export default function Ventas({ modoParaLlevar = false }) {
           <button
             type="button"
             className="btn btn--success inline-flex w-full items-center justify-center gap-2"
+            style={{ marginTop: "0.75rem", padding: "0.75rem" }}
             onClick={handleCerrarCuenta}
-            disabled={loading || cobroSubmitting || imprimiendoPrecuenta || showCobroModal || carritoActivo.length === 0 || !numeroMesa}
+            disabled={loading || imprimiendoPrecuenta || showCobroModal || carritoActivo.length === 0 || !numeroMesa}
           >
             <HiOutlineBanknotes className="size-5 shrink-0" aria-hidden />
             {modoParaLlevar ? "Cobrar para llevar" : "Cerrar cuenta / Cobrar"}
           </button>
-          </div>
           </div>
         </aside>
       </div>
@@ -2055,7 +1934,15 @@ export default function Ventas({ modoParaLlevar = false }) {
             )}
 
             <div className="modal-footer">
-              <button type="button" className="btn btn--secondary" onClick={cerrarModalProducto}>
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={() => {
+                  setProductoModal(null);
+                  setExtrasSeleccionados([]);
+                  setExtrasModal([]);
+                }}
+              >
                 Cancelar
               </button>
               <button
@@ -2295,13 +2182,13 @@ export default function Ventas({ modoParaLlevar = false }) {
                   type="button"
                   className="btn btn--secondary inline-flex items-center gap-2"
                   onClick={handleReimprimirPrecuenta}
-                  disabled={cobroSubmitting || imprimiendoPrecuenta}
+                  disabled={loading || imprimiendoPrecuenta}
                 >
                   <HiOutlinePrinter className="size-5" aria-hidden />
                   {imprimiendoPrecuenta ? "Imprimiendo…" : "Reimprimir precuenta"}
                 </button>
               )}
-              <button type="button" className="btn btn--secondary" onClick={cerrarCobroModal} disabled={cobroSubmitting}>
+              <button type="button" className="btn btn--secondary" onClick={cerrarCobroModal} disabled={loading || imprimiendoPrecuenta}>
                 Cancelar
               </button>
               {!pedido?.id_cliente && (
@@ -2309,9 +2196,9 @@ export default function Ventas({ modoParaLlevar = false }) {
                   type="button"
                   className="btn btn--secondary"
                   onClick={() => iniciarConfirmacionCobro(false)}
-                  disabled={botonCobroBloqueado({ loading: cobroSubmitting, bloquea: cobroBloqueado }) || canjeCobro.puntos > 0}
+                  disabled={botonCobroBloqueado({ loading, bloquea: cobroBloqueado }) || canjeCobro.puntos > 0}
                 >
-                  {cobroSubmitting ? "Procesando…" : "Cobrar sin cliente"}
+                  Cobrar sin cliente
                 </button>
               )}
               {pedido?.id_cliente && (
@@ -2327,7 +2214,7 @@ export default function Ventas({ modoParaLlevar = false }) {
                     if (!ok) return;
                     ejecutarCobro(false, false, true);
                   }}
-                  disabled={botonCobroBloqueado({ loading: cobroSubmitting, bloquea: false })}
+                  disabled={botonCobroBloqueado({ loading, bloquea: false })}
                 >
                   Quitar cliente y cobrar sin puntos
                 </button>
@@ -2336,9 +2223,9 @@ export default function Ventas({ modoParaLlevar = false }) {
                 type="button"
                 className="btn btn--success"
                 onClick={() => iniciarConfirmacionCobro(true)}
-                disabled={botonCobroBloqueado({ loading: cobroSubmitting, bloquea: cobroBloqueado }) || !clienteCobro}
+                disabled={botonCobroBloqueado({ loading, bloquea: cobroBloqueado }) || !clienteCobro}
               >
-                {cobroSubmitting
+                {loading
                   ? "Procesando…"
                   : clienteCobro
                     ? puntosPreviewCobro > 0
@@ -2363,7 +2250,7 @@ export default function Ventas({ modoParaLlevar = false }) {
               <button
                 type="button"
                 className="btn btn--secondary"
-                disabled={cobroSubmitting}
+                disabled={loading}
                 onClick={() => {
                   const { conCliente } = cobroPendiente || { conCliente: false };
                   setShowImprimirTicketModal(false);
@@ -2375,7 +2262,7 @@ export default function Ventas({ modoParaLlevar = false }) {
               <button
                 type="button"
                 className="btn btn--primary"
-                disabled={cobroSubmitting}
+                disabled={loading}
                 onClick={() => {
                   const { conCliente } = cobroPendiente || { conCliente: false };
                   setShowImprimirTicketModal(false);
