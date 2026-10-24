@@ -166,6 +166,28 @@ def restaurar_precios_historial(db: Session = Depends(get_db)):
     return restaurar_precios_desde_historial(db)
 
 
+@router.get(
+    "/productos/restaurar-precios-menu",
+    dependencies=_prod_admin,
+)
+def previsualizar_restaurar_precios_menu(db: Session = Depends(get_db)):
+    """Lista cambios según menú impreso (JSON en servidor), sin escribir."""
+    from app.services.precio_menu_service import previsualizar_restauracion_precios_menu
+
+    return previsualizar_restauracion_precios_menu(db)
+
+
+@router.post(
+    "/productos/restaurar-precios-menu",
+    dependencies=_prod_admin,
+)
+def restaurar_precios_menu(db: Session = Depends(get_db)):
+    """Aplica precio_venta del menú impreso por nombre de producto."""
+    from app.services.precio_menu_service import restaurar_precios_desde_menu
+
+    return restaurar_precios_desde_menu(db)
+
+
 @router.get("/productos/{id_producto}", response_model=Producto, dependencies=[_prod_read])
 def obtener_producto(id_producto: int, db: Session = Depends(get_db)):
     producto = db.query(ProductoModel).filter(ProductoModel.id_producto == id_producto).first()

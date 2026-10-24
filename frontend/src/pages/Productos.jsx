@@ -6,8 +6,8 @@ import {
   updateProducto,
   deleteProducto,
   getCategorias,
-  previewRestaurarPreciosHistorial,
-  restaurarPreciosHistorial,
+  previewRestaurarPreciosMenu,
+  restaurarPreciosMenu,
 } from "../services/productosService";
 import { createCategoria } from "../services/categoriasService";
 import { invalidateCatalogCache } from "../cache/operationalCaches";
@@ -167,14 +167,17 @@ export default function Productos() {
     return cat ? cat.nombre : "N/A";
   };
 
-  const handleRestaurarPreciosHistorial = async () => {
+  const handleRestaurarPreciosMenu = async () => {
     try {
       setRestaurando(true);
-      const preview = await previewRestaurarPreciosHistorial();
+      const preview = await previewRestaurarPreciosMenu();
       const cambios = preview?.cambios || [];
       if (!cambios.length) {
+        const sin = preview?.sin_match ?? 0;
         alert(
-          "No hay precios distintos en el historial de ventas para restaurar."
+          sin
+            ? `Ningún precio difiere del menú impreso. ${sin} producto(s) no tienen regla en el menú (revisa nombres en el catálogo).`
+            : "Todos los precios ya coinciden con el menú impreso."
         );
         return;
       }
@@ -183,23 +186,26 @@ export default function Productos() {
         .map(
           (c) =>
             `• ${c.nombre}: $${Number(c.precio_actual).toFixed(2)} → $${Number(
-              c.precio_sugerido
+              c.precio_menu
             ).toFixed(2)}`
         )
         .join("\n");
       const extra =
         cambios.length > 12 ? `\n… y ${cambios.length - 12} más` : "";
+      const sinMatch = preview?.sin_match
+        ? `\n\n(${preview.sin_match} producto(s) sin regla en el menú; no se modifican.)`
+        : "";
       const ok = window.confirm(
-        `Se actualizarán ${cambios.length} producto(s) con el precio más frecuente del historial (útil para cafés recalculados por receta):\n\n${muestra}${extra}\n\n¿Aplicar?`
+        `Se actualizarán ${cambios.length} producto(s) según el menú impreso Coffee Song:\n\n${muestra}${extra}${sinMatch}\n\n¿Aplicar?`
       );
       if (!ok) return;
-      const res = await restaurarPreciosHistorial();
+      const res = await restaurarPreciosMenu();
       invalidateCatalogCache();
       await loadProductos();
-      alert(`Precios restaurados: ${res?.actualizados ?? 0}`);
+      alert(`Precios del menú aplicados: ${res?.actualizados ?? 0}`);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.detail || "Error al restaurar precios");
+      alert(err.response?.data?.detail || "Error al restaurar precios del menú");
     } finally {
       setRestaurando(false);
     }
@@ -211,11 +217,11 @@ export default function Productos() {
         <button
           type="button"
           className="btn btn--secondary"
-          onClick={handleRestaurarPreciosHistorial}
+          onClick={handleRestaurarPreciosMenu}
           disabled={restaurando || loading}
-          title="Recupera precios del menú desde ventas anteriores"
+          title="Aplica precios del menú impreso (Coffee Song)"
         >
-          {restaurando ? "Restaurando…" : "Restaurar precios"}
+          {restaurando ? "Aplicando…" : "Precios del menú"}
         </button>
         <button type="button" className="btn btn--primary" onClick={openNewModal}>
           Nuevo producto

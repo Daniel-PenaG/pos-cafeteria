@@ -101,3 +101,19 @@ export async function restaurarPreciosHistorial() {
   );
   return res.data;
 }
+
+export async function previewRestaurarPreciosMenu() {
+  const res = await api.get("/catalogo/productos/restaurar-precios-menu", {
+    headers: getAuthHeader(),
+  });
+  return res.data;
+}
+
+export async function restaurarPreciosMenu() {
+  const res = await api.post(
+    "/catalogo/productos/restaurar-precios-menu",
+    {},
+    { headers: getAuthHeader() }
+  );
+  return res.data;
+}
