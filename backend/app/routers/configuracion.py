@@ -42,7 +42,7 @@ def obtener_configuracion(db: Session = Depends(get_db)):
 # ============================
 @router.put("/", response_model=ConfiguracionActualizada)
 def actualizar_configuracion(data: ConfiguracionUpdate, db: Session = Depends(get_db)):
-    """Actualiza la configuración y recalcula precios de venta de productos con receta activa."""
+    """Actualiza la configuración y refresca costos de recetas (sin tocar precio_venta)."""
     
     # Validar que el margen esté entre 0 y 100
     if data.margen_ganancia < 0 or data.margen_ganancia > 100:

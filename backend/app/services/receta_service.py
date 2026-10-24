@@ -245,11 +245,13 @@ class RecetaService:
         gastos_fijos: Optional[float] = None,
     ) -> dict:
         """
-        Recalcula costo y precio de venta de todos los productos con receta activa,
-        usando el margen y los gastos fijos indicados (o los de la BD).
+        Recalcula solo el costo_total de recetas activas.
+
+        No modifica producto.precio_venta: el catálogo y las ventas usan el precio
+        guardado manualmente en Productos.
         """
-        if margen is None or gastos_fijos is None:
-            margen, gastos_fijos = RecetaService.obtener_configuracion(db)
+        # margen/gastos se aceptan por compatibilidad de firma; el costo no los usa.
+        _ = (margen, gastos_fijos)
 
         recetas_activas = (
             db.query(RecetaModel)
@@ -258,7 +260,7 @@ class RecetaService:
             .all()
         )
 
-        productos_actualizados = 0
+        costos_actualizados = 0
         productos_vistos: set[int] = set()
 
         for receta in recetas_activas:
@@ -274,13 +276,11 @@ class RecetaService:
 
             costo_total = RecetaService.calcular_costo_total_desde_receta(receta, db)
             receta.costo_total = costo_total
-            precio_venta = RecetaService.calcular_precio_venta(
-                costo_total, margen, gastos_fijos
-            )
-            producto.precio_venta = precio_venta
-            productos_actualizados += 1
+            costos_actualizados += 1
 
         return {
-            "productos_precio_actualizados": productos_actualizados,
+            # Compatibilidad API: ya no se sobrescriben precios de catálogo.
+            "productos_precio_actualizados": 0,
+            "recetas_costo_actualizados": costos_actualizados,
             "recetas_activas": len(recetas_activas),
         }
